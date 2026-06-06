@@ -1,0 +1,12 @@
+[package]
+name = "android_device"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent_protocol = { path = "../agent_protocol" }
+async-trait = "0.1"
+quick-xml = "0.37"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "time", "fs", "io-util", "macros", "rt", "sync"] }

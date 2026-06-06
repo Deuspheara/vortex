@@ -1,0 +1,9 @@
+[package]
+name = "agent_context"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent_protocol = { path = "../agent_protocol" }
+base64 = "0.22"
+serde_json = "1"

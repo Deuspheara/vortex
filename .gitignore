@@ -1,0 +1,83 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock is tracked for this binary application workspace.
+
+# Node / Bun (sidecars)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.bun/
+
+# Sidecar build output
+dist/
+*.tsbuildinfo
+playwright-report/
+test-results/
+blob-report/
+*.trace.zip
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.mobileprovision
+id_rsa
+id_ed25519
+*.kdbx
+
+# Local app data (SQLite lives in ~/.config/vortex at runtime; .vortex is fallback)
+/.vortex/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.iml
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Test / coverage artifacts
+coverage/
+*.profraw
+*.profdata
+/lcov.info
+
+# Generated files
+*.generated.*
+
+# macOS packaging / signing outputs
+*.dSYM/
+*.app/
+*.xcarchive/
+*.ipa

@@ -1,0 +1,13 @@
+pub mod agent_activity;
+pub mod android_simulator;
+pub mod chat;
+pub mod composer;
+pub mod diff_panel;
+pub mod drawer;
+pub mod inspector;
+pub mod settings;
+pub mod shell;
+pub mod simulation;
+pub mod terminal;
+pub mod todos;
+pub mod top_bar;

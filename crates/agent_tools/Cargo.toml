@@ -1,0 +1,24 @@
+[package]
+name = "agent_tools"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent_protocol = { path = "../agent_protocol" }
+agent_sandbox = { path = "../agent_sandbox" }
+agent_shell = { path = "../agent_shell" }
+agent_store = { path = "../agent_store" }
+android_device = { path = "../android_device" }
+async-trait = "0.1"
+blake3 = "1"
+chrono = { version = "0.4", features = ["serde"] }
+git2 = "0.19"
+project_index = { path = "../project_index" }
+real_process = { path = "../real_process" }
+regex = "1"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["process", "io-util", "time", "sync", "rt-multi-thread", "macros"] }
+uuid = { version = "1", features = ["v4"] }

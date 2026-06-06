@@ -1,0 +1,18 @@
+[package]
+name = "terminal"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["ghostty"]
+ghostty = ["dep:libghostty-vt"]
+
+[dependencies]
+portable-pty = "0.9"
+flume = "0.11"
+tracing = "0.1"
+thiserror = "2"
+libghostty-vt = { version = "0.1.1", optional = true }
+
+[dev-dependencies]
+portable-pty = "0.9"

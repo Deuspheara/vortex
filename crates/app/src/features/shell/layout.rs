@@ -1,0 +1,491 @@
+//! Sidebar explorer — isolated entity so thread/status updates don't rebuild the tree.
+
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
+use gpui::{Context, Entity, IntoElement, Pixels, Render, Size, Window, div, prelude::*, px, size};
+use gpui_component::input::{InputEvent, InputState};
+use gpui_component::{VirtualListScrollHandle, v_virtual_list};
+
+use crate::features::shell::components::tree_row::{
+    expanded_for_search, filter_projects, filter_sidebar_sessions, project_expand_key, project_row,
+    section_label, session_row,
+};
+use crate::features::shell::sidebar_helpers::{
+    render_app_nav, render_projects_section_header, render_sidebar_footer,
+};
+use crate::features::shell::state::{
+    AppNavItem, ConversationId, ExpandedItems, Project, ProjectId, SidebarDropTarget,
+    SidebarSession,
+};
+use crate::tokens::Tokens;
+use crate::ui::agent_window::AgentWindow;
+use crate::window::AppScreen;
+
+#[derive(Clone)]
+enum SidebarRow {
+    RecentHeader,
+    ProjectsHeader {
+        first: bool,
+    },
+    Session {
+        conversation_id: ConversationId,
+        indent_level: u32,
+    },
+    Project {
+        project_id: ProjectId,
+        expanded: bool,
+    },
+    ProjectAppendDrop {
+        project_id: ProjectId,
+    },
+}
+
+pub struct SidebarView {
+    agent: Entity<AgentWindow>,
+    projects: Vec<Project>,
+    sessions: Vec<SidebarSession>,
+    selected_conversation_id: Option<ConversationId>,
+    expanded_items: ExpandedItems,
+    collapsed: bool,
+    screen: AppScreen,
+    drop_target: Option<SidebarDropTarget>,
+    open_action_menu: Option<String>,
+    search_input: Entity<InputState>,
+    project_by_id: HashMap<ProjectId, usize>,
+    session_by_id: HashMap<ConversationId, usize>,
+    unassigned_ids: Vec<ConversationId>,
+    visible_rows: Vec<SidebarRow>,
+    row_sizes: Rc<Vec<Size<Pixels>>>,
+    scroll_handle: VirtualListScrollHandle,
+    rows_dirty: bool,
+    cached_search_query: String,
+}
+
+impl SidebarView {
+    pub fn new(
+        agent: Entity<AgentWindow>,
+        search_input: Entity<InputState>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        cx.subscribe(&search_input, move |view, _, event, cx| {
+            if matches!(event, InputEvent::Change) {
+                view.rows_dirty = true;
+                cx.notify();
+            }
+        })
+        .detach();
+
+        Self {
+            agent,
+            projects: Vec::new(),
+            sessions: Vec::new(),
+            selected_conversation_id: None,
+            expanded_items: ExpandedItems::new(),
+            collapsed: false,
+            screen: AppScreen::Chat,
+            drop_target: None,
+            open_action_menu: None,
+            search_input,
+            project_by_id: HashMap::new(),
+            session_by_id: HashMap::new(),
+            unassigned_ids: Vec::new(),
+            visible_rows: Vec::new(),
+            row_sizes: Rc::new(Vec::new()),
+            scroll_handle: VirtualListScrollHandle::new(),
+            rows_dirty: true,
+            cached_search_query: String::new(),
+        }
+    }
+
+    pub fn sync(
+        &mut self,
+        projects: Vec<Project>,
+        sessions: Vec<SidebarSession>,
+        selected_conversation_id: Option<ConversationId>,
+        expanded_items: ExpandedItems,
+        collapsed: bool,
+        screen: AppScreen,
+        cx: &mut Context<Self>,
+    ) {
+        if self.projects == projects
+            && self.sessions == sessions
+            && self.selected_conversation_id == selected_conversation_id
+            && self.expanded_items == expanded_items
+            && self.collapsed == collapsed
+            && self.screen == screen
+        {
+            return;
+        }
+        self.project_by_id = projects
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.id.clone(), i))
+            .collect();
+        // Pre-compute session index and unassigned list so render never builds a
+        // HashMap on the hot path.
+        self.session_by_id = sessions
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.id.clone(), i))
+            .collect();
+        let assigned: HashSet<_> = projects
+            .iter()
+            .flat_map(|p| p.conversations.iter())
+            .collect();
+        self.unassigned_ids = sessions
+            .iter()
+            .filter_map(|s| {
+                if assigned.contains(&s.id) {
+                    None
+                } else {
+                    Some(s.id.clone())
+                }
+            })
+            .collect();
+        self.projects = projects;
+        self.sessions = sessions;
+        self.selected_conversation_id = selected_conversation_id;
+        self.expanded_items = expanded_items;
+        self.collapsed = collapsed;
+        self.screen = screen;
+        self.rows_dirty = true;
+        cx.notify();
+    }
+
+    pub fn set_drop_target(&mut self, target: Option<SidebarDropTarget>, cx: &mut Context<Self>) {
+        if self.drop_target != target {
+            self.drop_target = target;
+            self.rows_dirty = true;
+            cx.notify();
+        }
+    }
+
+    pub fn clear_drop_target(&mut self, cx: &mut Context<Self>) {
+        self.set_drop_target(None, cx);
+    }
+
+    pub fn set_open_action_menu(&mut self, key: Option<String>, cx: &mut Context<Self>) {
+        if self.open_action_menu != key {
+            self.open_action_menu = key;
+            cx.notify();
+        }
+    }
+
+    pub fn close_action_menu(&mut self, cx: &mut Context<Self>) {
+        self.set_open_action_menu(None, cx);
+    }
+}
+
+impl Render for SidebarView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.collapsed {
+            return div()
+                .id("sidebar-collapsed")
+                .w(px(0.0))
+                .h(px(0.0))
+                .overflow_hidden();
+        }
+
+        div()
+            .id("sidebar")
+            .flex_shrink_0()
+            .w_full()
+            .min_w(px(Tokens::SIDEBAR_MIN_WIDTH))
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(Tokens::sidebar_bg())
+            .border_r_1()
+            .border_color(Tokens::sidebar_border())
+            .overflow_hidden()
+            .child(self.render_expanded(cx))
+    }
+}
+
+impl SidebarView {
+    fn render_expanded(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let search_query = self.search_input.read(cx).value().to_string();
+        self.ensure_visible_rows(&search_query);
+        let sidebar_clear = cx.entity().clone();
+
+        div()
+            .flex()
+            .flex_col()
+            .h_full()
+            .child(render_app_nav(
+                self.agent.clone(),
+                screen_to_nav(self.screen),
+            ))
+            .child(
+                div()
+                    .id("sidebar-scroll")
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .flex()
+                    .flex_col()
+                    .on_mouse_up(gpui::MouseButton::Left, move |_, _, app: &mut gpui::App| {
+                        sidebar_clear.update(app, |view, cx| {
+                            view.clear_drop_target(cx);
+                        });
+                    })
+                    .child(
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "sidebar-virtual-list",
+                            Rc::clone(&self.row_sizes),
+                            |this, range, _window, cx| this.render_visible(range, cx),
+                        )
+                        .track_scroll(&self.scroll_handle)
+                        .flex_1()
+                        .min_h(px(0.0))
+                        .w_full()
+                        .px(Tokens::sidebar_padding())
+                        .pb(Tokens::spacing_2()),
+                    ),
+            )
+            .child(render_sidebar_footer(
+                self.agent.clone(),
+                self.screen == AppScreen::Settings,
+            ))
+    }
+
+    fn ensure_visible_rows(&mut self, search_query: &str) {
+        if !self.rows_dirty && self.cached_search_query == search_query {
+            return;
+        }
+
+        let search_active = !search_query.trim().is_empty();
+        let projects = filter_projects(&self.projects, &self.sessions, search_query);
+        let filtered_sessions = filter_sidebar_sessions(&self.sessions, search_query);
+        let expanded_items = expanded_for_search(
+            &self.projects,
+            &self.sessions,
+            search_query,
+            &self.expanded_items,
+        );
+
+        let session_index: Cow<HashMap<ConversationId, usize>> = if search_active {
+            let filtered_ids: HashSet<_> = filtered_sessions.iter().map(|s| s.id.clone()).collect();
+            let filtered: HashMap<ConversationId, usize> = self
+                .session_by_id
+                .iter()
+                .filter(|(id, _)| filtered_ids.contains(*id))
+                .map(|(id, &idx)| (id.clone(), idx))
+                .collect();
+            Cow::Owned(filtered)
+        } else {
+            Cow::Borrowed(&self.session_by_id)
+        };
+
+        let unassigned: Vec<&SidebarSession> = if search_active {
+            let assigned: HashSet<_> = projects
+                .iter()
+                .flat_map(|p| p.conversations.iter())
+                .collect();
+            filtered_sessions
+                .iter()
+                .filter(|s| !assigned.contains(&s.id))
+                .collect()
+        } else {
+            self.unassigned_ids
+                .iter()
+                .filter_map(|id| self.session_by_id.get(id).map(|&idx| &self.sessions[idx]))
+                .collect()
+        };
+
+        let mut rows = Vec::new();
+        if !unassigned.is_empty() {
+            rows.push(SidebarRow::RecentHeader);
+            rows.extend(unassigned.into_iter().map(|session| SidebarRow::Session {
+                conversation_id: session.id.clone(),
+                indent_level: 0,
+            }));
+        }
+
+        rows.push(SidebarRow::ProjectsHeader {
+            first: rows.is_empty(),
+        });
+
+        for project in projects {
+            let key = project_expand_key(&project.id);
+            let expanded = expanded_items.contains(&key);
+            rows.push(SidebarRow::Project {
+                project_id: project.id.clone(),
+                expanded,
+            });
+
+            if expanded {
+                rows.extend(
+                    project
+                        .conversations
+                        .iter()
+                        .filter(|cid| session_index.contains_key(*cid))
+                        .map(|cid| SidebarRow::Session {
+                            conversation_id: cid.clone(),
+                            indent_level: 1,
+                        }),
+                );
+            }
+
+            rows.push(SidebarRow::ProjectAppendDrop {
+                project_id: project.id.clone(),
+            });
+        }
+
+        let row_sizes = rows
+            .iter()
+            .map(|row| size(px(Tokens::SIDEBAR_MAX_WIDTH), self.row_height(row)))
+            .collect();
+
+        self.visible_rows = rows;
+        self.row_sizes = Rc::new(row_sizes);
+        self.cached_search_query = search_query.to_string();
+        self.rows_dirty = false;
+    }
+
+    fn render_visible(
+        &mut self,
+        range: std::ops::Range<usize>,
+        cx: &mut Context<Self>,
+    ) -> Vec<gpui::AnyElement> {
+        range
+            .map(|row_ix| match self.visible_rows.get(row_ix).cloned() {
+                Some(row) => self.render_row(row, cx),
+                None => div()
+                    .w_full()
+                    .h(px(Tokens::ROW_HEIGHT_MD))
+                    .into_any_element(),
+            })
+            .collect()
+    }
+
+    fn render_row(&mut self, row: SidebarRow, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let sidebar = cx.entity().clone();
+        let entity = self.agent.clone();
+        let selected = self.selected_conversation_id.clone();
+        let drop_target = self.drop_target.clone();
+        let open_action_menu = self.open_action_menu.clone();
+
+        match row {
+            SidebarRow::RecentHeader => div()
+                .w_full()
+                .h(self.row_height(&SidebarRow::RecentHeader))
+                .flex()
+                .items_end()
+                .child(section_label("RECENT", true))
+                .into_any_element(),
+            SidebarRow::ProjectsHeader { first } => div()
+                .w_full()
+                .h(self.row_height(&SidebarRow::ProjectsHeader { first }))
+                .flex()
+                .items_end()
+                .child(render_projects_section_header(first, entity))
+                .into_any_element(),
+            SidebarRow::Session {
+                conversation_id,
+                indent_level,
+            } => {
+                let Some(&idx) = self.session_by_id.get(&conversation_id) else {
+                    return div()
+                        .w_full()
+                        .h(px(Tokens::ROW_HEIGHT_MD))
+                        .into_any_element();
+                };
+                let session = &self.sessions[idx];
+                session_row(
+                    session.id.clone(),
+                    &session.title,
+                    &session.updated_at,
+                    selected.as_ref() == Some(&session.id),
+                    indent_level,
+                    &drop_target,
+                    &open_action_menu,
+                    entity,
+                    sidebar,
+                )
+                .into_any_element()
+            }
+            SidebarRow::Project {
+                project_id,
+                expanded,
+            } => {
+                let Some(&idx) = self.project_by_id.get(&project_id) else {
+                    return div()
+                        .w_full()
+                        .h(px(Tokens::ROW_HEIGHT_MD))
+                        .into_any_element();
+                };
+                project_row(
+                    &self.projects[idx],
+                    expanded,
+                    &open_action_menu,
+                    entity,
+                    sidebar,
+                )
+                .into_any_element()
+            }
+            SidebarRow::ProjectAppendDrop { project_id } => {
+                crate::features::shell::components::tree_row::project_append_drop_zone(
+                    &project_id,
+                    &drop_target,
+                    entity,
+                    sidebar,
+                )
+                .into_any_element()
+            }
+        }
+    }
+
+    fn row_height(&self, row: &SidebarRow) -> Pixels {
+        match row {
+            SidebarRow::RecentHeader => px(Tokens::ROW_HEIGHT_SM),
+            SidebarRow::ProjectsHeader { .. } => px(Tokens::ROW_HEIGHT_LG),
+            SidebarRow::Session {
+                conversation_id, ..
+            } => {
+                let divider = matches!(
+                    self.drop_target,
+                    Some(SidebarDropTarget::BeforeSession(ref id)) if id == conversation_id
+                );
+                if divider {
+                    px(Tokens::ROW_HEIGHT_MD) + sidebar_drop_slot_height()
+                } else {
+                    px(Tokens::ROW_HEIGHT_MD)
+                }
+            }
+            SidebarRow::Project { .. } => px(Tokens::ROW_HEIGHT_MD),
+            SidebarRow::ProjectAppendDrop { project_id } => {
+                let active = matches!(
+                    self.drop_target,
+                    Some(SidebarDropTarget::AppendToProject(ref id)) if id == project_id
+                );
+                if active {
+                    sidebar_drop_slot_height()
+                } else {
+                    sidebar_project_append_hitbox_height()
+                }
+            }
+        }
+    }
+}
+
+fn screen_to_nav(screen: AppScreen) -> AppNavItem {
+    match screen {
+        AppScreen::Chat => AppNavItem::Chat,
+        AppScreen::Search => AppNavItem::Search,
+        AppScreen::Extensions => AppNavItem::Extensions,
+        AppScreen::Automations => AppNavItem::Automations,
+        AppScreen::Settings => AppNavItem::Settings,
+    }
+}
+
+fn sidebar_drop_slot_height() -> Pixels {
+    Tokens::spacing_2() + Tokens::spacing_0p5()
+}
+
+fn sidebar_project_append_hitbox_height() -> Pixels {
+    Tokens::spacing_1() + Tokens::spacing_0p5()
+}

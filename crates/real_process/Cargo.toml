@@ -1,0 +1,11 @@
+[package]
+name = "real_process"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent_protocol = { path = "../agent_protocol" }
+tokio = { version = "1", features = ["process", "io-util", "time", "sync", "rt-multi-thread", "macros"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["process", "signal"] }

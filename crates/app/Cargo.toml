@@ -1,0 +1,32 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[features]
+default = []
+demo_mode = []
+
+[dependencies]
+android_device = { path = "../android_device" }
+agent_core = { path = "../agent_core" }
+agent_models = { path = "../agent_models" }
+agent_protocol = { path = "../agent_protocol" }
+agent_store = { path = "../agent_store" }
+project_index = { path = "../project_index" }
+terminal = { path = "../terminal", features = ["ghostty"] }
+chrono = { version = "0.4", features = ["serde"] }
+gpui = "0.2.2"
+gpui-component = { version = "0.5.1", features = ["tree-sitter-languages"] }
+gpui-component-assets = "0.5.1"
+blake3 = "1"
+dirs = "6"
+flume = "0.11"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+rfd = "0.15"
+uuid = { version = "1", features = ["v4"] }
+pulldown-cmark = "0.13"

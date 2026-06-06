@@ -1,0 +1,25 @@
+[package]
+name = "agent_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent_context = { path = "../agent_context" }
+context_providers = { path = "../context_providers" }
+agent_models = { path = "../agent_models" }
+agent_protocol = { path = "../agent_protocol" }
+agent_sandbox = { path = "../agent_sandbox" }
+agent_store = { path = "../agent_store" }
+agent_tools = { path = "../agent_tools" }
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+flume = "0.11"
+futures = "0.3"
+project_index = { path = "../project_index" }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

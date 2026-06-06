@@ -1,0 +1,8 @@
+{
+  "name": "just_bash_host",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "just-bash": "^3.0.1"
+  }
+}

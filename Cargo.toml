@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/agent_protocol",
+    "crates/agent_store",
+    "crates/agent_core",
+    "crates/agent_models",
+    "crates/agent_tools",
+    "crates/agent_sandbox",
+    "crates/agent_context",
+    "crates/agent_shell",
+    "crates/android_device",
+    "crates/agent_eval",
+    "crates/project_index",
+    "crates/context_providers",
+    "crates/real_process",
+    "crates/app",
+    "crates/terminal",
+]
