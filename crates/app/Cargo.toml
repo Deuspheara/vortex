@@ -14,6 +14,7 @@ agent_core = { path = "../agent_core" }
 agent_models = { path = "../agent_models" }
 agent_protocol = { path = "../agent_protocol" }
 agent_store = { path = "../agent_store" }
+agent_tools = { path = "../agent_tools" }
 project_index = { path = "../project_index" }
 terminal = { path = "../terminal", features = ["ghostty"] }
 chrono = { version = "0.4", features = ["serde"] }

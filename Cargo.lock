@@ -217,6 +217,7 @@ dependencies = [
  "agent_models",
  "agent_protocol",
  "agent_store",
+ "agent_tools",
  "android_device",
  "blake3",
  "chrono",

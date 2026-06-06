@@ -8,6 +8,7 @@ use agent_core::{AgentRuntime, AgentRuntimeConfig, ReadCacheStats};
 use agent_models::{MockProvider, OpenRouterModelInfo, OpenRouterProvider};
 use agent_protocol::{AgentCommand, AgentEvent, AgentRunLimits, ProjectId, SessionId};
 use agent_store::{EventStore, SqliteEventStore, StoredProject, StoredSession};
+use agent_tools::BrowserMcpConfigState;
 use chrono::{DateTime, Utc};
 use project_index::{
     IndexPhase as CoreIndexPhase, IndexSnapshot, RepoIndex, load_index_snapshot, mark_index_failed,
@@ -15,9 +16,7 @@ use project_index::{
 };
 
 use crate::agent::paths::{canonical_project_path, git_head_branch};
-use crate::agent::{
-    new_project_id, new_session_id, sidecar_entry, vortex_data_dir, workspace_root,
-};
+use crate::agent::{new_project_id, new_session_id, vortex_data_dir, workspace_root};
 use crate::features::shell::state::{
     IndexPhase, ProjectId as UiProjectId, ProjectIndexStats, ProjectIndexStatus, ReadCacheRecap,
 };
@@ -47,7 +46,7 @@ impl AgentBridge {
 
         let config = AgentRuntimeConfig {
             checkpoint_dir,
-            sidecar_entry: sidecar_entry(),
+            browser_mcp_config: BrowserMcpConfigState::from_env(),
             limits: AgentRunLimits::default(),
         };
 

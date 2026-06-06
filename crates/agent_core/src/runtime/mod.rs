@@ -16,8 +16,8 @@ use agent_protocol::{
 };
 use agent_store::{EventStore, StoredApprovalRule, StoredRun, StoredSession};
 use agent_tools::{
-    ToolOrchestrator, ToolRegistry, args_preview, args_preview_raw, is_git_repo,
-    task_visible_tool_specs, tool_finish_summary,
+    BrowserMcpConfigState, ToolOrchestrator, ToolRegistry, args_preview, args_preview_raw,
+    is_git_repo, task_visible_tool_specs, tool_finish_summary,
 };
 use chrono::Utc;
 use flume::{Receiver, Sender};
@@ -47,7 +47,7 @@ pub(crate) fn is_parallel_safe_tool(registry: &ToolRegistry, name: &str) -> bool
 
 pub struct AgentRuntimeConfig {
     pub checkpoint_dir: PathBuf,
-    pub sidecar_entry: PathBuf,
+    pub browser_mcp_config: BrowserMcpConfigState,
     pub limits: AgentRunLimits,
 }
 
@@ -145,7 +145,7 @@ impl AgentRuntime {
         let (command_tx, command_rx) = flume::unbounded();
         let registry = Arc::new(ToolRegistry::new(
             config.checkpoint_dir,
-            config.sidecar_entry,
+            config.browser_mcp_config,
         ));
         let tools = Arc::new(ToolOrchestrator {
             registry,

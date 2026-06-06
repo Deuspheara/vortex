@@ -8,14 +8,14 @@ use agent_protocol::{
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::shared::BrowserSidecarClient;
+use crate::shared::BrowserMcpClient;
 use crate::shared::web::{
     public_http_url_from_tool_args, structured_output, tool_mode_allows_network,
 };
 use crate::tool::{AgentTool, default_finish_summary};
 
 pub struct BrowserScreenshotTool {
-    pub client: Arc<BrowserSidecarClient>,
+    pub client: Arc<BrowserMcpClient>,
     pub artifact_dir: PathBuf,
 }
 
@@ -26,7 +26,7 @@ impl AgentTool for BrowserScreenshotTool {
     }
 
     fn description(&self) -> &'static str {
-        "Open a URL in a sandboxed Playwright browser and save a full-page or selector screenshot to the controlled artifact cache."
+        "Open a URL through the configured browser MCP server and save a full-page or selector screenshot to the controlled artifact cache."
     }
 
     fn schema(&self) -> Value {
@@ -80,6 +80,9 @@ impl AgentTool for BrowserScreenshotTool {
     }
 
     async fn assess(&self, args: &Value, ctx: &ToolContext) -> Result<ToolAssessment, String> {
+        if let Some(reason) = self.client.unavailable_reason() {
+            return Ok(denied(&reason));
+        }
         if !tool_mode_allows_network(ctx) {
             return Ok(denied(
                 "browser screenshot is not allowed in the current agent mode",
@@ -111,7 +114,12 @@ impl AgentTool for BrowserScreenshotTool {
             "output_path".into(),
             Value::String(path.to_string_lossy().to_string()),
         );
-        let data = self.client.screenshot(Value::Object(params)).await?;
+        let mut data = self.client.screenshot(Value::Object(params)).await?;
+        if let Value::Object(ref mut object) = data {
+            let path = Value::String(path.to_string_lossy().to_string());
+            object.entry("output_path").or_insert_with(|| path.clone());
+            object.entry("image_path").or_insert(path);
+        }
         let output = structured_output("Took browser screenshot", data)?;
         Ok(ToolResult {
             call_id: agent_protocol::ToolCallId::new(""),

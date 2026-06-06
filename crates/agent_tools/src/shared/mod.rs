@@ -1,5 +1,5 @@
 pub mod args_display;
-pub mod browser_sidecar;
+pub mod browser_mcp;
 pub mod git;
 pub mod patch_engine;
 pub mod provenance;
@@ -9,7 +9,7 @@ pub mod vision;
 pub mod web;
 
 pub use args_display::*;
-pub use browser_sidecar::*;
+pub use browser_mcp::*;
 pub use git::*;
 pub use patch_engine::*;
 pub use provenance::*;

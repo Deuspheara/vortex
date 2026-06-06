@@ -11,7 +11,7 @@ use agent_store::{EventStore, StoredToolCall, storage_tool_call_id};
 use chrono::Utc;
 use serde_json::Value;
 
-use crate::shared::{BrowserSidecarClient, UnconfiguredVisionPort};
+use crate::shared::{BrowserMcpClient, BrowserMcpConfigState, UnconfiguredVisionPort};
 use crate::tool::AgentTool;
 use crate::tools::{
     AndroidCliDocsFetchTool, AndroidCliDocsSearchTool, AndroidCliDoctorTool, AndroidCliInfoTool,
@@ -162,9 +162,8 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    pub fn new(checkpoint_dir: PathBuf, sidecar_entry: PathBuf) -> Self {
-        let browser_entry = browser_sidecar_entry(&sidecar_entry);
-        let browser_client = Arc::new(BrowserSidecarClient::new(browser_entry));
+    pub fn new(checkpoint_dir: PathBuf, browser_mcp_config: BrowserMcpConfigState) -> Self {
+        let browser_client = Arc::new(BrowserMcpClient::new(browser_mcp_config));
         let web_artifact_dir = checkpoint_dir.join("web_artifacts");
         let screenshot_dir = web_artifact_dir.join("screenshots");
         let vision_port = Arc::new(UnconfiguredVisionPort);
@@ -379,24 +378,44 @@ fn normalized_tool_name(name: &str) -> &str {
         .unwrap_or(name)
 }
 
-fn browser_sidecar_entry(sidecar_entry: &std::path::Path) -> PathBuf {
-    sidecar_entry
-        .ancestors()
-        .nth(2)
-        .and_then(|sidecar_dir| sidecar_dir.parent())
-        .map(|sidecars| sidecars.join("browser_worker/src/main.ts"))
-        .unwrap_or_else(|| PathBuf::from("sidecars/browser_worker/src/main.ts"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_tool_context() -> ToolContext {
+        ToolContext {
+            project_root: PathBuf::from("/tmp/project"),
+            project_id: agent_protocol::ProjectId::new("project"),
+            session_id: agent_protocol::SessionId::new("session"),
+            run_id: agent_protocol::RunId::new("run"),
+            mode: AgentMode::ApplyWithApproval,
+            output_sink: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_browser_mcp_config_denies_browser_tools() {
+        let registry = ToolRegistry::new(
+            PathBuf::from("/tmp/checkpoints"),
+            BrowserMcpConfigState::Unconfigured,
+        );
+        let assessment = registry
+            .assess(
+                "browser_snapshot",
+                &serde_json::json!({ "url": "https://example.com" }),
+                &test_tool_context(),
+            )
+            .await
+            .expect("assessment");
+        assert!(assessment.denied);
+        assert_eq!(assessment.reason, "browser MCP server is not configured");
+    }
 
     #[test]
     fn dependency_pack_includes_gradle_inspector_and_excludes_browser() {
         let registry = ToolRegistry::new(
             PathBuf::from("/tmp/checkpoints"),
-            PathBuf::from("/tmp/sidecars/browser_worker/src/main.rs"),
+            BrowserMcpConfigState::Unconfigured,
         );
         assert!(tool_allowed_in_pack(
             &registry.policy("inspect_gradle_dependencies"),
@@ -416,7 +435,7 @@ mod tests {
     fn task_visible_specs_layer_pack_after_mode() {
         let registry = ToolRegistry::new(
             PathBuf::from("/tmp/checkpoints"),
-            PathBuf::from("/tmp/sidecars/browser_worker/src/main.rs"),
+            BrowserMcpConfigState::Unconfigured,
         );
         let specs = vec![
             agent_protocol::ToolSpec {
@@ -455,7 +474,7 @@ mod tests {
     fn output_cache_key_uses_range_policy() {
         let registry = ToolRegistry::new(
             PathBuf::from("/tmp/checkpoints"),
-            PathBuf::from("/tmp/sidecars/browser_worker/src/main.rs"),
+            BrowserMcpConfigState::Unconfigured,
         );
         let args = serde_json::json!({
             "path": "src/lib.rs",
@@ -472,7 +491,7 @@ mod tests {
     fn output_cache_key_falls_back_to_arg_paths() {
         let registry = ToolRegistry::new(
             PathBuf::from("/tmp/checkpoints"),
-            PathBuf::from("/tmp/sidecars/browser_worker/src/main.rs"),
+            BrowserMcpConfigState::Unconfigured,
         );
         let args = serde_json::json!({"focus": "crates/app"});
         assert_eq!(

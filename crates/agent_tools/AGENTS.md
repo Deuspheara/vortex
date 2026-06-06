@@ -16,7 +16,7 @@ src/
 │   ├── patch_engine.rs
 │   ├── git.rs
 │   ├── risk.rs
-│   └── browser_sidecar.rs
+│   └── browser_mcp.rs
 └── tools/
     ├── read_file/mod.rs
     ├── list_files/mod.rs

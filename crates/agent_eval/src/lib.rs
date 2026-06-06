@@ -510,7 +510,7 @@ fn intent_optimality(scenario: &Scenario, registry: &ToolRegistry) -> Vec<bool> 
 pub fn run_eval(label: &str) -> EvalReport {
     let registry = ToolRegistry::new(
         PathBuf::from("/tmp/vortex-eval-ckpt"),
-        PathBuf::from("/tmp/nope.ts"),
+        agent_tools::BrowserMcpConfigState::Unconfigured,
     );
     let builder = ContextBuilder::default();
     let scenarios = default_scenarios();

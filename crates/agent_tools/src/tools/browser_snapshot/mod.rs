@@ -7,14 +7,14 @@ use agent_protocol::{
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::shared::BrowserSidecarClient;
+use crate::shared::BrowserMcpClient;
 use crate::shared::web::{
     public_http_url_from_tool_args, structured_output, tool_mode_allows_network,
 };
 use crate::tool::{AgentTool, default_finish_summary};
 
 pub struct BrowserSnapshotTool {
-    pub client: Arc<BrowserSidecarClient>,
+    pub client: Arc<BrowserMcpClient>,
 }
 
 #[async_trait]
@@ -24,7 +24,7 @@ impl AgentTool for BrowserSnapshotTool {
     }
 
     fn description(&self) -> &'static str {
-        "Open a URL in a sandboxed Playwright browser and return visible text, accessibility tree, DOM summary, and interactive elements."
+        "Open a URL through the configured browser MCP server and return its structured snapshot result."
     }
 
     fn schema(&self) -> Value {
@@ -79,6 +79,9 @@ impl AgentTool for BrowserSnapshotTool {
     }
 
     async fn assess(&self, args: &Value, ctx: &ToolContext) -> Result<ToolAssessment, String> {
+        if let Some(reason) = self.client.unavailable_reason() {
+            return Ok(denied(&reason));
+        }
         if !tool_mode_allows_network(ctx) {
             return Ok(denied(
                 "browser snapshot is not allowed in the current agent mode",
@@ -91,7 +94,7 @@ impl AgentTool for BrowserSnapshotTool {
         Ok(ToolAssessment {
             risk: RiskLevel::High,
             requires_approval: true,
-            reason: format!("opens {url} in a sandboxed browser"),
+            reason: format!("opens {url} through a browser MCP server"),
             affected_paths: vec![],
             network_access: NetworkAccess::AllowGet,
             writes_to_disk: false,

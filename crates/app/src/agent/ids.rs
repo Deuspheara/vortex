@@ -37,7 +37,3 @@ pub fn vortex_data_dir() -> PathBuf {
 pub fn workspace_root() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
-
-pub fn sidecar_entry() -> PathBuf {
-    workspace_root().join("sidecars/browser_worker/src/main.ts")
-}
