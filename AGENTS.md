@@ -245,10 +245,8 @@ Per-directory guide:
 
 - [crates/agent_tools/AGENTS.md](crates/agent_tools/AGENTS.md)
 
-Skills:
-
-- `.cursor/skills/add-tool/SKILL.md`
-- `.cursor/skills/add-component/SKILL.md`
+Local editor skill files under `.cursor/` are intentionally ignored and should
+not be required for repository work.
 
 ## Public release checklist
 

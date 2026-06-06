@@ -5,7 +5,10 @@
 
 # Cargo.lock is tracked for this binary application workspace.
 
-# Node / Bun (sidecars)
+# Local editor and agent metadata
+.cursor/
+
+# Node / Bun package artifacts
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -14,7 +17,7 @@ pnpm-debug.log*
 .pnpm-store/
 .bun/
 
-# Sidecar build output
+# Build/test output from optional JavaScript tooling
 dist/
 *.tsbuildinfo
 playwright-report/

@@ -322,4 +322,4 @@ Implemented in `crates/agent_context/src/prompt.rs` (`SYSTEM_PROMPT`).
 - [`docs/edit-transaction-contract.md`](./edit-transaction-contract.md) — batch edits, patch limits, atomic apply
 - [`AGENTS.md`](../AGENTS.md) — workspace guide and runtime rules
 - [`crates/agent_tools/AGENTS.md`](../crates/agent_tools/AGENTS.md) — adding tools
-- [`docs/streaming-thread-performance-handoff.md`](./streaming-thread-performance-handoff.md) — UI streaming performance
+- [`docs/thread-performance.md`](./thread-performance.md) — UI streaming performance
