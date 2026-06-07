@@ -265,6 +265,7 @@ impl AgentWindow {
         cx: &mut Context<Self>,
         immediate: bool,
     ) {
+        let _profile = crate::shared::render_profile::span("AgentWindow::sync_thread_view_impl");
         self.refresh_task_projection(&conversation_id);
         self.ensure_thread_view(cx);
         let items = self.thread_items_for(&conversation_id);
@@ -354,6 +355,5 @@ impl AgentWindow {
                 }
             });
         }
-        cx.notify();
     }
 }

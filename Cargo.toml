@@ -18,3 +18,22 @@ members = [
     "crates/app",
     "crates/terminal",
 ]
+
+[profile.dev]
+# Keep normal debug ergonomics, but lift hot UI code out of fully unoptimized
+# codegen. Profiling shows the app/sidebar/thread Rust work is already sub-ms,
+# so the remaining smoothness gap is more likely in GPUI/render-stack execution
+# during dev builds than in our own view logic.
+opt-level = 1
+
+[profile.dev.package.app]
+opt-level = 2
+
+[profile.dev.package.gpui]
+opt-level = 3
+
+[profile.dev.package.gpui-component]
+opt-level = 3
+
+[profile.dev.package.terminal]
+opt-level = 2

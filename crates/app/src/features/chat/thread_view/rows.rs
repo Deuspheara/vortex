@@ -704,12 +704,12 @@ fn assistant_action_row(
     div()
         .id(element_key("assistant-actions", item_id))
         .w_full()
-        .pt(Tokens::spacing_2())
+        .pt(Tokens::spacing_1())
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
-        .opacity(if streaming { 0.52 } else { 0.38 })
-        .hover(|s| s.opacity(0.78))
+        .opacity(if streaming { 0.44 } else { 0.24 })
+        .hover(|s| s.opacity(0.64))
         .child({
             let copy_thread = thread.clone();
             let copy_item_id = item_id.to_string();
@@ -849,16 +849,14 @@ fn render_subagent_summary_row(
     let open_button = div()
         .id(element_key("subagent-open-tab", item_id))
         .h(px(Tokens::ROW_HEIGHT_XS))
-        .px(Tokens::spacing_2())
+        .px(Tokens::spacing_1())
         .flex()
         .items_center()
         .justify_center()
-        .rounded(Tokens::radius_full())
-        .border_1()
-        .border_color(Tokens::border_subtle())
-        .bg(Tokens::surface().opacity(0.35))
+        .rounded(Tokens::radius_xs())
         .cursor_pointer()
-        .hover(|s| s.border_color(Tokens::text_faint()))
+        .text_color(Tokens::text_tertiary())
+        .hover(|s| s.text_color(Tokens::text_primary()))
         .on_click(move |_, _, app| on_open_button(app))
         .child(
             Icon::new(icons::EXTERNAL_LINK)
@@ -871,7 +869,8 @@ fn render_subagent_summary_row(
             .id(element_key("subagent-shell", item_id))
             .w_full()
             .when(is_selected, |el| {
-                el.bg(Tokens::surface_active()).rounded(Tokens::radius_xs())
+                el.bg(Tokens::surface_hover().blend(Tokens::accent().opacity(0.05)))
+                    .rounded(Tokens::radius_xs())
             })
             .child(timeline_row(
                 element_key("subagent-header", item_id),
@@ -1055,12 +1054,9 @@ fn render_provenance_strip(
 
 fn provenance_chip(label: String) -> impl IntoElement {
     div()
-        .px(Tokens::spacing_1())
-        .py(Tokens::spacing_0p5())
-        .rounded(Tokens::radius_xs())
-        .bg(Tokens::surface_hover().opacity(0.55))
+        .px(Tokens::spacing_0p5())
         .text_size(Tokens::text_xs())
-        .text_color(Tokens::text_tertiary())
+        .text_color(Tokens::text_faint())
         .child(label)
 }
 

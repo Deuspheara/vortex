@@ -7,6 +7,7 @@ use crate::features::shell::state::SidebarSession;
 
 impl AgentWindow {
     pub(crate) fn sync_sidebar_view(&mut self, cx: &mut Context<Self>) {
+        let _profile = crate::shared::render_profile::span("AgentWindow::sync_sidebar_view");
         self.ensure_sidebar_view(cx);
         let projects = self.projects.clone();
         let sessions: Vec<SidebarSession> = self
