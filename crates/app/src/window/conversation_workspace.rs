@@ -180,7 +180,7 @@ impl AgentWindow {
             .as_ref()
             .and_then(|cid| self.conversations.iter().find(|c| c.id == *cid));
         let plan_artifact = selected_conversation.and_then(|c| c.plan_artifact.clone());
-        let plan_available = self.safety_mode == AgentMode::PlanOnly && plan_artifact.is_some();
+        let plan_available = plan_artifact.is_some();
         let inspector_tabs = self.inspector_tabs.clone();
 
         ConversationWorkspaceVm {

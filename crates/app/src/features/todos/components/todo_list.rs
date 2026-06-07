@@ -1,7 +1,6 @@
 use crate::features::shell::state::{
-    PlanArtifact, PlanExecutionState, PlanProgressCounts, TODO_ROW_H, TodoEntry, TodoState,
+    PlanArtifact, PlanProgressCounts, TODO_ROW_H, TodoEntry, TodoState,
 };
-use crate::shared::components::buttons::btn_approve;
 use crate::shared::components::flat_list_row::flat_list_row;
 use crate::shared::components::markdown_preview::markdown_preview;
 use crate::tokens::{Tokens, element_key, icons};
@@ -169,23 +168,8 @@ pub fn todo_list(id: &str, items: &[TodoEntry]) -> impl IntoElement {
     todo_checklist(id, items)
 }
 
-pub fn plan_artifact(
-    artifact: PlanArtifact,
-    can_implement: bool,
-    show_choice: bool,
-    recommend_fresh_context: bool,
-    on_show_choice: impl Fn(&mut gpui::App) + Clone + 'static,
-    on_continue_here: impl Fn(&mut gpui::App) + Clone + 'static,
-    on_start_fresh: impl Fn(&mut gpui::App) + Clone + 'static,
-) -> impl IntoElement {
-    let on_show = on_show_choice.clone();
-    let on_continue = on_continue_here.clone();
+pub fn plan_artifact(artifact: PlanArtifact) -> impl IntoElement {
     let counts = plan_counts_from_markdown(&artifact.markdown);
-    let can_start = can_implement
-        && matches!(
-            artifact.execution_state,
-            PlanExecutionState::NotStarted | PlanExecutionState::Stale
-        );
     div()
         .id("plan-artifact")
         .w_full()
@@ -247,62 +231,6 @@ pub fn plan_artifact(
             )
         })
         .child(markdown_preview(&artifact.markdown, true))
-        .when(can_start && !show_choice, |el| {
-            el.child(
-                div()
-                    .pt(Tokens::spacing_2())
-                    .border_t_1()
-                    .border_color(Tokens::border_subtle())
-                    .child(btn_approve("show-implement-plan-choice", "Implement Plan").on_click(
-                        move |_, _, app: &mut gpui::App| {
-                            on_show(app);
-                        },
-                    )),
-            )
-        })
-        .when(can_start && show_choice, |el| {
-            el.child(
-                div()
-                    .pt(Tokens::spacing_2())
-                    .border_t_1()
-                    .border_color(Tokens::border_subtle())
-                    .flex()
-                    .flex_col()
-                    .gap(Tokens::spacing_2())
-                    .child(
-                        div()
-                            .text_size(Tokens::text_sm())
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(Tokens::text_primary())
-                            .child("Choose implementation context"),
-                    )
-                    .child(
-                        div()
-                            .text_size(Tokens::text_xs())
-                            .text_color(Tokens::text_faint())
-                            .child(if recommend_fresh_context {
-                                "Recommended: start fresh because the current context is getting large."
-                            } else {
-                                "Recommended: continue here because the current context is still useful."
-                            }),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .gap(Tokens::spacing_2())
-                            .child(btn_approve("implement-plan-fresh", "Start fresh").on_click(
-                                move |_, _, app: &mut gpui::App| {
-                                    on_start_fresh(app);
-                                },
-                            ))
-                            .child(btn_approve("implement-plan-here", "Continue here").on_click(
-                                move |_, _, app: &mut gpui::App| {
-                                    on_continue(app);
-                                },
-                            )),
-                    ),
-            )
-        })
 }
 
 fn plan_counts_from_markdown(markdown: &str) -> PlanProgressCounts {

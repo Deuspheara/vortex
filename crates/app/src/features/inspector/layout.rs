@@ -580,6 +580,12 @@ fn render_subagent_view(subagent: SubagentInspectorVm) -> gpui::AnyElement {
                 .border_color(Tokens::border_subtle())
                 .child(
                     div()
+                        .text_size(Tokens::text_xs())
+                        .text_color(Tokens::text_tertiary())
+                        .child("Subagent"),
+                )
+                .child(
+                    div()
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::MEDIUM)
                         .child(subagent.task),
@@ -605,7 +611,13 @@ fn render_subagent_view(subagent: SubagentInspectorVm) -> gpui::AnyElement {
                     )
                 }),
         )
-        .child(subagent.thread_view)
+        .child(
+            div()
+                .flex_1()
+                .min_h(px(0.0))
+                .overflow_hidden()
+                .child(subagent.thread_view),
+        )
         .into_any_element()
 }
 

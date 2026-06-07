@@ -8,7 +8,8 @@ use gpui_component::button::{Button, ButtonVariants};
 
 use crate::features::agent_activity::components::approval::diff_approval_bar;
 use crate::features::shell::state::{
-    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, ReviewPanelTab,
+    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, PlanExecutionState,
+    ReviewPanelTab,
 };
 use crate::features::todos::components::todo_list;
 use crate::shared::components::buttons::{btn_approve, btn_ghost_label};
@@ -204,45 +205,36 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, _width: f32) -> impl 
                     render_empty_changes_state().into_any_element()
                 }),
         );
-    } else {
+    } else if let Some(artifact) = plan_artifact {
+        let action_artifact = artifact.clone();
+        let body_artifact = artifact;
         panel = panel.child(
             div()
-                .id("review-plan-body")
+                .id("review-plan-pane")
                 .flex_1()
                 .min_h(px(0.0))
-                .overflow_y_scroll()
-                .p(Tokens::spacing_3())
-                .child(match plan_artifact {
-                    Some(artifact) => {
-                        let continue_entity = props.entity.clone();
-                        let fresh_entity = props.entity.clone();
-                        let show_entity = props.entity.clone();
-                        todo_list::plan_artifact(
-                            artifact,
-                            props.can_implement_plan,
-                            props.show_implement_choice,
-                            props.recommend_fresh_context,
-                            move |app| {
-                                show_entity.update(app, |view, cx| {
-                                    view.show_plan_implementation_choice(cx);
-                                });
-                            },
-                            move |app| {
-                                continue_entity.update(app, |view, cx| {
-                                    view.implement_plan_here(cx);
-                                });
-                            },
-                            move |app| {
-                                fresh_entity.update(app, |view, cx| {
-                                    view.implement_plan_fresh(cx);
-                                });
-                            },
-                        )
-                        .into_any_element()
-                    }
-                    None => render_empty_plan_state().into_any_element(),
-                }),
+                .overflow_hidden()
+                .flex()
+                .flex_col()
+                .child(render_plan_action_strip(
+                    props.entity.clone(),
+                    &action_artifact,
+                    props.can_implement_plan,
+                    props.show_implement_choice,
+                    props.recommend_fresh_context,
+                ))
+                .child(
+                    div()
+                        .id("review-plan-body")
+                        .flex_1()
+                        .min_h(px(0.0))
+                        .overflow_y_scroll()
+                        .p(Tokens::spacing_3())
+                        .child(todo_list::plan_artifact(body_artifact).into_any_element()),
+                ),
         );
+    } else {
+        panel = panel.child(render_empty_plan_state());
     }
 
     panel
@@ -268,6 +260,133 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, _width: f32) -> impl 
             })
         })
         .into_any_element()
+}
+
+fn render_plan_action_strip(
+    entity: Entity<AgentWindow>,
+    artifact: &PlanArtifact,
+    can_implement: bool,
+    show_choice: bool,
+    recommend_fresh_context: bool,
+) -> impl IntoElement {
+    let can_start = can_implement
+        && matches!(
+            artifact.execution_state,
+            PlanExecutionState::NotStarted | PlanExecutionState::Stale
+        );
+    let state_label = artifact.execution_state.label();
+    let show_entity = entity.clone();
+    let fresh_entity = entity.clone();
+    let continue_entity = entity.clone();
+
+    div()
+        .id("plan-action-strip")
+        .flex_shrink_0()
+        .px(Tokens::spacing_3())
+        .py(Tokens::spacing_2())
+        .border_b_1()
+        .border_color(Tokens::border_subtle())
+        .bg(Tokens::panel_bg())
+        .child(
+            div()
+                .w_full()
+                .rounded(Tokens::radius_lg())
+                .border_1()
+                .border_color(Tokens::border_subtle())
+                .bg(Tokens::surface())
+                .px(Tokens::spacing_3())
+                .py(Tokens::spacing_2())
+                .flex()
+                .flex_col()
+                .gap(Tokens::spacing_2())
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(Tokens::spacing_3())
+                        .child(
+                            div()
+                                .min_w(px(0.0))
+                                .flex()
+                                .flex_col()
+                                .gap(Tokens::spacing_0p5())
+                                .child(
+                                    div()
+                                        .text_size(Tokens::text_sm())
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(Tokens::text_primary())
+                                        .child("Plan ready to implement"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(Tokens::text_xs())
+                                        .text_color(Tokens::text_tertiary())
+                                        .child(format!("Status · {state_label}")),
+                                ),
+                        )
+                        .when(can_start && !show_choice, |el| {
+                            el.child(
+                                btn_approve("show-implement-plan-choice", "Implement Plan")
+                                    .on_click(move |_, _, app: &mut gpui::App| {
+                                        show_entity.update(app, |view, cx| {
+                                            view.show_plan_implementation_choice(cx);
+                                        });
+                                    }),
+                            )
+                        })
+                        .when(!can_start, |el| {
+                            el.child(
+                                div()
+                                    .text_size(Tokens::text_xs())
+                                    .text_color(Tokens::text_faint())
+                                    .child(if can_implement {
+                                        "No implementation action available"
+                                    } else {
+                                        "Agent is running"
+                                    }),
+                            )
+                        }),
+                )
+                .when(can_start && show_choice, |el| {
+                    el.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(Tokens::spacing_2())
+                            .child(
+                                div()
+                                    .text_size(Tokens::text_xs())
+                                    .text_color(Tokens::text_faint())
+                                    .child(if recommend_fresh_context {
+                                        "Recommended: start fresh because the current context is getting large."
+                                    } else {
+                                        "Recommended: continue here because the current context is still useful."
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_wrap()
+                                    .gap(Tokens::spacing_2())
+                                    .child(btn_approve("implement-plan-fresh", "Start fresh").on_click(
+                                        move |_, _, app: &mut gpui::App| {
+                                            fresh_entity.update(app, |view, cx| {
+                                                view.implement_plan_fresh(cx);
+                                            });
+                                        },
+                                    ))
+                                    .child(btn_ghost_label("implement-plan-here", "Continue here").on_click(
+                                        move |_, _, app: &mut gpui::App| {
+                                            continue_entity.update(app, |view, cx| {
+                                                view.implement_plan_here(cx);
+                                            });
+                                        },
+                                    )),
+                            ),
+                    )
+                }),
+        )
 }
 
 fn count_totals(files: &[DiffFile]) -> (usize, usize) {

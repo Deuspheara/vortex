@@ -328,6 +328,11 @@ pub fn session_row(
     let conv_id = row.conv_id.clone();
     let selected = row.selected;
     let hover_group = group_name.clone();
+    let row_bg = if selected {
+        Tokens::sidebar_selected_bg()
+    } else {
+        Tokens::sidebar_bg()
+    };
 
     let row_body = div()
         .id(row.row_id.clone())
@@ -342,9 +347,7 @@ pub fn session_row(
         .items_center()
         .group(group_name.clone())
         .cursor_pointer()
-        .when(selected, |el| {
-            el.bg(Tokens::sidebar_hover_bg().blend(Tokens::accent().opacity(0.08)))
-        })
+        .when(selected, |el| el.bg(Tokens::sidebar_selected_bg()))
         .when(!selected, |el| {
             el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
         })
@@ -398,6 +401,7 @@ pub fn session_row(
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
+                .pr(Tokens::spacing_2())
                 .truncate()
                 .text_size(Tokens::text_base())
                 .font_weight(FontWeight::MEDIUM)
@@ -411,9 +415,21 @@ pub fn session_row(
             div()
                 .relative()
                 .flex_shrink_0()
+                .w(px(72.0))
                 .h(px(Tokens::ROW_HEIGHT_MD))
                 .flex()
                 .items_center()
+                .justify_end()
+                .bg(row_bg)
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(-28.0))
+                        .top_0()
+                        .bottom_0()
+                        .w(px(32.0))
+                        .bg(Tokens::sidebar_time_fade_gradient(selected)),
+                )
                 .child(
                     div()
                         .text_size(Tokens::text_xs())

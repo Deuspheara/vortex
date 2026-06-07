@@ -214,6 +214,22 @@ impl Tokens {
     pub fn sidebar_hover_bg() -> Hsla {
         Self::surface_hover().blend(Self::accent().opacity(0.06))
     }
+    pub fn sidebar_selected_bg() -> Hsla {
+        Self::sidebar_hover_bg().blend(Self::accent().opacity(0.08))
+    }
+    pub fn sidebar_time_fade_gradient(selected: bool) -> Background {
+        let bg = if selected {
+            Self::sidebar_selected_bg()
+        } else {
+            Self::sidebar_bg()
+        };
+        linear_gradient(
+            90.,
+            linear_color_stop(bg.alpha(0.0), 0.0),
+            linear_color_stop(bg, 1.0),
+        )
+        .color_space(ColorSpace::Oklab)
+    }
     pub fn search_bg() -> Hsla {
         active_palette().input_bg
     }

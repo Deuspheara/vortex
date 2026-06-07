@@ -8,14 +8,14 @@ fn px(v: gpui::Pixels) -> f32 {
     v.into()
 }
 
-/// Space before a new conversational turn — `Tokens::spacing_3()`.
+/// Space before a new conversational turn — compact but readable.
 pub fn turn_gap() -> f32 {
-    px(Tokens::spacing_3())
+    px(Tokens::spacing_2())
 }
 
-/// Space before the first row in an agent activity band — `Tokens::spacing_2()`.
+/// Space before the first row in an agent activity band.
 pub fn activity_band_gap() -> f32 {
-    px(Tokens::spacing_2())
+    px(Tokens::spacing_1p5())
 }
 
 /// Tight stack between consecutive activity headers — `Tokens::spacing_0p5()`.
@@ -23,34 +23,14 @@ pub fn activity_inner_gap() -> f32 {
     px(Tokens::spacing_0p5())
 }
 
-/// Space between assistant prose and the following tool/reasoning band — `Tokens::spacing_2()`.
+/// Space between assistant prose and the following tool/reasoning band.
 pub fn post_assistant_activity_gap() -> f32 {
-    px(Tokens::spacing_2())
+    px(Tokens::spacing_1p5())
 }
 
 /// Vertical padding inside user message bubble (both sides) — `Tokens::spacing_4()`.
 pub fn user_bubble_py() -> f32 {
     px(Tokens::spacing_4())
-}
-
-/// Vertical padding inside choice card (both sides) — `Tokens::spacing_4()`.
-pub fn choice_card_py() -> f32 {
-    px(Tokens::spacing_4())
-}
-
-/// Gap between choice prompt and options — `Tokens::spacing_2()`.
-pub fn choice_section_gap() -> f32 {
-    px(Tokens::spacing_2())
-}
-
-/// Top padding before option description — `Tokens::spacing_0p5()`.
-pub fn choice_desc_pt() -> f32 {
-    px(Tokens::spacing_0p5())
-}
-
-/// Line height for choice option descriptions — `Tokens::text_sm_leading()`.
-pub fn choice_desc_line() -> f32 {
-    px(Tokens::text_sm_leading())
 }
 
 /// Height of truncated-output notice rows — `Tokens::ROW_HEIGHT_XS`.
@@ -85,6 +65,9 @@ pub const USER_SEE_MORE_H: f32 = 22.0;
 
 /// Activity header row height — `Tokens::TOOL_ROW_HEIGHT`.
 pub const HEADER_H: f32 = Tokens::TOOL_ROW_HEIGHT;
+
+/// Multi-line plan status row height.
+pub const PLAN_STATUS_H: f32 = 82.0;
 
 /// Monospace output line height — `Tokens::DIFF_LINE_HEIGHT`.
 pub const LINE_H: f32 = Tokens::DIFF_LINE_HEIGHT;

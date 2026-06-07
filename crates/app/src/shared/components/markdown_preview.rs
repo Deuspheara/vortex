@@ -108,23 +108,24 @@ pub fn estimate_markdown_height(blocks: &[MarkdownBlock], include_header: bool) 
 fn estimate_block_height(block: &MarkdownBlock) -> f32 {
     match block {
         MarkdownBlock::Paragraph(text) => {
-            let lines = text.chars().count().div_ceil(58).max(1);
+            let lines = text.chars().count().div_ceil(88).max(1);
             LINE_LEADING * lines as f32
         }
         MarkdownBlock::Rule => 14.0,
         MarkdownBlock::Blockquote(text) => {
-            let lines = text.chars().count().div_ceil(56).max(1);
+            let lines = text.chars().count().div_ceil(82).max(1);
             LINE_LEADING * lines as f32 + 8.0
         }
         MarkdownBlock::Heading(1, _) => 28.0,
         MarkdownBlock::Heading(2, _) => 24.0,
         MarkdownBlock::Heading(_, _) => 22.0,
         MarkdownBlock::List(items) | MarkdownBlock::OrderedList(items) => {
-            items
+            let rows_h = items
                 .iter()
-                .map(|item| item.text.chars().count().div_ceil(54).max(1) as f32 * LINE_LEADING)
-                .sum::<f32>()
-                + 4.0
+                .map(|item| item.text.chars().count().div_ceil(82).max(1) as f32 * LINE_LEADING)
+                .sum::<f32>();
+            let gaps_h = items.len().saturating_sub(1) as f32 * f32::from(Tokens::spacing_1());
+            rows_h + gaps_h + 4.0
         }
         MarkdownBlock::Code { body, .. } => code_block_height(body),
         MarkdownBlock::Table { headers, rows } => {
@@ -132,8 +133,28 @@ fn estimate_block_height(block: &MarkdownBlock) -> f32 {
                 .len()
                 .max(rows.iter().map(Vec::len).max().unwrap_or(0))
                 .max(1);
-            let row_count = rows.len() + 1;
-            row_count as f32 * 26.0 + columns.saturating_sub(1) as f32
+            let header_lines = headers
+                .iter()
+                .map(|cell| cell.chars().count().div_ceil(22).max(1))
+                .max()
+                .unwrap_or(1) as f32;
+            let header_h = header_lines * LINE_LEADING + f32::from(Tokens::spacing_1()) * 2.0;
+            let body_h = rows
+                .iter()
+                .map(|row| {
+                    let row_lines = row
+                        .iter()
+                        .chain(
+                            std::iter::repeat(&String::new())
+                                .take(columns.saturating_sub(row.len())),
+                        )
+                        .map(|cell| cell.chars().count().div_ceil(22).max(1))
+                        .max()
+                        .unwrap_or(1) as f32;
+                    row_lines * LINE_LEADING + f32::from(Tokens::spacing_1()) * 2.0 + 1.0
+                })
+                .sum::<f32>();
+            header_h + body_h + 2.0
         }
     }
 }
@@ -1374,19 +1395,28 @@ fn render_table(headers: &[String], rows: &[Vec<String>]) -> impl IntoElement {
     let row_elements: Vec<_> = rows
         .iter()
         .map(|row| {
+            let cells: Vec<String> = row
+                .iter()
+                .cloned()
+                .chain(std::iter::repeat_n(
+                    String::new(),
+                    column_count.saturating_sub(row.len()),
+                ))
+                .collect();
             div()
                 .flex()
                 .border_t_1()
                 .border_color(Tokens::border_subtle())
-                .children(row.iter().map(|cell| {
+                .children(cells.into_iter().map(|cell| {
                     div()
                         .min_w(px(160.0))
                         .flex_1()
                         .px(Tokens::spacing_2())
                         .py(Tokens::spacing_1())
                         .text_size(Tokens::text_label())
+                        .line_height(Tokens::text_sm_leading_compact())
                         .text_color(Tokens::text_primary())
-                        .child(render_inline(cell, true, Tokens::text_label().into()))
+                        .child(render_inline(&cell, true, Tokens::text_label().into()))
                         .into_any_element()
                 }))
                 .into_any_element()

@@ -54,8 +54,8 @@ pub fn timeline_body(
 ) -> impl IntoElement {
     div()
         .w_full()
-        .ml(Tokens::spacing_3())
-        .pl(Tokens::spacing_3())
+        .ml(Tokens::spacing_2())
+        .pl(Tokens::spacing_2())
         .pt(Tokens::spacing_1())
         .pb(Tokens::spacing_2())
         .border_l_1()

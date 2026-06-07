@@ -636,7 +636,7 @@ impl ThreadView {
                 .w_full()
                 .flex()
                 .flex_col()
-                .gap(Tokens::spacing_2())
+                .gap(Tokens::spacing_1())
                 .child(streaming_assistant_body(
                     &id,
                     markdown,
@@ -679,7 +679,7 @@ impl ThreadView {
             .w_full()
             .flex()
             .flex_col()
-            .gap(Tokens::spacing_2())
+            .gap(Tokens::spacing_1())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
             .child(markdown_preview_blocks_thread_shared(blocks, false))
@@ -704,7 +704,7 @@ fn assistant_action_row(
     div()
         .id(element_key("assistant-actions", item_id))
         .w_full()
-        .pt(Tokens::spacing_1())
+        .pt(Tokens::spacing_0p5())
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
@@ -904,38 +904,47 @@ fn render_subagent_detail_row(
     last_event: Option<&str>,
     group_pos: Option<ActivityGroupPos>,
 ) -> impl IntoElement {
+    let summary_excerpt = summary
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ");
     activity_group_wrap(
         timeline_body(
             element_key("subagent-body-wrap", item_id),
             div()
                 .id(element_key("subagent-body", item_id))
                 .w_full()
-                .pr(Tokens::spacing_2())
+                .pr(Tokens::spacing_1())
                 .flex()
                 .flex_col()
                 .gap(Tokens::spacing_1())
                 .child(
                     div()
                         .text_size(Tokens::text_sm())
+                        .line_height(Tokens::text_sm_leading_compact())
                         .text_color(Tokens::activity_detail_text())
-                        .child(if summary.trim().is_empty() {
+                        .child(if summary_excerpt.trim().is_empty() {
                             "Investigating task in child run.".to_string()
                         } else {
-                            summary.lines().next().unwrap_or(summary).to_string()
+                            summary_excerpt
                         }),
                 )
                 .child(
                     div()
                         .text_size(Tokens::text_xs())
+                        .line_height(Tokens::text_sm_leading_compact())
                         .text_color(Tokens::activity_meta_text())
-                        .child(activity_summary.to_string()),
+                        .child(format!("Transcript · {activity_summary}")),
                 )
                 .when_some(last_event, |el, last| {
                     el.child(
                         div()
                             .text_size(Tokens::text_xs())
+                            .line_height(Tokens::text_sm_leading_compact())
                             .text_color(Tokens::text_faint())
-                            .child(format!("Last update: {last}")),
+                            .child(format!("Last update · {last}")),
                     )
                 }),
         ),
@@ -952,50 +961,73 @@ fn render_plan_status_row(
     group_pos: Option<ActivityGroupPos>,
     on_open: impl Fn(&mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
+    use crate::shared::components::buttons::btn_ghost_label;
+    use crate::shared::components::collapsible_row::activity_group_wrap;
+
+    let on_open = Rc::new(on_open);
+    let on_open_row = on_open.clone();
+    let on_open_button = on_open.clone();
 
     activity_group_wrap(
-        timeline_row(
-            element_key("plan-status-row", item_id),
-            div()
-                .min_w(px(0.0))
-                .child(
-                    div()
-                        .min_w(px(0.0))
-                        .overflow_hidden()
-                        .flex()
-                        .flex_col()
-                        .gap(Tokens::spacing_0p5())
-                        .child(
-                            div()
-                                .text_size(Tokens::text_sm())
-                                .text_color(Tokens::text_primary())
-                                .child(format!("Plan · {}", state.label())),
-                        )
-                        .child(
-                            div()
-                                .text_size(Tokens::text_xs())
-                                .text_color(Tokens::text_tertiary())
-                                .child(summary.to_string()),
-                        )
-                        .child(
-                            div()
-                                .text_size(Tokens::text_xs())
-                                .text_color(Tokens::text_faint())
-                                .child(match source_conversation_id {
-                                    Some(source) => format!("{counts_summary} · Source: {source}"),
-                                    None => counts_summary,
-                                }),
-                        ),
-                )
-                .into_any_element(),
-            div()
-                .text_size(Tokens::text_xs())
-                .text_color(Tokens::text_tertiary())
-                .child("Open plan")
-                .into_any_element(),
-            move |_, _, app| on_open(app),
-        ),
+        div()
+            .id(element_key("plan-status-row", item_id))
+            .h(px(crate::features::chat::layout::PLAN_STATUS_H))
+            .w_full()
+            .flex()
+            .items_start()
+            .px(Tokens::spacing_2())
+            .py(Tokens::spacing_2())
+            .gap(Tokens::spacing_2())
+            .cursor_pointer()
+            .text_color(Tokens::text_secondary())
+            .on_click(move |_, _, app| on_open_row(app))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .flex()
+                    .items_start()
+                    .gap(Tokens::spacing_2())
+                    .child(
+                        div()
+                            .min_w(px(0.0))
+                            .overflow_hidden()
+                            .flex()
+                            .flex_col()
+                            .gap(Tokens::spacing_0p5())
+                            .child(
+                                div()
+                                    .text_size(Tokens::text_sm())
+                                    .text_color(Tokens::text_primary())
+                                    .child(format!("Plan · {}", state.label())),
+                            )
+                            .child(
+                                div()
+                                    .text_size(Tokens::text_xs())
+                                    .text_color(Tokens::text_tertiary())
+                                    .truncate()
+                                    .child(summary.to_string()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(Tokens::text_xs())
+                                    .text_color(Tokens::text_faint())
+                                    .truncate()
+                                    .child(match source_conversation_id {
+                                        Some(source) => {
+                                            format!("{counts_summary} · Source: {source}")
+                                        }
+                                        None => counts_summary,
+                                    }),
+                            ),
+                    ),
+            )
+            .child(
+                div().flex_shrink_0().pt(Tokens::spacing_0p5()).child(
+                    btn_ghost_label(element_key("plan-status-open", item_id), "Open plan")
+                        .on_click(move |_, _, app| on_open_button(app)),
+                ),
+            ),
         group_pos,
     )
 }
@@ -1015,7 +1047,7 @@ fn render_provenance_strip(
     div()
         .id(element_key("assistant-provenance", item_id))
         .w_full()
-        .pt(Tokens::spacing_1())
+        .pt(Tokens::spacing_0p5())
         .flex()
         .flex_col()
         .gap(Tokens::spacing_0p5())

@@ -10,14 +10,14 @@ use gpui::{Pixels, Size, px, size};
 
 use crate::features::agent_activity::state::ActivityPhase;
 use crate::features::chat::layout::{
-    self, APPROVAL_H, DIFF_FILE_H, HEADER_H, LINE_H, REASONING_BODY_MAX_H, RUN_ERROR_TITLE_H,
-    SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
+    self, APPROVAL_H, DIFF_FILE_H, HEADER_H, LINE_H, PLAN_STATUS_H, REASONING_BODY_MAX_H,
+    RUN_ERROR_TITLE_H, SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
 };
 use crate::features::chat::state::phase_label;
 use crate::features::shell::state::{
-    AgentStatus, ChoiceOption, ContextEntryKind, ContextTraceEntry, DiffFileSummary, ThreadItem,
-    USER_MESSAGE_PREVIEW_LINES, first_user_message_ix, project_timeline, should_emit_thread_item,
-    user_message_truncatable,
+    AgentStatus, ChoiceMeta, ChoiceOption, ContextEntryKind, ContextTraceEntry, DiffFileSummary,
+    ThreadItem, USER_MESSAGE_PREVIEW_LINES, first_user_message_ix, project_timeline,
+    should_emit_thread_item, user_message_truncatable,
 };
 use crate::shared::components::markdown_preview::{
     LINE_LEADING, MarkdownBlock, estimate_markdown_height, parse_markdown_blocks_shared_streaming,
@@ -33,7 +33,6 @@ pub const TOOL_OUTPUT_PREVIEW_BYTES: usize = 16_000;
 pub const REASONING_OUTPUT_PREVIEW_LINES: usize = 40;
 /// Faint preview lines shown under the header while reasoning is streaming.
 pub const REASONING_STREAMING_PREVIEW_LINES: usize = 2;
-pub const SUBAGENT_BODY_H: f32 = 60.0;
 pub const PROVENANCE_CHIP_ROW_H: f32 = 24.0;
 pub const PROVENANCE_REASON_LINE_H: f32 = Tokens::ROW_HEIGHT_SM;
 
@@ -196,6 +195,31 @@ pub fn assistant_content_height(blocks: &[MarkdownBlock], streaming: bool, has_t
     h
 }
 
+pub fn assistant_actions_height() -> f32 {
+    f32::from(Tokens::spacing_0p5()) + Tokens::ROW_HEIGHT_SM
+}
+
+pub fn assistant_accessory_height(item_ix: usize, items: &[ThreadItem]) -> f32 {
+    let provenance = assistant_provenance_height(item_ix, items);
+    let gaps = if provenance > 0.0 {
+        f32::from(Tokens::spacing_1()) * 2.0
+    } else {
+        f32::from(Tokens::spacing_1())
+    };
+    provenance + assistant_actions_height() + gaps
+}
+
+pub fn assistant_row_height_from_blocks(
+    item_ix: usize,
+    items: &[ThreadItem],
+    blocks: &[MarkdownBlock],
+    streaming: bool,
+    has_text: bool,
+) -> f32 {
+    assistant_content_height(blocks, streaming, has_text)
+        + assistant_accessory_height(item_ix, items)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssistantProvenance {
     pub trace_item_id: String,
@@ -242,9 +266,14 @@ pub fn row_height_with_collapsed(
         | RowRef::SubagentHeader { .. }
         | RowRef::ToolHeader { .. }
         | RowRef::DiffHeader { .. }
-        | RowRef::PlanStatus { .. }
         | RowRef::ContextTraceHeader { .. } => HEADER_H + gap,
-        RowRef::SubagentBody { .. } => SUBAGENT_BODY_H,
+        RowRef::PlanStatus { .. } => PLAN_STATUS_H + gap,
+        RowRef::SubagentBody { item_ix } => {
+            let Some(ThreadItem::SubagentRun { summary, .. }) = items.get(item_ix as usize) else {
+                return HEADER_H + gap;
+            };
+            subagent_body_height(item_ix as usize, summary, items)
+        }
         RowRef::ContextTraceEntryLine { .. } => LINE_H,
         RowRef::ReasoningBody { item_ix } => {
             let Some(ThreadItem::ReasoningStep { summary, .. }) = items.get(item_ix as usize)
@@ -272,9 +301,13 @@ pub fn row_height_with_collapsed(
             };
             let sanitized = crate::agent::text::sanitize_assistant_text(markdown);
             let blocks = parse_markdown_blocks_shared_streaming(&sanitized, *streaming);
-            assistant_content_height(blocks.as_ref(), *streaming, !sanitized.is_empty())
-                + assistant_provenance_height(item_ix as usize, items)
-                + gap
+            assistant_row_height_from_blocks(
+                item_ix as usize,
+                items,
+                blocks.as_ref(),
+                *streaming,
+                !sanitized.is_empty(),
+            ) + gap
         }
         RowRef::Approval { .. } => APPROVAL_H + gap,
         RowRef::RunError { item_ix } => {
@@ -286,8 +319,12 @@ pub fn row_height_with_collapsed(
         }
         RowRef::ChoiceRequest { item_ix } => match items.get(item_ix as usize) {
             Some(ThreadItem::ChoiceRequest {
-                prompt, options, ..
-            }) => estimate_choice_height(prompt, options) + gap,
+                prompt,
+                options,
+                meta,
+                resolved,
+                ..
+            }) => estimate_choice_height(prompt, options, meta, *resolved) + gap,
             _ => SECTION_HEADER_H + gap,
         },
     }
@@ -336,24 +373,75 @@ fn estimate_assistant_height(markdown: &str) -> f32 {
     estimate_markdown_height(blocks.as_ref(), false)
 }
 
-fn estimate_choice_height(prompt: &str, options: &[ChoiceOption]) -> f32 {
-    let prompt_lines = prompt.chars().count().div_ceil(55).max(1) as f32;
-    let prompt_h = (prompt_lines * LINE_LEADING).max(Tokens::ROW_HEIGHT_SM);
-    let mut h = layout::choice_card_py() + prompt_h;
+fn estimate_wrapped_text_height(text: &str, chars_per_line: usize, line_height: f32) -> f32 {
+    let explicit_lines = text.lines().count().max(1);
+    let wrapped_lines = text
+        .lines()
+        .map(|line| line.chars().count().div_ceil(chars_per_line).max(1))
+        .sum::<usize>()
+        .max(explicit_lines);
+    wrapped_lines as f32 * line_height
+}
+
+fn estimate_choice_height(
+    prompt: &str,
+    options: &[ChoiceOption],
+    meta: &ChoiceMeta,
+    resolved: bool,
+) -> f32 {
+    let card_py = f32::from(Tokens::spacing_2());
+    let card_gap = f32::from(Tokens::spacing_2());
+    let title_gap = f32::from(Tokens::spacing_0p5());
+
+    let summary = meta.summary.as_deref().unwrap_or("Decision needed");
+    let summary_h =
+        estimate_wrapped_text_height(summary, 60, f32::from(Tokens::text_sm_leading_compact()));
+    let prompt_h = estimate_wrapped_text_height(prompt, 44, LINE_LEADING);
+    let reason_h = meta
+        .blocking_reason
+        .as_deref()
+        .map(|reason| {
+            title_gap
+                + estimate_wrapped_text_height(
+                    reason,
+                    62,
+                    f32::from(Tokens::text_sm_leading_compact()),
+                )
+        })
+        .unwrap_or(0.0);
+    let text_stack_h = summary_h + title_gap + prompt_h + reason_h;
+    let header_h = text_stack_h
+        .max(if resolved { 0.0 } else { Tokens::ROW_HEIGHT_SM })
+        .max(Tokens::ROW_HEIGHT_SM);
+
+    let mut child_count = 1usize;
+    let mut h = card_py * 2.0 + header_h;
     if !options.is_empty() {
-        h += layout::choice_section_gap();
-        for (i, option) in options.iter().enumerate() {
-            if i > 0 {
-                h += layout::choice_section_gap();
-            }
-            h += Tokens::ROW_HEIGHT_SM;
+        for option in options {
+            child_count += 1;
+            let label_h = estimate_wrapped_text_height(
+                &option.label,
+                58,
+                f32::from(Tokens::text_sm_leading()),
+            )
+            .max(Tokens::ROW_HEIGHT_SM - f32::from(Tokens::spacing_1()) * 2.0);
+            let mut option_h = f32::from(Tokens::spacing_1()) * 2.0 + label_h;
             if let Some(desc) = &option.description {
-                let desc_lines = desc.chars().count().div_ceil(60).max(1) as f32;
-                h += layout::choice_desc_pt() + desc_lines * layout::choice_desc_line();
+                option_h += f32::from(Tokens::spacing_0p5())
+                    + estimate_wrapped_text_height(
+                        desc,
+                        70,
+                        f32::from(Tokens::text_sm_leading_compact()),
+                    );
             }
+            h += option_h;
         }
     }
-    h + layout::choice_card_py() + layout::assistant_body_pt()
+    if meta.allow_custom {
+        child_count += 1;
+        h += f32::from(Tokens::text_sm_leading_compact());
+    }
+    h + child_count.saturating_sub(1) as f32 * card_gap + 2.0
 }
 
 fn estimate_run_error_height(message: &str) -> f32 {
@@ -759,11 +847,32 @@ pub fn assistant_provenance_height(item_ix: usize, items: &[ThreadItem]) -> f32 
     let Some(vm) = assistant_provenance_for_item(item_ix, items) else {
         return 0.0;
     };
-    let mut height = PROVENANCE_CHIP_ROW_H;
+    let header_rows = (vm.counts.len() + 2).div_ceil(4).max(1) as f32;
+    let mut height = f32::from(Tokens::spacing_0p5()) + header_rows * PROVENANCE_CHIP_ROW_H;
     if !vm.reasons.is_empty() {
-        height += PROVENANCE_REASON_LINE_H;
+        let reason_lines = vm.reasons.join(" · ").chars().count().div_ceil(84).max(1) as f32;
+        height += f32::from(Tokens::spacing_0p5()) + reason_lines * PROVENANCE_REASON_LINE_H;
     }
     height
+}
+
+fn subagent_body_height(item_ix: usize, summary: &str, items: &[ThreadItem]) -> f32 {
+    let summary_text = if summary.trim().is_empty() {
+        "Investigating task in child run."
+    } else {
+        summary
+    };
+    let summary_lines = summary_text.chars().count().div_ceil(72).clamp(1, 3) as f32;
+    let meta_lines = if matches!(items.get(item_ix), Some(ThreadItem::SubagentRun { .. })) {
+        2.0
+    } else {
+        1.0
+    };
+    f32::from(Tokens::spacing_1())
+        + f32::from(Tokens::spacing_2())
+        + summary_lines * f32::from(Tokens::text_sm_leading_compact())
+        + f32::from(Tokens::spacing_1())
+        + meta_lines * f32::from(Tokens::text_sm_leading_compact())
 }
 
 fn plural(n: usize, one: &'static str, many: &'static str) -> &'static str {
@@ -1009,6 +1118,7 @@ pub fn collapsed_item_header_changed(new: &ThreadItem, old: &ThreadItem) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::features::shell::state::{PlanExecutionState, PlanProgressCounts};
 
     #[test]
     fn subagent_emits_single_header_row() {
@@ -1022,7 +1132,12 @@ mod tests {
             child_run_id: "child-1".into(),
             parent_call_id: "call-1".into(),
         };
-        let refs = row_refs_for_item(0, &item, std::slice::from_ref(&item));
+        let refs = row_refs_for_item_with_mode(
+            0,
+            &item,
+            TranscriptMode::Verbose,
+            std::slice::from_ref(&item),
+        );
         assert_eq!(
             refs,
             vec![
@@ -1095,5 +1210,127 @@ mod tests {
         assert_eq!(vm.trace_item_id, "context-1");
         assert_eq!(vm.counts.len(), 2);
         assert_eq!(vm.reasons.len(), 2);
+    }
+
+    #[test]
+    fn choice_request_height_accounts_for_prompt_options_and_custom_hint() {
+        let item = ThreadItem::ChoiceRequest {
+            id: "choice-1".into(),
+            prompt: "What would you like to focus on first for this portfolio app, given the layout, visual style, and implementation constraints?".into(),
+            options: vec![
+                ChoiceOption {
+                    id: "design".into(),
+                    label: "Start with UI/UX design concepts".into(),
+                    description: Some("Explore typography, layout direction, color, interaction patterns, and responsive structure before implementation.".into()),
+                    recommended: true,
+                },
+                ChoiceOption {
+                    id: "features".into(),
+                    label: "Define core features such as project showcase, resume builder, and contact form".into(),
+                    description: Some("Prioritize the actual portfolio sections and behavior before investing in visual polish.".into()),
+                    recommended: false,
+                },
+                ChoiceOption {
+                    id: "stack".into(),
+                    label: "Choose tech stack including Rust, WebAssembly, or CSS frameworks".into(),
+                    description: Some("Lock implementation technology before building screens.".into()),
+                    recommended: false,
+                },
+            ],
+            meta: ChoiceMeta {
+                summary: Some("Portfolio App Requirements".into()),
+                recommended_option_id: Some("design".into()),
+                allow_custom: true,
+                blocking_reason: Some("The agent needs this decision before continuing.".into()),
+            },
+            selected: None,
+            resolved: false,
+        };
+        let items = vec![item];
+        let height = row_height(RowRef::ChoiceRequest { item_ix: 0 }, None, &items);
+        assert!(height > 300.0, "choice card height was {height}");
+    }
+
+    #[test]
+    fn assistant_markdown_height_accounts_for_lists_tables_code_and_actions() {
+        let markdown = r##"
+Portfolio app plan for HTML/JS implementation.
+
+1. Create index.html with:
+   - Responsive navigation bar
+   - Hero section with CTA
+   - Project grid
+
+| File | Purpose |
+| --- | --- |
+| index.html | Semantic document structure with multiple sections |
+| style.css | Responsive styling and motion |
+
+```js
+const year = new Date().getFullYear();
+document.querySelector("#year").textContent = year;
+```
+"##;
+        let item = ThreadItem::AssistantMessage {
+            id: "assistant-1".into(),
+            markdown: markdown.into(),
+            streaming: false,
+            depth: 0,
+            parent_call_id: None,
+        };
+        let items = vec![item];
+        let height = row_height(RowRef::AssistantMessage { item_ix: 0 }, None, &items);
+        assert!(height > 260.0, "assistant row height was {height}");
+    }
+
+    #[test]
+    fn plan_status_uses_multiline_row_height() {
+        let item = ThreadItem::PlanStatus {
+            id: "plan-1".into(),
+            state: PlanExecutionState::NotStarted,
+            summary: "Ready to implement".into(),
+            counts: PlanProgressCounts {
+                pending: 3,
+                in_progress: 0,
+                completed: 0,
+                cancelled: 0,
+            },
+            source_conversation_id: None,
+        };
+        let items = vec![item];
+        assert_eq!(
+            row_height(RowRef::PlanStatus { item_ix: 0 }, None, &items),
+            PLAN_STATUS_H
+        );
+    }
+
+    #[test]
+    fn expanded_tool_output_rows_include_truncation_notice() {
+        let output = (0..(TOOL_OUTPUT_PREVIEW_LINES + 8))
+            .map(|ix| format!("line {ix}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let item = ThreadItem::ToolCall {
+            id: "tool-1".into(),
+            tool_name: "list_files".into(),
+            command: Some("ls".into()),
+            output: Some(output),
+            expanded: true,
+            status: AgentStatus::Completed,
+            depth: 0,
+            parent_call_id: None,
+        };
+        let refs = row_refs_for_item_with_mode(
+            0,
+            &item,
+            TranscriptMode::Verbose,
+            std::slice::from_ref(&item),
+        );
+        assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
+        assert!(refs.contains(&RowRef::ToolOutputTruncated { item_ix: 0 }));
+        assert_eq!(
+            row_height(RowRef::ToolOutputTruncated { item_ix: 0 }, None, &[item]),
+            TRUNCATED_H
+        );
     }
 }

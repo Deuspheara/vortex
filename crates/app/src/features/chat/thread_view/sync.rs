@@ -224,9 +224,13 @@ impl ThreadView {
             if let Some((id, sanitized)) = assistant_data {
                 let blocks = self.cached_markdown_blocks(&id, &sanitized, true);
                 let gap = row_top_gap(row, prev, &self.items);
-                return assistant_content_height(blocks.as_ref(), true, !sanitized.is_empty())
-                    + assistant_provenance_height(item_ix as usize, &self.items)
-                    + gap;
+                return assistant_row_height_from_blocks(
+                    item_ix as usize,
+                    &self.items,
+                    blocks.as_ref(),
+                    true,
+                    !sanitized.is_empty(),
+                ) + gap;
             }
         }
         row_height_with_collapsed(row, prev, &self.items, &std::collections::HashSet::new())

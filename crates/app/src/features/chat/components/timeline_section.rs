@@ -12,8 +12,8 @@ pub fn timeline_section_header(phase: ActivityPhase) -> impl IntoElement {
         .id("timeline-section-header")
         .w_full()
         .max_w(px(Tokens::THREAD_MAX_WIDTH))
-        .pt(Tokens::spacing_3())
-        .pb(Tokens::spacing_1())
+        .pt(Tokens::spacing_2())
+        .pb(Tokens::spacing_0p5())
         .child(
             div()
                 .text_size(Tokens::text_xs())

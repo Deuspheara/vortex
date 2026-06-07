@@ -65,13 +65,13 @@ impl ThreadView {
         if !sanitized.is_empty() {
             height += crate::features::chat::layout::assistant_streaming_extra();
         }
-        let provenance_height = self
+        let accessory_height = self
             .item_index
             .get(item_id)
             .copied()
-            .map(|item_ix| assistant_provenance_height(item_ix, &self.items))
-            .unwrap_or(0.0);
-        height + provenance_height + gap
+            .map(|item_ix| assistant_accessory_height(item_ix, &self.items))
+            .unwrap_or_else(assistant_actions_height);
+        height + accessory_height + gap
     }
 
     pub(crate) fn record_stream_patch_cost(&mut self, elapsed: Duration) {

@@ -9,9 +9,6 @@ use gpui::{
 
 use super::design_tokens::Tokens;
 
-/// Braille spinner frames (Unicode progress indicator).
-pub const BRAILLE_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
 fn sidebar_snappy_ease(t: f32) -> f32 {
     let inv = 1.0 - t;
     1.0 - inv * inv * inv * inv
@@ -21,32 +18,29 @@ fn sidebar_expand_ease(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
-fn braille_frame(delta: f32) -> &'static str {
-    let idx = (delta * BRAILLE_FRAMES.len() as f32) as usize % BRAILLE_FRAMES.len();
-    BRAILLE_FRAMES[idx]
-}
-
-/// Animated braille spinner — shared by streaming cursor and activity rows.
+/// Compact loading indicator — kept under the old name for existing call sites.
 pub fn braille_spinner(key: &str, animate: bool) -> AnyElement {
     let base = || {
         div()
-            .text_size(Tokens::text_base())
-            .font_family("monospace")
-            .text_color(Tokens::accent())
+            .id(element_key("loader-dot", key))
+            .size(px(8.0))
+            .rounded(Tokens::radius_full())
+            .bg(Tokens::accent())
     };
 
     if animate {
         base()
             .with_animation(
-                element_key("braille-spin", key),
-                Animation::new(Duration::from_millis(200)).repeat(),
-                |el, delta| el.child(braille_frame(delta).to_string()),
+                element_key("loader-pulse", key),
+                Animation::new(Duration::from_millis(900)).repeat(),
+                |el, delta| {
+                    let pulse = 0.45 + 0.45 * ((delta * std::f32::consts::TAU).sin() + 1.0) * 0.5;
+                    el.opacity(pulse)
+                },
             )
             .into_any_element()
     } else {
-        base()
-            .child(BRAILLE_FRAMES[0].to_string())
-            .into_any_element()
+        base().opacity(0.72).into_any_element()
     }
 }
 
@@ -139,19 +133,20 @@ pub fn sidebar_content_in(content: impl IntoElement) -> impl IntoElement {
 
 /// Sidebar row entrance with a quick pickup and softer settle.
 pub fn sidebar_row_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
-    div().child(content).with_animation(id, Motion::sidebar_row(), |el, delta| {
-        el.opacity(delta).mt(px(6.0 * (1.0 - delta)))
-    })
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_row(), |el, delta| {
+            el.opacity(delta).mt(px(6.0 * (1.0 - delta)))
+        })
 }
 
 /// Reveal for nested rows that appear on project expand.
 pub fn sidebar_expand_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
-    div()
-        .overflow_hidden()
-        .child(content)
-        .with_animation(id, Motion::sidebar_expand(), |el, delta| {
-            el.opacity(delta).mt(px(8.0 * (1.0 - delta)))
-        })
+    div().overflow_hidden().child(content).with_animation(
+        id,
+        Motion::sidebar_expand(),
+        |el, delta| el.opacity(delta).mt(px(8.0 * (1.0 - delta))),
+    )
 }
 
 /// Slide + fade for panels (diff, drawer).
@@ -210,15 +205,18 @@ pub fn activity_action_line(
             el.child(
                 div()
                     .flex_shrink_0()
-                    .w(px(12.0))
+                    .size(px(14.0))
+                    .rounded(Tokens::radius_full())
+                    .border_1()
+                    .border_color(Tokens::accent().opacity(0.36))
+                    .flex()
                     .items_center()
                     .justify_center()
                     .child(
                         div()
-                            .text_size(Tokens::text_base())
-                            .font_family("monospace")
-                            .text_color(Tokens::accent())
-                            .child(BRAILLE_FRAMES[0]),
+                            .size(px(6.0))
+                            .rounded(Tokens::radius_full())
+                            .bg(Tokens::accent()),
                     ),
             )
         })
