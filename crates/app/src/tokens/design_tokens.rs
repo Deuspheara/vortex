@@ -212,7 +212,7 @@ impl Tokens {
         Self::divider()
     }
     pub fn sidebar_hover_bg() -> Hsla {
-        Self::surface_hover()
+        Self::surface_hover().blend(Self::accent().opacity(0.06))
     }
     pub fn search_bg() -> Hsla {
         active_palette().input_bg

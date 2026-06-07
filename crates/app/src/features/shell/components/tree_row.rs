@@ -24,6 +24,22 @@ use gpui::{
     MouseButton, Render, SharedString, Window, div, ease_out_quint, prelude::*, px,
 };
 
+fn sidebar_row_label_color(selected: bool) -> gpui::Hsla {
+    if selected {
+        Tokens::text_primary()
+    } else {
+        Tokens::sidebar_text()
+    }
+}
+
+fn sidebar_row_icon_color(selected: bool) -> gpui::Hsla {
+    if selected {
+        Tokens::accent()
+    } else {
+        Tokens::sidebar_text()
+    }
+}
+
 /// Drag payload for reordering / moving sidebar sessions.
 #[derive(Clone)]
 pub struct DragSession {
@@ -330,6 +346,8 @@ pub fn session_row(
     let updated_at = row.updated_at.clone();
     let conv_id = row.conv_id.clone();
     let selected = row.selected;
+    let hover_group = group_name.clone();
+    let icon_hover_group = group_name.clone();
 
     let row_body = div()
         .id(row.row_id.clone())
@@ -394,14 +412,15 @@ pub fn session_row(
             });
         })
         .child(
-            Icon::new(icons::MESSAGE_SQUARE)
-                .size(px(13.0))
+            div()
                 .flex_shrink_0()
-                .text_color(if selected {
-                    Tokens::accent()
-                } else {
-                    Tokens::sidebar_text()
-                }),
+                .text_color(sidebar_row_icon_color(selected))
+                .when(!selected, |el| {
+                    el.group_hover(icon_hover_group, |s| {
+                        s.text_color(Tokens::sidebar_text_hover())
+                    })
+                })
+                .child(Icon::new(icons::MESSAGE_SQUARE).size(px(13.0))),
         )
         .child(
             div()
@@ -411,10 +430,9 @@ pub fn session_row(
                 .overflow_hidden()
                 .truncate()
                 .text_size(Tokens::text_sm())
-                .text_color(if selected {
-                    Tokens::text_primary()
-                } else {
-                    Tokens::sidebar_text()
+                .text_color(sidebar_row_label_color(selected))
+                .when(!selected, |el| {
+                    el.group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                 })
                 .child(title),
         )
@@ -499,6 +517,9 @@ pub fn project_row(
     let sidebar_for_right = sidebar.clone();
     let group_name = row.group_name.clone();
     let expanded = row.expanded;
+    let hover_group = group_name.clone();
+    let chevron_hover_group = group_name.clone();
+    let count_hover_group = group_name.clone();
 
     div()
         .id(row.row_id.clone())
@@ -557,14 +578,20 @@ pub fn project_row(
                     });
                 })
                 .child(
-                    Icon::new(if expanded {
-                        icons::CHEVRON_DOWN
-                    } else {
-                        icons::CHEVRON_RIGHT
-                    })
-                    .size(px(12.0))
-                    .flex_shrink_0()
-                    .text_color(Tokens::sidebar_text()),
+                    div()
+                        .flex_shrink_0()
+                        .text_color(Tokens::sidebar_text())
+                        .group_hover(chevron_hover_group, |s| {
+                            s.text_color(Tokens::sidebar_text_hover())
+                        })
+                        .child(
+                            Icon::new(if expanded {
+                                icons::CHEVRON_DOWN
+                            } else {
+                                icons::CHEVRON_RIGHT
+                            })
+                            .size(px(12.0)),
+                        ),
                 )
                 .child(
                     Icon::new(icons::FOLDER)
@@ -582,6 +609,7 @@ pub fn project_row(
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(Tokens::text_primary())
+                        .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                         .child(name),
                 ),
         )
@@ -606,6 +634,9 @@ pub fn project_row(
                                 .flex_shrink_0()
                                 .text_size(Tokens::text_xs())
                                 .text_color(Tokens::sidebar_text_muted())
+                                .group_hover(count_hover_group, |s| {
+                                    s.text_color(Tokens::sidebar_text())
+                                })
                                 .child(row.count_label.clone()),
                         )
                         .child(project_index_badge(
