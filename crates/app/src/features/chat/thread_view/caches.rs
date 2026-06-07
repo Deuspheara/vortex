@@ -52,18 +52,13 @@ impl ThreadView {
         sanitized: &str,
         gap: f32,
     ) -> f32 {
-        let (_, tail) =
-            crate::shared::components::streaming_markdown::split_at_seal_boundary(sanitized);
-        let sealed_height = self
-            .sealed_blocks
-            .get(item_id)
-            .map(|sealed| {
-                crate::shared::components::markdown_preview::estimate_markdown_height(
-                    sealed.blocks.as_ref(),
-                    false,
-                )
-            })
-            .unwrap_or(0.0);
+        let sealed = self.sealed_blocks.get(item_id);
+        let sealed_height = sealed.map(|sealed| sealed.height).unwrap_or(0.0);
+        let tail = if let Some(sealed) = sealed {
+            sanitized.get(sealed.sealed_end..).unwrap_or_default()
+        } else {
+            crate::shared::components::streaming_markdown::split_at_seal_boundary(sanitized).1
+        };
         let mut height = crate::features::chat::layout::assistant_body_pt()
             + sealed_height
             + live_tail_height(tail);
@@ -90,16 +85,118 @@ impl ThreadView {
         };
     }
 
-    pub(crate) fn flush_sealed_blocks(&mut self, item_id: &str, markdown: &str) {
-        let display = crate::agent::text::sanitize_assistant_text(markdown);
-        self.flush_sealed_blocks_sanitized(item_id, &display);
+    pub(crate) fn flush_sealed_blocks_sanitized(&mut self, item_id: &str, display: &str) {
+        let _profile = crate::shared::render_profile::span("flush_sealed_blocks_sanitized");
+        let cached_sealed_end = self
+            .sealed_blocks
+            .get(item_id)
+            .map(|cached| cached.sealed_end)
+            .unwrap_or(0);
+        let (sealed, sealed_len) =
+            if cached_sealed_end > 0 && display.is_char_boundary(cached_sealed_end) {
+                let tail = display.get(cached_sealed_end..).unwrap_or_default();
+                let (newly_sealed, _) =
+                    crate::shared::components::streaming_markdown::split_at_seal_boundary(tail);
+                let sealed_len = cached_sealed_end + newly_sealed.len();
+                (&display[..sealed_len], sealed_len)
+            } else {
+                let (sealed, _) =
+                    crate::shared::components::streaming_markdown::split_at_seal_boundary(display);
+                (sealed, sealed.len())
+            };
+        if sealed_len == 0 {
+            return;
+        }
+        if self
+            .sealed_blocks
+            .get(item_id)
+            .is_some_and(|cached| cached.sealed_end >= sealed_len)
+        {
+            return;
+        }
+
+        let content_hash = markdown_content_hash(sealed, false);
+        if self
+            .pending_sealed_parses
+            .get(item_id)
+            .is_some_and(|pending_hash| *pending_hash == content_hash)
+        {
+            return;
+        }
+
+        self.pending_sealed_parses
+            .insert(item_id.to_string(), content_hash);
+        let tx = self.sealed_parse_tx.clone();
+        let item_id = item_id.to_string();
+        let sealed = sealed.to_string();
+        std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            let blocks = parse_markdown_blocks_shared_streaming(&sealed, false);
+            let height = crate::shared::components::markdown_preview::estimate_markdown_height(
+                &blocks, false,
+            );
+            crate::shared::render_profile::record(
+                "sealed_markdown_parse_worker",
+                start.elapsed(),
+                blocks.len() as u64,
+            );
+            let _ = tx.send(SealedMarkdownParseResult {
+                item_id,
+                sealed_end: sealed_len,
+                content_hash,
+                blocks,
+                height,
+            });
+        });
     }
 
-    pub(crate) fn flush_sealed_blocks_sanitized(&mut self, item_id: &str, display: &str) {
-        self.sealed_blocks
-            .entry(item_id.to_string())
-            .or_default()
-            .update(display);
+    pub(crate) fn handle_sealed_parse_result(
+        &mut self,
+        result: SealedMarkdownParseResult,
+        cx: &mut Context<Self>,
+    ) {
+        if !self
+            .pending_sealed_parses
+            .get(&result.item_id)
+            .is_some_and(|pending_hash| *pending_hash == result.content_hash)
+        {
+            return;
+        }
+        self.pending_sealed_parses.remove(&result.item_id);
+        if self
+            .sealed_blocks
+            .get(&result.item_id)
+            .is_some_and(|cached| {
+                cached.sealed_end >= result.sealed_end && cached.content_hash == result.content_hash
+            })
+        {
+            return;
+        }
+        self.sealed_blocks.insert(
+            result.item_id.clone(),
+            SealedBlockCache {
+                sealed_end: result.sealed_end,
+                blocks: result.blocks,
+                content_hash: result.content_hash,
+                height: result.height,
+            },
+        );
+
+        let Some(&item_ix) = self.item_index.get(&result.item_id) else {
+            cx.notify();
+            return;
+        };
+        let Some(header_ix) = self.header_ix_for_item(item_ix as u32) else {
+            cx.notify();
+            return;
+        };
+        let (start, end) = manifest_span(&self.manifest, header_ix);
+        if end - start == 1 {
+            let effects = self.patch_streaming_assistant_row(item_ix, start);
+            self.apply_thread_effects(effects, cx);
+        } else {
+            cx.notify();
+        }
     }
 
     pub(crate) fn cached_markdown_blocks(
@@ -112,9 +209,15 @@ impl ThreadView {
         let hash = markdown_content_hash(&display, streaming);
         if let Some(entry) = self.markdown_cache.get(id) {
             if entry.content_hash == hash && entry.streaming == streaming {
+                crate::shared::render_profile::record(
+                    "cached_markdown_blocks_hit",
+                    Duration::ZERO,
+                    1,
+                );
                 return Arc::clone(&entry.blocks);
             }
         }
+        let _profile = crate::shared::render_profile::span("cached_markdown_blocks_miss");
         let blocks = parse_markdown_blocks_shared_streaming(&display, streaming);
         let char_count = display.chars().count();
         self.markdown_cache.insert(

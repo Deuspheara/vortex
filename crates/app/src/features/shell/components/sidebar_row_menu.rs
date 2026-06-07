@@ -76,7 +76,7 @@ fn sidebar_menu_panel(items: Vec<SidebarRowMenuItem>) -> impl IntoElement {
 pub fn sidebar_overflow_menu(
     menu_id: impl Into<ElementId>,
     group_name: impl Into<SharedString>,
-    items: Vec<SidebarRowMenuItem>,
+    items: Rc<dyn Fn() -> Vec<SidebarRowMenuItem>>,
     is_open: bool,
     on_open_change: Rc<dyn Fn(bool, &mut gpui::App)>,
 ) -> impl IntoElement {
@@ -105,5 +105,5 @@ pub fn sidebar_overflow_menu(
                 el.group_hover(group_for_hover, |s| s.opacity(1.0))
             }),
         )
-        .content(move |_, _, _| sidebar_menu_panel(items_for_content.clone()))
+        .content(move |_, _, _| sidebar_menu_panel(items_for_content()))
 }

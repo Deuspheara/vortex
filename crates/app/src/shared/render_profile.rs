@@ -132,7 +132,14 @@ pub fn record(label: &'static str, elapsed: Duration, rows: u64) {
         })
         .collect::<Vec<_>>();
     lines.sort();
-    tracing::debug!("render profile\n{}", lines.join("\n"));
+    let report = lines.join("\n");
+    tracing::debug!("render profile\n{report}");
+    if std::env::var("VORTEX_RENDER_PROFILE_STDERR")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        eprintln!("[vortex render profile]\n{report}");
+    }
     guard.metrics.clear();
 }
 

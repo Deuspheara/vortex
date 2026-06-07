@@ -54,6 +54,7 @@ impl AgentWindow {
     pub(crate) fn apply_diff_panel_now(&mut self, unified_diff: &str, cx: &mut Context<Self>) {
         self.diff_preview_pending = None;
         self.diff_preview_parse_scheduled = false;
+        self.diff_preview_parse_generation = self.diff_preview_parse_generation.wrapping_add(1);
         self.diff_panel.files =
             crate::features::diff_panel::layout::parse_unified_diff(unified_diff);
         self.artifact_store

@@ -693,7 +693,7 @@ pub enum DiffRowKind {
 /// Backward-compat alias.
 pub type DiffLineKind = DiffRowKind;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DiffRow {
     Context {
         old_line: usize,
@@ -776,14 +776,14 @@ impl DiffRow {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiffHunk {
     pub old_start: usize,
     pub new_start: usize,
     pub rows: Vec<DiffRow>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiffFile {
     pub path: String,
     pub added: usize,

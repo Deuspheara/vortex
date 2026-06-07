@@ -24,6 +24,7 @@ impl ThreadView {
         self.user_scrolled_up = false;
         self.last_scroll_offset = None;
         self.sealed_blocks.clear();
+        self.pending_sealed_parses.clear();
         self.sync_inner(conversation_id, items, cx, true, false)
     }
 
@@ -458,6 +459,7 @@ impl ThreadView {
             } = &self.items[item_ix]
             {
                 self.sealed_blocks.remove(id);
+                self.pending_sealed_parses.remove(id);
                 self.markdown_cache.remove(id);
             }
         }
@@ -535,6 +537,7 @@ impl ThreadView {
     pub(crate) fn rebuild_all(&mut self, items: Vec<ThreadItem>) -> Vec<ThreadEffect> {
         self.items = items;
         self.tool_output_cache.clear();
+        self.pending_sealed_parses.clear();
         self.item_index = self
             .items
             .iter()
@@ -703,7 +706,11 @@ impl ThreadView {
             return;
         }
         self.item_update_debounce_scheduled = true;
-        let batch_ms = self.stream_batch_ms;
+        let batch_ms = if self.motion_paused || self.user_scrolled_up {
+            self.stream_batch_ms.max(STREAM_BATCH_SLOW_MS)
+        } else {
+            self.stream_batch_ms
+        };
         let entity = cx.entity().downgrade();
         cx.spawn(async move |_weak, cx| {
             Timer::after(Duration::from_millis(batch_ms)).await;
@@ -716,14 +723,13 @@ impl ThreadView {
                     let mut effects = Vec::new();
 
                     let stream_ids: Vec<_> = view.pending_streaming_row_patches.drain().collect();
+                    crate::shared::render_profile::record(
+                        "ThreadView::stream_patch_batch",
+                        Duration::ZERO,
+                        stream_ids.len() as u64,
+                    );
                     for id in &stream_ids {
                         if let Some(&item_ix) = view.item_index.get(id) {
-                            if let Some(ThreadItem::AssistantMessage { markdown, .. }) =
-                                view.items.get(item_ix)
-                            {
-                                let markdown = markdown.clone();
-                                view.flush_sealed_blocks(id, &markdown);
-                            }
                             if let Some(header_ix) = view.header_ix_for_item(item_ix as u32) {
                                 let (start, end) = manifest_span(&view.manifest, header_ix);
                                 if end - start == 1 {

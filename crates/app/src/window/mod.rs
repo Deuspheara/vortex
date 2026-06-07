@@ -30,11 +30,11 @@ use crate::features::shell::components::tree_row::project_expand_key;
 use crate::features::shell::layout::SidebarView;
 use crate::features::shell::state::{
     Agent, AgentStatus, ArtifactSelection, ArtifactStore, ChipKind, ContextChip, ContextEntryKind,
-    ContextInspectorRecap, ContextTraceSummary, Conversation, ConversationId, DiffPanelState,
-    DrawerState, ExpandedItems, InspectorMode, InspectorTabs, InspectorView, PageCacheRecap,
-    PendingThreadApproval, PlanExecutionState, PlanProgressCounts, Project, ProjectId,
-    ProviderErrorVm, SessionRunState, TaskViewModel, ThreadItem, TodoEntry, TodoState,
-    build_task_view,
+    ContextInspectorRecap, ContextTraceSummary, Conversation, ConversationId, DiffFile,
+    DiffPanelState, DockPlacement, DrawerState, ExpandedItems, InspectorMode, InspectorTabKind,
+    InspectorTabs, InspectorView, PageCacheRecap, PendingThreadApproval, PlanExecutionState,
+    PlanProgressCounts, Project, ProjectId, ProjectIndexStatus, ProviderErrorVm, SessionRunState,
+    TaskViewModel, ThreadItem, TodoEntry, TodoState, build_task_view,
 };
 
 use crate::features::chat::thread_view::ThreadView;
@@ -53,6 +53,20 @@ pub enum AppScreen {
     Extensions,
     Automations,
     Settings,
+}
+
+struct DiffPreviewParseResult {
+    generation: u64,
+    files: Vec<DiffFile>,
+}
+
+struct IndexStatusPollProject {
+    id: ProjectId,
+    root_path: String,
+}
+
+struct IndexStatusPollResult {
+    statuses: Vec<(ProjectId, ProjectIndexStatus)>,
 }
 
 pub struct AgentWindow {
@@ -110,6 +124,11 @@ pub struct AgentWindow {
     pub todo_strip_expanded: bool,
     pub(crate) diff_preview_pending: Option<String>,
     pub(crate) diff_preview_parse_scheduled: bool,
+    diff_preview_parse_in_flight: bool,
+    diff_preview_parse_generation: u64,
+    diff_preview_parse_tx: flume::Sender<DiffPreviewParseResult>,
+    index_status_poll_in_flight: bool,
+    index_status_poll_tx: flume::Sender<IndexStatusPollResult>,
     /// Memoized git branch list keyed by project root. Refreshes happen from
     /// state transitions, not during render.
     pub(crate) branch_items_cache: Option<(String, Vec<String>)>,
@@ -345,6 +364,8 @@ impl AgentWindow {
         sync_palette(cx);
 
         let bridge = agent_bridge.clone();
+        let (diff_preview_parse_tx, diff_preview_parse_rx) = flume::unbounded();
+        let (index_status_poll_tx, index_status_poll_rx) = flume::unbounded();
         let entity_weak = cx.weak_entity();
         cx.spawn(async move |_, cx| {
             loop {
@@ -428,6 +449,11 @@ impl AgentWindow {
             todo_strip_expanded: false,
             diff_preview_pending: None,
             diff_preview_parse_scheduled: false,
+            diff_preview_parse_in_flight: false,
+            diff_preview_parse_generation: 0,
+            diff_preview_parse_tx,
+            index_status_poll_in_flight: false,
+            index_status_poll_tx,
             branch_items_cache: None,
             openrouter_models_revision: 0,
             model_picker_cache: None,
@@ -441,6 +467,26 @@ impl AgentWindow {
         window_state.refresh_token_usage_display();
         window_state.hydrate_from_store(cx);
         window_state.start_index_status_poll(cx);
+
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            while let Ok(result) = diff_preview_parse_rx.recv_async().await {
+                let _ = weak.update(cx, |view, cx| {
+                    view.handle_diff_preview_parse_result(result, cx);
+                });
+            }
+        })
+        .detach();
+
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            while let Ok(result) = index_status_poll_rx.recv_async().await {
+                let _ = weak.update(cx, |view, cx| {
+                    view.handle_index_status_poll_result(result, cx);
+                });
+            }
+        })
+        .detach();
 
         if let Some(models_rx) = agent_bridge.openrouter_models_rx.clone() {
             let weak = cx.weak_entity();
@@ -656,8 +702,8 @@ impl AgentWindow {
         cx.spawn(async move |_weak, cx| {
             loop {
                 gpui::Timer::after(std::time::Duration::from_secs(2)).await;
-                let _ = weak.update(cx, |view, cx| {
-                    view.refresh_indexing_state(cx);
+                let _ = weak.update(cx, |view, _cx| {
+                    view.start_index_status_poll_worker();
                 });
             }
         })
@@ -665,23 +711,68 @@ impl AgentWindow {
     }
 
     pub(crate) fn refresh_indexing_state(&mut self, cx: &mut Context<Self>) {
+        self.start_index_status_poll_worker();
+        if self.refresh_context_inspector_recap() {
+            cx.notify();
+        }
+    }
+
+    fn start_index_status_poll_worker(&mut self) {
+        if self.index_status_poll_in_flight {
+            return;
+        }
+        let projects = self
+            .projects
+            .iter()
+            .map(|project| IndexStatusPollProject {
+                id: project.id.clone(),
+                root_path: project.root_path.clone(),
+            })
+            .collect::<Vec<_>>();
+        if projects.is_empty() {
+            return;
+        }
+
+        self.index_status_poll_in_flight = true;
         let bridge = self.agent_bridge.clone();
+        let tx = self.index_status_poll_tx.clone();
+        std::thread::spawn(move || {
+            let statuses = projects
+                .into_iter()
+                .map(|project| {
+                    bridge.ensure_project_indexing(
+                        &proto_project_id(&project.id),
+                        &project.root_path,
+                    );
+                    let status = bridge.project_index_status(&project.id);
+                    (project.id, status)
+                })
+                .collect();
+            let _ = tx.send(IndexStatusPollResult { statuses });
+        });
+    }
+
+    fn handle_index_status_poll_result(
+        &mut self,
+        result: IndexStatusPollResult,
+        cx: &mut Context<Self>,
+    ) {
+        self.index_status_poll_in_flight = false;
         let mut sidebar_dirty = false;
-        for project in &mut self.projects {
-            bridge.ensure_project_indexing(&proto_project_id(&project.id), &project.root_path);
-            let next = bridge.project_index_status(&project.id);
-            if project.index_status != next {
-                project.index_status = next;
-                sidebar_dirty = true;
+        for (project_id, status) in result.statuses {
+            if let Some(project) = self
+                .projects
+                .iter_mut()
+                .find(|project| project.id == project_id)
+            {
+                if project.index_status != status {
+                    project.index_status = status;
+                    sidebar_dirty = true;
+                }
             }
         }
 
-        let next_recap = self.build_context_inspector_recap();
-        let recap_dirty = self.context_inspector_recap != next_recap;
-        if recap_dirty {
-            self.context_inspector_recap = next_recap;
-        }
-
+        let recap_dirty = self.refresh_context_inspector_recap();
         if sidebar_dirty {
             self.sync_sidebar_view(cx);
         }
@@ -690,13 +781,47 @@ impl AgentWindow {
         }
     }
 
-    fn build_context_inspector_recap(&self) -> ContextInspectorRecap {
-        let project_status = self.selected_project_id.as_ref().and_then(|project_id| {
+    fn refresh_context_inspector_recap(&mut self) -> bool {
+        let mut recap_dirty = false;
+        let next_project_status = self.selected_project_id.as_ref().and_then(|project_id| {
             self.projects
                 .iter()
                 .find(|project| &project.id == project_id)
                 .map(|project| project.index_status.clone())
         });
+        if self.context_inspector_recap.project_status != next_project_status {
+            self.context_inspector_recap.project_status = next_project_status;
+            recap_dirty = true;
+        }
+
+        if self.should_refresh_context_inspector_recap() {
+            let next_recap = self.build_context_inspector_recap();
+            if self.context_inspector_recap != next_recap {
+                self.context_inspector_recap = next_recap;
+                recap_dirty = true;
+            }
+        }
+
+        recap_dirty
+    }
+
+    fn should_refresh_context_inspector_recap(&self) -> bool {
+        self.inspector_mode.is_visible() && self.inspector_view == InspectorView::Context
+    }
+
+    fn build_context_inspector_recap(&self) -> ContextInspectorRecap {
+        let project_status = self
+            .context_inspector_recap
+            .project_status
+            .clone()
+            .or_else(|| {
+                self.selected_project_id.as_ref().and_then(|project_id| {
+                    self.projects
+                        .iter()
+                        .find(|project| &project.id == project_id)
+                        .map(|project| project.index_status.clone())
+                })
+            });
 
         let context_trace = self
             .selected_conversation_id
@@ -893,7 +1018,15 @@ impl AgentWindow {
         cx: &mut Context<Self>,
     ) {
         self.diff_preview_pending = Some(unified_diff);
-        if self.diff_preview_parse_scheduled {
+        self.diff_preview_parse_generation = self.diff_preview_parse_generation.wrapping_add(1);
+        self.schedule_diff_preview_parse_timer(cx);
+    }
+
+    fn schedule_diff_preview_parse_timer(&mut self, cx: &mut Context<Self>) {
+        if self.diff_preview_parse_scheduled
+            || self.diff_preview_parse_in_flight
+            || self.diff_preview_pending.is_none()
+        {
             return;
         }
         self.diff_preview_parse_scheduled = true;
@@ -902,22 +1035,69 @@ impl AgentWindow {
             gpui::Timer::after(std::time::Duration::from_millis(150)).await;
             weak.update(cx, |view, cx| {
                 view.diff_preview_parse_scheduled = false;
-                if let Some(diff) = view.diff_preview_pending.take() {
-                    let files = crate::features::diff_panel::layout::parse_unified_diff(&diff);
-                    view.diff_panel.files = files.clone();
-                    view.artifact_store
-                        .update_diff_files("patch-preview", files);
-                    view.diff_panel.applied = false;
-                    if let Some(thread) = view.thread_view.clone() {
-                        thread.update(cx, |_thread, cx| cx.notify());
-                    }
-                    // Silent update — do not auto-open inspector on streaming previews.
-                }
-                cx.notify();
+                view.start_pending_diff_preview_parse(cx);
             })
             .ok();
         })
         .detach();
+    }
+
+    fn start_pending_diff_preview_parse(&mut self, _cx: &mut Context<Self>) {
+        if self.diff_preview_parse_in_flight {
+            return;
+        }
+        let Some(diff) = self.diff_preview_pending.take() else {
+            return;
+        };
+        self.diff_preview_parse_in_flight = true;
+        let generation = self.diff_preview_parse_generation;
+        let tx = self.diff_preview_parse_tx.clone();
+        std::thread::spawn(move || {
+            let files = crate::features::diff_panel::layout::parse_unified_diff(&diff);
+            let _ = tx.send(DiffPreviewParseResult { generation, files });
+        });
+    }
+
+    fn handle_diff_preview_parse_result(
+        &mut self,
+        result: DiffPreviewParseResult,
+        cx: &mut Context<Self>,
+    ) {
+        self.diff_preview_parse_in_flight = false;
+
+        let is_latest = result.generation == self.diff_preview_parse_generation;
+        if is_latest && self.diff_panel.files != result.files {
+            self.diff_panel.files = result.files.clone();
+            self.artifact_store
+                .update_diff_files("patch-preview", result.files);
+            self.diff_panel.applied = false;
+            let assistant_actions = self.assistant_action_projection();
+            if let Some(thread) = self.thread_view.clone() {
+                thread.update(cx, |thread, cx| {
+                    thread.set_assistant_actions(assistant_actions, cx);
+                });
+            }
+            if self.should_notify_diff_preview_surface() {
+                cx.notify();
+            }
+        }
+
+        if self.diff_preview_pending.is_some() {
+            self.schedule_diff_preview_parse_timer(cx);
+        }
+    }
+
+    fn should_notify_diff_preview_surface(&self) -> bool {
+        let right_changes_visible = self.inspector_mode == InspectorMode::Review
+            && self.inspector_tabs.active_builtin_view() == Some(InspectorView::Changes);
+        let bottom_changes_visible = self.terminal_panel_open
+            && matches!(
+                self.inspector_tabs
+                    .active_for_dock(DockPlacement::Bottom)
+                    .map(|tab| &tab.kind),
+                Some(InspectorTabKind::BuiltIn(InspectorView::Changes))
+            );
+        right_changes_visible || bottom_changes_visible
     }
 
     pub fn toggle_collapsed_session(&mut self, session_id: &str, cx: &mut Context<Self>) {

@@ -9,8 +9,8 @@ use gpui_component::input::{InputEvent, InputState};
 use gpui_component::{VirtualListScrollHandle, v_virtual_list};
 
 use crate::features::shell::components::tree_row::{
-    expanded_for_search, filter_projects, filter_sidebar_sessions, project_expand_key, project_row,
-    section_label, session_row,
+    ProjectRowViewModel, SessionRowViewModel, expanded_for_search, filter_projects,
+    filter_sidebar_sessions, project_expand_key, project_row, section_label, session_row,
 };
 use crate::features::shell::sidebar_helpers::{
     render_app_nav, render_projects_section_header, render_sidebar_footer,
@@ -26,20 +26,10 @@ use crate::window::AppScreen;
 #[derive(Clone)]
 enum SidebarRow {
     RecentHeader,
-    ProjectsHeader {
-        first: bool,
-    },
-    Session {
-        conversation_id: ConversationId,
-        indent_level: u32,
-    },
-    Project {
-        project_id: ProjectId,
-        expanded: bool,
-    },
-    ProjectAppendDrop {
-        project_id: ProjectId,
-    },
+    ProjectsHeader { first: bool },
+    Session { row: SessionRowViewModel },
+    Project { row: ProjectRowViewModel },
+    ProjectAppendDrop { project_id: ProjectId },
 }
 
 pub struct SidebarView {
@@ -157,7 +147,9 @@ impl SidebarView {
     pub fn set_drop_target(&mut self, target: Option<SidebarDropTarget>, cx: &mut Context<Self>) {
         if self.drop_target != target {
             self.drop_target = target;
-            self.rows_dirty = true;
+            if !self.rows_dirty {
+                self.refresh_row_sizes();
+            }
             cx.notify();
         }
     }
@@ -180,6 +172,7 @@ impl SidebarView {
 
 impl Render for SidebarView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _profile = crate::shared::render_profile::span("SidebarView::render");
         if self.collapsed {
             return div()
                 .id("sidebar-collapsed")
@@ -257,6 +250,7 @@ impl SidebarView {
             return;
         }
 
+        let profile_start = std::time::Instant::now();
         let search_active = !search_query.trim().is_empty();
         let projects = filter_projects(&self.projects, &self.sessions, search_query);
         let filtered_sessions = filter_sidebar_sessions(&self.sessions, search_query);
@@ -299,9 +293,9 @@ impl SidebarView {
         let mut rows = Vec::new();
         if !unassigned.is_empty() {
             rows.push(SidebarRow::RecentHeader);
+            let selected = self.selected_conversation_id.as_ref();
             rows.extend(unassigned.into_iter().map(|session| SidebarRow::Session {
-                conversation_id: session.id.clone(),
-                indent_level: 0,
+                row: SessionRowViewModel::new(session, selected == Some(&session.id), 0),
             }));
         }
 
@@ -313,19 +307,22 @@ impl SidebarView {
             let key = project_expand_key(&project.id);
             let expanded = expanded_items.contains(&key);
             rows.push(SidebarRow::Project {
-                project_id: project.id.clone(),
-                expanded,
+                row: ProjectRowViewModel::new(&project, expanded),
             });
 
             if expanded {
+                let selected = self.selected_conversation_id.as_ref();
                 rows.extend(
                     project
                         .conversations
                         .iter()
-                        .filter(|cid| session_index.contains_key(*cid))
-                        .map(|cid| SidebarRow::Session {
-                            conversation_id: cid.clone(),
-                            indent_level: 1,
+                        .filter_map(|cid| session_index.get(cid).map(|&idx| &self.sessions[idx]))
+                        .map(|session| SidebarRow::Session {
+                            row: SessionRowViewModel::new(
+                                session,
+                                selected == Some(&session.id),
+                                1,
+                            ),
                         }),
                 );
             }
@@ -344,6 +341,20 @@ impl SidebarView {
         self.row_sizes = Rc::new(row_sizes);
         self.cached_search_query = search_query.to_string();
         self.rows_dirty = false;
+        crate::shared::render_profile::record(
+            "SidebarView::ensure_visible_rows",
+            profile_start.elapsed(),
+            self.visible_rows.len() as u64,
+        );
+    }
+
+    fn refresh_row_sizes(&mut self) {
+        let row_sizes = self
+            .visible_rows
+            .iter()
+            .map(|row| size(px(Tokens::SIDEBAR_MAX_WIDTH), self.row_height(row)))
+            .collect();
+        self.row_sizes = Rc::new(row_sizes);
     }
 
     fn render_visible(
@@ -351,7 +362,9 @@ impl SidebarView {
         range: std::ops::Range<usize>,
         cx: &mut Context<Self>,
     ) -> Vec<gpui::AnyElement> {
-        range
+        let start = std::time::Instant::now();
+        let row_count = range.len() as u64;
+        let rows = range
             .map(|row_ix| match self.visible_rows.get(row_ix).cloned() {
                 Some(row) => self.render_row(row, cx),
                 None => div()
@@ -359,13 +372,19 @@ impl SidebarView {
                     .h(px(Tokens::ROW_HEIGHT_MD))
                     .into_any_element(),
             })
-            .collect()
+            .collect();
+        crate::shared::render_profile::record(
+            "SidebarView::render_visible",
+            start.elapsed(),
+            row_count,
+        );
+        rows
     }
 
     fn render_row(&mut self, row: SidebarRow, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let _profile = crate::shared::render_profile::span("SidebarView::render_row");
         let sidebar = cx.entity().clone();
         let entity = self.agent.clone();
-        let selected = self.selected_conversation_id.clone();
         let drop_target = self.drop_target.clone();
         let open_action_menu = self.open_action_menu.clone();
 
@@ -384,48 +403,12 @@ impl SidebarView {
                 .items_end()
                 .child(render_projects_section_header(first, entity))
                 .into_any_element(),
-            SidebarRow::Session {
-                conversation_id,
-                indent_level,
-            } => {
-                let Some(&idx) = self.session_by_id.get(&conversation_id) else {
-                    return div()
-                        .w_full()
-                        .h(px(Tokens::ROW_HEIGHT_MD))
-                        .into_any_element();
-                };
-                let session = &self.sessions[idx];
-                session_row(
-                    session.id.clone(),
-                    &session.title,
-                    &session.updated_at,
-                    selected.as_ref() == Some(&session.id),
-                    indent_level,
-                    &drop_target,
-                    &open_action_menu,
-                    entity,
-                    sidebar,
-                )
-                .into_any_element()
+            SidebarRow::Session { row } => {
+                session_row(row, &drop_target, &open_action_menu, entity, sidebar)
+                    .into_any_element()
             }
-            SidebarRow::Project {
-                project_id,
-                expanded,
-            } => {
-                let Some(&idx) = self.project_by_id.get(&project_id) else {
-                    return div()
-                        .w_full()
-                        .h(px(Tokens::ROW_HEIGHT_MD))
-                        .into_any_element();
-                };
-                project_row(
-                    &self.projects[idx],
-                    expanded,
-                    &open_action_menu,
-                    entity,
-                    sidebar,
-                )
-                .into_any_element()
+            SidebarRow::Project { row } => {
+                project_row(row, &open_action_menu, entity, sidebar).into_any_element()
             }
             SidebarRow::ProjectAppendDrop { project_id } => {
                 crate::features::shell::components::tree_row::project_append_drop_zone(
@@ -443,12 +426,10 @@ impl SidebarView {
         match row {
             SidebarRow::RecentHeader => px(Tokens::ROW_HEIGHT_SM),
             SidebarRow::ProjectsHeader { .. } => px(Tokens::ROW_HEIGHT_LG),
-            SidebarRow::Session {
-                conversation_id, ..
-            } => {
+            SidebarRow::Session { row } => {
                 let divider = matches!(
                     self.drop_target,
-                    Some(SidebarDropTarget::BeforeSession(ref id)) if id == conversation_id
+                    Some(SidebarDropTarget::BeforeSession(ref id)) if id == &row.conv_id
                 );
                 if divider {
                     px(Tokens::ROW_HEIGHT_MD) + sidebar_drop_slot_height()

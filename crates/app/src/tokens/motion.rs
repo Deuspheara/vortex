@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, ElementId, FontWeight, Hsla, IntoElement, SharedString,
-    div, ease_in_out, ease_out_quint, prelude::*, px,
+    Animation, AnimationExt, AnyElement, ElementId, FontWeight, IntoElement, SharedString, div,
+    ease_in_out, ease_out_quint, prelude::*, px,
 };
 
 use super::design_tokens::Tokens;
@@ -153,7 +153,7 @@ pub fn activity_action_line(
     action: &str,
     detail: Option<&str>,
     running: bool,
-    animate: bool,
+    _animate: bool,
     key: &str,
     _index: usize,
 ) -> impl IntoElement {
@@ -172,6 +172,22 @@ pub fn activity_action_line(
         .flex()
         .items_center()
         .gap(Tokens::spacing_2())
+        .when(running, |el| {
+            el.child(
+                div()
+                    .flex_shrink_0()
+                    .w(px(12.0))
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_size(Tokens::text_base())
+                            .font_family("monospace")
+                            .text_color(Tokens::accent())
+                            .child(BRAILLE_FRAMES[0]),
+                    ),
+            )
+        })
         .child(
             div().min_w(px(0.0)).overflow_hidden().child(
                 div()
@@ -188,13 +204,7 @@ pub fn activity_action_line(
                     .font_weight(action_weight)
                     .text_color(action_color)
                     .hover(|s| s.text_color(Tokens::text_primary()))
-                    .child(wave_text(
-                        &verb,
-                        key,
-                        running && animate,
-                        action_color,
-                        action_weight,
-                    ))
+                    .child(div().opacity(0.72).child(verb))
                     .when_some(remainder, |el, rest| {
                         el.child(div().opacity(if running { 0.72 } else { 0.68 }).child(rest))
                     }),
@@ -228,56 +238,6 @@ fn action_verb_and_remainder(action: &str) -> (String, Option<String>) {
     } else {
         (trimmed.to_string(), None)
     }
-}
-
-fn wave_text(text: &str, key: &str, animate: bool, color: Hsla, weight: FontWeight) -> AnyElement {
-    if text.is_empty() {
-        return div().into_any_element();
-    }
-    let words = text.split(' ').map(str::to_string).collect::<Vec<String>>();
-    let render_word = move |index: usize, word: String| {
-        let base = div().child(word);
-        if !animate {
-            return base.opacity(0.72).into_any_element();
-        }
-        base.with_animation(
-            element_key("activity-wave-word", &format!("{key}-{index}")),
-            Animation::new(Duration::from_millis(1400)).repeat(),
-            move |el, delta| {
-                let phase = delta * std::f32::consts::TAU - index as f32 * 0.9;
-                let wave = phase.sin() * 0.5 + 0.5;
-                el.opacity(0.42 + 0.48 * wave)
-            },
-        )
-        .into_any_element()
-    };
-
-    div()
-        .id(element_key("activity-wave-text", key))
-        .min_w(px(0.0))
-        .overflow_hidden()
-        .whitespace_nowrap()
-        .flex()
-        .items_center()
-        .gap(px(0.0))
-        .text_size(Tokens::text_sm())
-        .line_height(Tokens::text_sm_leading())
-        .font_weight(weight)
-        .text_color(color)
-        .children(words.into_iter().enumerate().flat_map(|(index, word)| {
-            let mut children = vec![render_word(index, word)];
-            if index > 0 {
-                children.insert(
-                    0,
-                    div()
-                        .opacity(if animate { 0.55 } else { 0.72 })
-                        .child(" ")
-                        .into_any_element(),
-                );
-            }
-            children
-        }))
-        .into_any_element()
 }
 
 /// Fade-in for a newly appeared activity line.

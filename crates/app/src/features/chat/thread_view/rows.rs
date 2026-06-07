@@ -121,6 +121,8 @@ impl ThreadView {
                 };
                 let toggle_id = id.clone();
                 let agent_select = agent.clone();
+                let _profile =
+                    crate::shared::render_profile::span("ThreadView::subagent_header_vm");
                 let (activity_summary, is_selected) = agent.read_with(cx, |window, _| {
                     let projection = window.subagent_transcripts.get(id);
                     let summary = projection
@@ -152,6 +154,7 @@ impl ThreadView {
                 let Some(ThreadItem::SubagentRun { id, summary, .. }) = item else {
                     return div().into_any_element();
                 };
+                let _profile = crate::shared::render_profile::span("ThreadView::subagent_body_vm");
                 let (activity_summary, last_event) = agent.read_with(cx, |window, _| {
                     let projection = window.subagent_transcripts.get(id);
                     (
@@ -267,11 +270,12 @@ impl ThreadView {
                     status,
                     crate::features::shell::state::AgentStatus::RunningTool
                 );
-                let change_counts = agent.read_with(cx, |window, _| {
-                    window.live_edit_change_counts(tool_name, running)
-                });
-                let display_label = agent.read_with(cx, |window, _| {
-                    window.tool_row_label(tool_name, preview, running)
+                let _profile = crate::shared::render_profile::span("ThreadView::tool_header_vm");
+                let (change_counts, display_label) = agent.read_with(cx, |window, _| {
+                    (
+                        window.live_edit_change_counts(tool_name, running),
+                        window.tool_row_label(tool_name, preview, running),
+                    )
                 });
                 let toggle_id = id.clone();
                 let agent_toggle = agent.clone();
@@ -560,6 +564,7 @@ impl ThreadView {
         item_ix: usize,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
+        let _profile = crate::shared::render_profile::span("ThreadView::render_assistant");
         let Some(ThreadItem::AssistantMessage {
             id,
             markdown,
@@ -569,31 +574,8 @@ impl ThreadView {
         else {
             return div().into_any_element();
         };
-        let id = id.clone();
-        let markdown = markdown.clone();
-        let streaming = *streaming;
-        let can_retry = self
-            .agent
-            .read_with(cx, |window, _| window.can_retry_last_user_turn());
-        let can_open_diff = self.agent.read_with(cx, |window, _| {
-            window.pending_approval_id.is_some()
-                || window.diff_panel.pending_patch_id.is_some()
-                || !window.diff_panel.files.is_empty()
-        });
-        let can_approve = self
-            .agent
-            .read_with(cx, |window, _| window.pending_approval_id.is_some());
-        let actions = assistant_action_row(
-            &id,
-            &markdown,
-            streaming,
-            self.agent.clone(),
-            can_retry,
-            can_open_diff,
-            can_approve,
-        );
-
-        if streaming {
+        if *streaming {
+            let id = id.clone();
             let jump_to_latest = self.user_scrolled_up.then(|| {
                 let entity = cx.entity();
                 let button_id = id.clone();
@@ -627,10 +609,8 @@ impl ThreadView {
                     .into_any_element()
             });
 
-            let sanitized = crate::agent::text::sanitize_assistant_text(&markdown);
-            self.flush_sealed_blocks_sanitized(&id, &sanitized);
             let sealed = self.sealed_blocks.get(&id).cloned().unwrap_or_default();
-            let show_cursor = !sanitized.is_empty() && sanitized.chars().count() > 2;
+            let show_cursor = markdown.len() > 2;
             let provenance = assistant_provenance_for_item(item_ix, &self.items);
             let provenance_strip = provenance.map(|vm| {
                 let agent = self.agent.clone();
@@ -641,6 +621,16 @@ impl ThreadView {
                     });
                 })
             });
+            let actions_projection = self.assistant_actions;
+            let actions = assistant_action_row(
+                &id,
+                true,
+                cx.entity().clone(),
+                self.agent.clone(),
+                actions_projection.can_retry,
+                actions_projection.can_open_diff,
+                actions_projection.can_approve,
+            );
             return div()
                 .id(element_key("assistant-segment", &id))
                 .w_full()
@@ -649,7 +639,7 @@ impl ThreadView {
                 .gap(Tokens::spacing_2())
                 .child(streaming_assistant_body(
                     &id,
-                    &sanitized,
+                    markdown,
                     &sealed,
                     show_cursor,
                 ))
@@ -659,6 +649,8 @@ impl ThreadView {
                 .into_any_element();
         }
 
+        let id = id.clone();
+        let markdown = markdown.clone();
         self.sealed_blocks.remove(&id);
 
         let blocks = self.cached_markdown_blocks(&id, &markdown, false);
@@ -672,6 +664,16 @@ impl ThreadView {
                 });
             })
         });
+        let actions_projection = self.assistant_actions;
+        let actions = assistant_action_row(
+            &id,
+            false,
+            cx.entity().clone(),
+            self.agent.clone(),
+            actions_projection.can_retry,
+            actions_projection.can_open_diff,
+            actions_projection.can_approve,
+        );
         div()
             .id(element_key("assistant-segment", &id))
             .w_full()
@@ -689,8 +691,8 @@ impl ThreadView {
 
 fn assistant_action_row(
     item_id: &str,
-    markdown: &str,
     streaming: bool,
+    thread: Entity<ThreadView>,
     agent: Entity<AgentWindow>,
     can_retry: bool,
     can_open_diff: bool,
@@ -698,8 +700,6 @@ fn assistant_action_row(
 ) -> impl IntoElement {
     use crate::shared::components::buttons::btn_icon_sm;
     use crate::tokens::icons;
-
-    let copy_text = std::sync::Arc::<str>::from(markdown.to_string());
 
     div()
         .id(element_key("assistant-actions", item_id))
@@ -710,13 +710,25 @@ fn assistant_action_row(
         .gap(Tokens::spacing_1())
         .opacity(if streaming { 0.52 } else { 0.38 })
         .hover(|s| s.opacity(0.78))
-        .child(
+        .child({
+            let copy_thread = thread.clone();
+            let copy_item_id = item_id.to_string();
             btn_icon_sm(element_key("assistant-copy", item_id), icons::COPY)
                 .tooltip("Copy reply")
                 .on_click(move |_, _, app: &mut gpui::App| {
-                    app.write_to_clipboard(copy_text.to_string().into());
-                }),
-        )
+                    copy_thread.update(app, |view, cx| {
+                        if let Some(markdown) = view.items.iter().find_map(|item| {
+                            if let ThreadItem::AssistantMessage { id, markdown, .. } = item {
+                                (id == &copy_item_id).then(|| markdown.clone())
+                            } else {
+                                None
+                            }
+                        }) {
+                            cx.write_to_clipboard(markdown.into());
+                        }
+                    });
+                })
+        })
         .child(
             btn_icon_sm(element_key("assistant-helpful", item_id), icons::CHECK).tooltip("Helpful"),
         )

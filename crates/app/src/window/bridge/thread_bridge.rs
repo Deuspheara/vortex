@@ -3,6 +3,7 @@
 use gpui::Context;
 
 use super::super::AgentWindow;
+use crate::features::chat::thread_view::AssistantActionProjection;
 use crate::features::shell::state::{ConversationId, ThreadItem};
 
 impl AgentWindow {
@@ -269,16 +270,19 @@ impl AgentWindow {
         let items = self.thread_items_for(&conversation_id);
         let run_active = self.thread_run_active(&conversation_id);
         let transcript_mode = self.transcript_mode;
+        let assistant_actions = self.assistant_action_projection();
         let Some(thread) = self.thread_view.clone() else {
             return;
         };
         if immediate {
             thread.update(cx, |view, cx| {
+                view.set_assistant_actions(assistant_actions, cx);
                 view.set_transcript_mode(transcript_mode);
                 view.sync_live(conversation_id, items, run_active, cx)
             });
         } else {
             thread.update(cx, |view, cx| {
+                view.set_assistant_actions(assistant_actions, cx);
                 view.set_transcript_mode(transcript_mode);
                 view.sync(conversation_id, items, run_active, cx)
             });
@@ -291,10 +295,23 @@ impl AgentWindow {
 
     pub(crate) fn sync_thread_approval_state(&mut self, cx: &mut Context<Self>) {
         let active = self.pending_approval_id.is_some();
+        let assistant_actions = self.assistant_action_projection();
         if let Some(thread) = self.thread_view.clone() {
             thread.update(cx, |view, cx| {
+                view.set_assistant_actions(assistant_actions, cx);
                 view.set_approval_active(active, cx);
             });
+        }
+    }
+
+    pub(crate) fn assistant_action_projection(&self) -> AssistantActionProjection {
+        let can_approve = self.pending_approval_id.is_some();
+        AssistantActionProjection {
+            can_retry: self.can_retry_last_user_turn(),
+            can_open_diff: can_approve
+                || self.diff_panel.pending_patch_id.is_some()
+                || !self.diff_panel.files.is_empty(),
+            can_approve,
         }
     }
 

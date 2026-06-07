@@ -50,15 +50,30 @@ use crate::ui::thread_update::{ThreadAction, ThreadEffect};
 const MOTION_PAUSE_MS: u64 = 250;
 const ASSISTANT_STREAM_SYNC_MS: u64 = 100;
 /// Frame-aligned coalescing window for the streaming tail. Tokens that arrive within
-/// one display frame are flushed together (one commit per frame). At ~8 ms this targets
-/// 120 Hz; GPUI further coalesces the resulting `notify()`s to the display refresh.
-const STREAM_FRAME_SYNC_MS: u64 = 8;
+/// one display frame are flushed together (one commit per frame). At ~16 ms this targets
+/// 60 Hz; GPUI further coalesces the resulting `notify()`s to the display refresh.
+const STREAM_FRAME_SYNC_MS: u64 = 16;
 /// Fallback batch when render cost is elevated (≈30 fps).
 const STREAM_BATCH_SLOW_MS: u64 = 33;
 /// Backpressure batch when render falls behind (≈15 fps).
 const STREAM_BATCH_BACKPRESSURE_MS: u64 = 66;
 /// Only grow the virtual-list shell when height increases by at least one line.
 const STREAMING_HEIGHT_EPSILON: f32 = LINE_LEADING * 0.5;
+
+pub(crate) struct SealedMarkdownParseResult {
+    item_id: String,
+    sealed_end: usize,
+    content_hash: u64,
+    blocks: Arc<[MarkdownBlock]>,
+    height: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct AssistantActionProjection {
+    pub can_retry: bool,
+    pub can_open_diff: bool,
+    pub can_approve: bool,
+}
 
 mod caches;
 mod render;
@@ -103,7 +118,10 @@ pub struct ThreadView {
     user_scrolled_up: bool,
     last_scroll_offset: Option<gpui::Point<gpui::Pixels>>,
     approval_active: bool,
+    assistant_actions: AssistantActionProjection,
     sealed_blocks: HashMap<String, SealedBlockCache>,
+    pending_sealed_parses: HashMap<String, u64>,
+    sealed_parse_tx: flume::Sender<SealedMarkdownParseResult>,
     last_stream_patch: Option<Instant>,
     stream_batch_ms: u64,
     transcript_mode: TranscriptMode,
@@ -120,6 +138,7 @@ impl ThreadView {
         items: Vec<ThreadItem>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let (sealed_parse_tx, sealed_parse_rx) = flume::unbounded();
         let mut view = Self {
             agent,
             conversation_id,
@@ -148,7 +167,10 @@ impl ThreadView {
             user_scrolled_up: false,
             last_scroll_offset: None,
             approval_active: false,
+            assistant_actions: AssistantActionProjection::default(),
             sealed_blocks: HashMap::new(),
+            pending_sealed_parses: HashMap::new(),
+            sealed_parse_tx,
             last_stream_patch: None,
             stream_batch_ms: STREAM_FRAME_SYNC_MS,
             transcript_mode: TranscriptMode::default(),
@@ -157,6 +179,7 @@ impl ThreadView {
             composer_has_attachments: false,
             composer_has_error: false,
         };
+        view.start_sealed_parse_listener(sealed_parse_rx, cx);
         if let Some(cid) = view.conversation_id.clone() {
             view.sync(cid, items, false, cx);
         }
@@ -168,6 +191,7 @@ impl ThreadView {
         items: Vec<ThreadItem>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let (sealed_parse_tx, sealed_parse_rx) = flume::unbounded();
         let mut view = Self {
             agent,
             conversation_id: None,
@@ -196,7 +220,10 @@ impl ThreadView {
             user_scrolled_up: false,
             last_scroll_offset: None,
             approval_active: false,
+            assistant_actions: AssistantActionProjection::default(),
             sealed_blocks: HashMap::new(),
+            pending_sealed_parses: HashMap::new(),
+            sealed_parse_tx,
             last_stream_patch: None,
             stream_batch_ms: STREAM_FRAME_SYNC_MS,
             transcript_mode: TranscriptMode::default(),
@@ -205,9 +232,28 @@ impl ThreadView {
             composer_has_attachments: false,
             composer_has_error: false,
         };
+        view.start_sealed_parse_listener(sealed_parse_rx, cx);
         view.rebuild_all(items);
         cx.notify();
         view
+    }
+
+    fn start_sealed_parse_listener(
+        &mut self,
+        rx: flume::Receiver<SealedMarkdownParseResult>,
+        cx: &mut Context<Self>,
+    ) {
+        let entity = cx.entity().downgrade();
+        cx.spawn(async move |_weak, cx| {
+            while let Ok(result) = rx.recv_async().await {
+                entity
+                    .update(cx, |view, cx| {
+                        view.handle_sealed_parse_result(result, cx);
+                    })
+                    .ok();
+            }
+        })
+        .detach();
     }
 
     pub fn set_conversation(
@@ -263,6 +309,17 @@ impl ThreadView {
 
     pub fn set_transcript_mode(&mut self, mode: TranscriptMode) {
         self.transcript_mode = mode;
+    }
+
+    pub fn set_assistant_actions(
+        &mut self,
+        actions: AssistantActionProjection,
+        cx: &mut Context<Self>,
+    ) {
+        if self.assistant_actions != actions {
+            self.assistant_actions = actions;
+            cx.notify();
+        }
     }
 
     pub fn set_approval_active(&mut self, active: bool, cx: &mut Context<Self>) {

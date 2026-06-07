@@ -9,7 +9,7 @@ use gpui::{IntoElement, div, prelude::*, px};
 
 use crate::features::chat::components::message::static_streaming_cursor;
 use crate::shared::components::markdown_preview::{
-    MarkdownBlock, markdown_preview_blocks_shared_streaming, parse_markdown_blocks_shared_streaming,
+    MarkdownBlock, markdown_preview_blocks_shared_streaming,
 };
 use crate::tokens::{Tokens, element_key};
 
@@ -63,38 +63,7 @@ pub struct SealedBlockCache {
     pub sealed_end: usize,
     pub blocks: Arc<[MarkdownBlock]>,
     pub content_hash: u64,
-}
-
-impl SealedBlockCache {
-    pub fn update(&mut self, source: &str) -> Arc<[MarkdownBlock]> {
-        let (sealed, _) = split_at_seal_boundary(source);
-        let sealed_len = sealed.len();
-        if sealed_len <= self.sealed_end {
-            return Arc::clone(&self.blocks);
-        }
-
-        let hash = blake3_seal_hash(sealed);
-        if hash == self.content_hash && sealed_len == self.sealed_end {
-            return Arc::clone(&self.blocks);
-        }
-
-        self.sealed_end = sealed_len;
-        self.content_hash = hash;
-        self.blocks = parse_markdown_blocks_shared_streaming(sealed, false);
-        Arc::clone(&self.blocks)
-    }
-
-    #[allow(dead_code)]
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
-
-fn blake3_seal_hash(sealed: &str) -> u64 {
-    let hash = blake3::hash(sealed.as_bytes());
-    let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&hash.as_bytes()[..8]);
-    u64::from_le_bytes(bytes)
+    pub height: f32,
 }
 
 enum LiveRenderMode {
@@ -131,15 +100,22 @@ fn live_render_mode(tail: &str) -> LiveRenderMode {
 fn open_fence_body(tail: &str) -> &str {
     let mut in_fence = false;
     let mut body_start = 0usize;
-    for (i, line) in tail.lines().enumerate() {
+    let mut line_start = 0usize;
+    while line_start < tail.len() {
+        let line_end = tail[line_start..]
+            .find('\n')
+            .map(|offset| line_start + offset)
+            .unwrap_or(tail.len());
+        let line = &tail[line_start..line_end];
         if line.starts_with("```") {
             if !in_fence {
                 in_fence = true;
-                body_start = tail.lines().take(i + 1).map(|l| l.len() + 1).sum();
+                body_start = line_end.saturating_add(1).min(tail.len());
             } else {
                 break;
             }
         }
+        line_start = line_end.saturating_add(1);
     }
     if in_fence && body_start <= tail.len() {
         &tail[body_start..]
@@ -207,7 +183,9 @@ pub fn streaming_assistant_body(
     sealed: &SealedBlockCache,
     show_cursor: bool,
 ) -> impl IntoElement {
-    let (_, tail) = split_at_seal_boundary(source);
+    let tail = source
+        .get(sealed.sealed_end..)
+        .map_or_else(|| split_at_seal_boundary(source).1, |tail| tail);
     let has_sealed = sealed.sealed_end > 0;
 
     div()

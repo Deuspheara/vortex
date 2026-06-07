@@ -31,6 +31,82 @@ pub struct DragSession {
     pub title: String,
 }
 
+#[derive(Clone)]
+pub struct SessionRowViewModel {
+    pub conv_id: ConversationId,
+    pub title: String,
+    pub updated_at: String,
+    pub selected: bool,
+    pub indent_level: u32,
+    pub row_id: ElementId,
+    pub wrap_id: ElementId,
+    pub title_id: ElementId,
+    pub overflow_id: ElementId,
+    pub menu_key: String,
+    pub group_name: SharedString,
+}
+
+impl SessionRowViewModel {
+    pub fn new(session: &SidebarSession, selected: bool, indent_level: u32) -> Self {
+        let id = &session.id.0;
+        Self {
+            conv_id: session.id.clone(),
+            title: session.title.clone(),
+            updated_at: session.updated_at.clone(),
+            selected,
+            indent_level,
+            row_id: ElementId::from(SharedString::from(format!("session-{id}"))),
+            wrap_id: ElementId::from(SharedString::from(format!("session-wrap-{id}"))),
+            title_id: element_key("session-title", id),
+            overflow_id: element_key("session-overflow", id),
+            menu_key: format!("session-{id}"),
+            group_name: SharedString::from(format!("session-row-{id}")),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ProjectRowViewModel {
+    pub project_id: ProjectId,
+    pub name: String,
+    pub count: usize,
+    pub count_label: String,
+    pub index_badge_label: &'static str,
+    pub index_phase: IndexPhase,
+    pub expanded: bool,
+    pub row_id: ElementId,
+    pub toggle_id: ElementId,
+    pub name_id: ElementId,
+    pub new_conv_id: ElementId,
+    pub overflow_id: ElementId,
+    pub index_status_id: ElementId,
+    pub menu_key: String,
+    pub group_name: SharedString,
+}
+
+impl ProjectRowViewModel {
+    pub fn new(project: &Project, expanded: bool) -> Self {
+        let id = &project.id.0;
+        Self {
+            project_id: project.id.clone(),
+            name: project.name.clone(),
+            count: project.conversations.len(),
+            count_label: project.conversations.len().to_string(),
+            index_badge_label: project.index_status.badge_label(),
+            index_phase: project.index_status.phase,
+            expanded,
+            row_id: ElementId::from(SharedString::from(format!("project-{id}"))),
+            toggle_id: element_key("project-toggle", id),
+            name_id: element_key("project-name", id),
+            new_conv_id: element_key("new-conv", id),
+            overflow_id: element_key("project-overflow", id),
+            index_status_id: element_key("project-index-status", id),
+            menu_key: format!("project-{id}"),
+            group_name: SharedString::from(format!("project-row-{id}")),
+        }
+    }
+}
+
 impl Render for DragSession {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -133,27 +209,33 @@ fn session_menu_items(
     title: &str,
     entity: Entity<AgentWindow>,
     sidebar: Entity<SidebarView>,
-) -> Vec<SidebarRowMenuItem> {
-    let delete_entity = entity.clone();
-    let delete_sidebar = sidebar.clone();
-    let delete_id = conv_id.clone();
+) -> Rc<dyn Fn() -> Vec<SidebarRowMenuItem>> {
+    let delete_entity = entity;
+    let delete_sidebar = sidebar;
+    let delete_id = conv_id;
     let delete_title = title.to_string();
-    vec![SidebarRowMenuItem {
-        label: "Delete chat".into(),
-        icon: icons::DELETE,
-        destructive: true,
-        action: Rc::new(move |window, app| {
-            delete_sidebar.update(app, |view, cx| view.close_action_menu(cx));
-            delete_entity.update(app, |view, cx| {
-                view.confirm_delete_conversation(
-                    delete_id.clone(),
-                    delete_title.clone(),
-                    window,
-                    cx,
-                );
-            });
-        }),
-    }]
+    Rc::new(move || {
+        let delete_entity = delete_entity.clone();
+        let delete_sidebar = delete_sidebar.clone();
+        let delete_id = delete_id.clone();
+        let delete_title = delete_title.clone();
+        vec![SidebarRowMenuItem {
+            label: "Delete chat".into(),
+            icon: icons::DELETE,
+            destructive: true,
+            action: Rc::new(move |window, app| {
+                delete_sidebar.update(app, |view, cx| view.close_action_menu(cx));
+                delete_entity.update(app, |view, cx| {
+                    view.confirm_delete_conversation(
+                        delete_id.clone(),
+                        delete_title.clone(),
+                        window,
+                        cx,
+                    );
+                });
+            }),
+        }]
+    })
 }
 
 fn project_menu_items(
@@ -162,44 +244,53 @@ fn project_menu_items(
     session_count: usize,
     entity: Entity<AgentWindow>,
     sidebar: Entity<SidebarView>,
-) -> Vec<SidebarRowMenuItem> {
+) -> Rc<dyn Fn() -> Vec<SidebarRowMenuItem>> {
     let new_entity = entity.clone();
     let new_sidebar = sidebar.clone();
     let new_project_id = project_id.clone();
-    let delete_entity = entity.clone();
-    let delete_sidebar = sidebar.clone();
-    let delete_id = project_id.clone();
+    let delete_entity = entity;
+    let delete_sidebar = sidebar;
+    let delete_id = project_id;
     let delete_name = project_name.to_string();
-    vec![
-        SidebarRowMenuItem {
-            label: "Start chat".into(),
-            icon: icons::PLUS,
-            destructive: false,
-            action: Rc::new(move |_window, app| {
-                new_sidebar.update(app, |view, cx| view.close_action_menu(cx));
-                new_entity.update(app, |view, cx| {
-                    view.new_conversation_in_project(new_project_id.clone(), cx);
-                });
-            }),
-        },
-        SidebarRowMenuItem {
-            label: "Remove project".into(),
-            icon: icons::DELETE,
-            destructive: true,
-            action: Rc::new(move |window, app| {
-                delete_sidebar.update(app, |view, cx| view.close_action_menu(cx));
-                delete_entity.update(app, |view, cx| {
-                    view.confirm_delete_project(
-                        delete_id.clone(),
-                        delete_name.clone(),
-                        session_count,
-                        window,
-                        cx,
-                    );
-                });
-            }),
-        },
-    ]
+    Rc::new(move || {
+        let new_entity = new_entity.clone();
+        let new_sidebar = new_sidebar.clone();
+        let new_project_id = new_project_id.clone();
+        let delete_entity = delete_entity.clone();
+        let delete_sidebar = delete_sidebar.clone();
+        let delete_id = delete_id.clone();
+        let delete_name = delete_name.clone();
+        vec![
+            SidebarRowMenuItem {
+                label: "Start chat".into(),
+                icon: icons::PLUS,
+                destructive: false,
+                action: Rc::new(move |_window, app| {
+                    new_sidebar.update(app, |view, cx| view.close_action_menu(cx));
+                    new_entity.update(app, |view, cx| {
+                        view.new_conversation_in_project(new_project_id.clone(), cx);
+                    });
+                }),
+            },
+            SidebarRowMenuItem {
+                label: "Remove project".into(),
+                icon: icons::DELETE,
+                destructive: true,
+                action: Rc::new(move |window, app| {
+                    delete_sidebar.update(app, |view, cx| view.close_action_menu(cx));
+                    delete_entity.update(app, |view, cx| {
+                        view.confirm_delete_project(
+                            delete_id.clone(),
+                            delete_name.clone(),
+                            session_count,
+                            window,
+                            cx,
+                        );
+                    });
+                }),
+            },
+        ]
+    })
 }
 
 /// Section header label (e.g. "PROJECTS").
@@ -209,43 +300,43 @@ pub fn section_label(text: &str, first: bool) -> impl IntoElement {
 
 /// A flat, clickable session row in the sidebar tree.
 pub fn session_row(
-    conv_id: ConversationId,
-    title: &str,
-    updated_at: &str,
-    selected: bool,
-    indent_level: u32,
+    row: SessionRowViewModel,
     drop_target: &Option<SidebarDropTarget>,
     open_action_menu: &Option<String>,
     entity: Entity<AgentWindow>,
     sidebar: Entity<SidebarView>,
 ) -> impl IntoElement {
-    let title = title.to_string();
-    let updated_at = updated_at.to_string();
-    let row_id = ElementId::from(SharedString::from(format!("session-{}", conv_id.0)));
-
-    let drag_id = conv_id.clone();
-    let drag_title = title.clone();
-    let click_id = conv_id.clone();
-    let drop_target_id = conv_id.clone();
-    let hover_target_id = conv_id.clone();
+    let drag_id = row.conv_id.clone();
+    let drag_title = row.title.clone();
+    let click_id = row.conv_id.clone();
+    let drop_target_id = row.conv_id.clone();
+    let hover_target_id = row.conv_id.clone();
     let entity_drop = entity.clone();
     let entity_sidebar = sidebar.clone();
     let entity_hover = sidebar.clone();
     let entity_click = entity.clone();
-    let menu_key = format!("session-{}", conv_id.0);
-    let group_name = SharedString::from(format!("session-row-{}", conv_id.0));
-    let menu_items = session_menu_items(conv_id.clone(), &title, entity.clone(), sidebar.clone());
-    let is_menu_open = open_action_menu.as_deref() == Some(menu_key.as_str());
-    let on_menu_open_change = menu_open_handler(sidebar.clone(), menu_key.clone());
-    let menu_key_for_right = menu_key.clone();
+    let menu_items = session_menu_items(
+        row.conv_id.clone(),
+        &row.title,
+        entity.clone(),
+        sidebar.clone(),
+    );
+    let is_menu_open = open_action_menu.as_deref() == Some(row.menu_key.as_str());
+    let on_menu_open_change = menu_open_handler(sidebar.clone(), row.menu_key.clone());
+    let menu_key_for_right = row.menu_key.clone();
     let sidebar_for_right = sidebar.clone();
+    let group_name = row.group_name.clone();
+    let title = row.title.clone();
+    let updated_at = row.updated_at.clone();
+    let conv_id = row.conv_id.clone();
+    let selected = row.selected;
 
     let row_body = div()
-        .id(row_id)
+        .id(row.row_id.clone())
         .w_full()
         .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
-        .pl(Tokens::tree_indent(indent_level + 1))
+        .pl(Tokens::tree_indent(row.indent_level + 1))
         .pr(Tokens::spacing_2())
         .overflow_hidden()
         .rounded(Tokens::radius_xs())
@@ -314,7 +405,7 @@ pub fn session_row(
         )
         .child(
             div()
-                .id(element_key("session-title", &conv_id.0))
+                .id(row.title_id.clone())
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
@@ -357,7 +448,7 @@ pub fn session_row(
                             el.group_hover(group_name.clone(), |s| s.opacity(1.0))
                         })
                         .child(sidebar_overflow_menu(
-                            element_key("session-overflow", &conv_id.0),
+                            row.overflow_id.clone(),
                             group_name.clone(),
                             menu_items,
                             is_menu_open,
@@ -367,10 +458,7 @@ pub fn session_row(
         );
 
     div()
-        .id(ElementId::from(SharedString::from(format!(
-            "session-wrap-{}",
-            conv_id.0
-        ))))
+        .id(row.wrap_id.clone())
         .w_full()
         .min_w(px(0.0))
         .flex()
@@ -381,43 +469,39 @@ pub fn session_row(
 
 /// Disclosure row for a project folder.
 pub fn project_row(
-    project: &Project,
-    expanded: bool,
+    row: ProjectRowViewModel,
     open_action_menu: &Option<String>,
     entity: Entity<AgentWindow>,
     sidebar: Entity<SidebarView>,
 ) -> impl IntoElement {
-    let project_id = project.id.clone();
-    let name = project.name.clone();
-    let count = project.conversations.len();
+    let project_id = row.project_id.clone();
+    let name = row.name.clone();
+    let count = row.count;
     let entity_toggle = entity.clone();
     let entity_new = entity.clone();
-    let new_project_id = project.id.clone();
-    let hover_project_id = project.id.clone();
+    let new_project_id = row.project_id.clone();
+    let hover_project_id = row.project_id.clone();
     let entity_hover = sidebar.clone();
-    let drop_project_id = project.id.clone();
+    let drop_project_id = row.project_id.clone();
     let entity_drop = entity.clone();
     let entity_sidebar = sidebar.clone();
     let entity_context = entity.clone();
-    let menu_key = format!("project-{}", project.id.0);
-    let group_name = SharedString::from(format!("project-row-{}", project.id.0));
     let menu_items = project_menu_items(
-        project.id.clone(),
+        row.project_id.clone(),
         &name,
         count,
         entity.clone(),
         sidebar.clone(),
     );
-    let is_menu_open = open_action_menu.as_deref() == Some(menu_key.as_str());
-    let on_menu_open_change = menu_open_handler(sidebar.clone(), menu_key.clone());
-    let menu_key_for_right = menu_key.clone();
+    let is_menu_open = open_action_menu.as_deref() == Some(row.menu_key.as_str());
+    let on_menu_open_change = menu_open_handler(sidebar.clone(), row.menu_key.clone());
+    let menu_key_for_right = row.menu_key.clone();
     let sidebar_for_right = sidebar.clone();
+    let group_name = row.group_name.clone();
+    let expanded = row.expanded;
 
     div()
-        .id(ElementId::from(SharedString::from(format!(
-            "project-{}",
-            project.id.0
-        ))))
+        .id(row.row_id.clone())
         .w_full()
         .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
@@ -459,7 +543,7 @@ pub fn project_row(
         })
         .child(
             div()
-                .id(element_key("project-toggle", &project.id.0))
+                .id(row.toggle_id.clone())
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
@@ -490,7 +574,7 @@ pub fn project_row(
                 )
                 .child(
                     div()
-                        .id(element_key("project-name", &project.id.0))
+                        .id(row.name_id.clone())
                         .flex_1()
                         .min_w(px(0.0))
                         .overflow_hidden()
@@ -522,12 +606,12 @@ pub fn project_row(
                                 .flex_shrink_0()
                                 .text_size(Tokens::text_xs())
                                 .text_color(Tokens::sidebar_text_muted())
-                                .child(count.to_string()),
+                                .child(row.count_label.clone()),
                         )
                         .child(project_index_badge(
-                            &project.id.0,
-                            project.index_status.badge_label(),
-                            project.index_status.phase,
+                            row.index_status_id.clone(),
+                            row.index_badge_label,
+                            row.index_phase,
                             move |app: &mut gpui::App| {
                                 entity_context.update(app, |view, cx| {
                                     view.select_inspector_view(InspectorView::Context, cx);
@@ -548,24 +632,15 @@ pub fn project_row(
                         .when(!is_menu_open, |el| {
                             el.group_hover(group_name.clone(), |s| s.opacity(1.0))
                         })
-                        .child(
-                            btn_icon_sm(
-                                element_key("new-conv", &project.id.0.to_string()),
-                                icons::PLUS,
-                            )
-                            .on_click(
-                                move |_, _, app: &mut gpui::App| {
-                                    entity_new.update(app, |view, cx| {
-                                        view.new_conversation_in_project(
-                                            new_project_id.clone(),
-                                            cx,
-                                        );
-                                    });
-                                },
-                            ),
-                        )
+                        .child(btn_icon_sm(row.new_conv_id.clone(), icons::PLUS).on_click(
+                            move |_, _, app: &mut gpui::App| {
+                                entity_new.update(app, |view, cx| {
+                                    view.new_conversation_in_project(new_project_id.clone(), cx);
+                                });
+                            },
+                        ))
                         .child(sidebar_overflow_menu(
-                            element_key("project-overflow", &project.id.0),
+                            row.overflow_id.clone(),
                             group_name.clone(),
                             menu_items,
                             is_menu_open,
@@ -576,7 +651,7 @@ pub fn project_row(
 }
 
 fn project_index_badge(
-    project_id: &str,
+    badge_id: ElementId,
     label: &str,
     phase: IndexPhase,
     on_click: impl Fn(&mut gpui::App) + 'static,
@@ -590,7 +665,7 @@ fn project_index_badge(
     };
 
     div()
-        .id(element_key("project-index-status", project_id))
+        .id(badge_id)
         .flex_shrink_0()
         .h(px(Tokens::ROW_HEIGHT_XS))
         .px(Tokens::spacing_1p5())

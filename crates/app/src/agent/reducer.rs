@@ -1553,6 +1553,7 @@ fn event_needs_window_notify(event: &AgentEvent) -> bool {
             | AgentEvent::ToolCallUpdated { .. }
             | AgentEvent::ToolCallStarted { .. }
             | AgentEvent::ToolCallFinished { .. }
+            | AgentEvent::TodoUpdated { .. }
             | AgentEvent::PatchPreviewUpdated { .. }
             | AgentEvent::AndroidSessionUpdated { .. }
             | AgentEvent::AndroidObservationUpdated { .. }
