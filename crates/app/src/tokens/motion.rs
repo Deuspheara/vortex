@@ -12,6 +12,15 @@ use super::design_tokens::Tokens;
 /// Braille spinner frames (Unicode progress indicator).
 pub const BRAILLE_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+fn sidebar_snappy_ease(t: f32) -> f32 {
+    let inv = 1.0 - t;
+    1.0 - inv * inv * inv * inv
+}
+
+fn sidebar_expand_ease(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
 fn braille_frame(delta: f32) -> &'static str {
     let idx = (delta * BRAILLE_FRAMES.len() as f32) as usize % BRAILLE_FRAMES.len();
     BRAILLE_FRAMES[idx]
@@ -57,6 +66,14 @@ impl Motion {
     #[allow(dead_code)]
     pub fn sidebar() -> Animation {
         Animation::new(Duration::from_millis(250)).with_easing(ease_in_out)
+    }
+
+    pub fn sidebar_row() -> Animation {
+        Animation::new(Duration::from_millis(180)).with_easing(sidebar_snappy_ease)
+    }
+
+    pub fn sidebar_expand() -> Animation {
+        Animation::new(Duration::from_millis(260)).with_easing(sidebar_expand_ease)
     }
 
     #[allow(dead_code)]
@@ -117,6 +134,23 @@ pub fn sidebar_content_in(content: impl IntoElement) -> impl IntoElement {
         .child(content)
         .with_animation("sidebar-content-in", Motion::sidebar(), |el, delta| {
             el.opacity(delta)
+        })
+}
+
+/// Sidebar row entrance with a quick pickup and softer settle.
+pub fn sidebar_row_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
+    div().child(content).with_animation(id, Motion::sidebar_row(), |el, delta| {
+        el.opacity(delta).mt(px(6.0 * (1.0 - delta)))
+    })
+}
+
+/// Reveal for nested rows that appear on project expand.
+pub fn sidebar_expand_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
+    div()
+        .overflow_hidden()
+        .child(content)
+        .with_animation(id, Motion::sidebar_expand(), |el, delta| {
+            el.opacity(delta).mt(px(8.0 * (1.0 - delta)))
         })
 }
 

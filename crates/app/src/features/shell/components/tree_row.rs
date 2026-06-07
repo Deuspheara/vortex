@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::Duration;
 
 use gpui_component::Icon;
 
@@ -10,31 +9,23 @@ use crate::features::shell::components::sidebar_row_menu::{
     SidebarRowMenuItem, sidebar_overflow_menu,
 };
 use crate::features::shell::layout::SidebarView;
-use crate::features::shell::state::InspectorView;
 use crate::features::shell::state::{
-    ConversationId, IndexPhase, Project, ProjectId, SidebarDropTarget, SidebarSession,
+    ConversationId, Project, ProjectId, SidebarDropTarget, SidebarSession,
 };
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::tokens::icons;
+use crate::tokens::motion::Motion;
 use crate::tokens::{Tokens, element_key};
 use crate::ui::agent_window::AgentWindow;
 
 use gpui::{
-    Animation, AnimationExt, AppContext, Context, ElementId, Entity, FontWeight, IntoElement,
-    MouseButton, Render, SharedString, Window, div, ease_out_quint, prelude::*, px,
+    AnimationExt, AppContext, Context, ElementId, Entity, FontWeight, IntoElement, MouseButton,
+    Render, SharedString, Window, div, prelude::*, px,
 };
 
 fn sidebar_row_label_color(selected: bool) -> gpui::Hsla {
     if selected {
         Tokens::text_primary()
-    } else {
-        Tokens::sidebar_text()
-    }
-}
-
-fn sidebar_row_icon_color(selected: bool) -> gpui::Hsla {
-    if selected {
-        Tokens::accent()
     } else {
         Tokens::sidebar_text()
     }
@@ -86,37 +77,27 @@ pub struct ProjectRowViewModel {
     pub project_id: ProjectId,
     pub name: String,
     pub count: usize,
-    pub count_label: String,
-    pub index_badge_label: &'static str,
-    pub index_phase: IndexPhase,
-    pub expanded: bool,
     pub row_id: ElementId,
     pub toggle_id: ElementId,
     pub name_id: ElementId,
     pub new_conv_id: ElementId,
     pub overflow_id: ElementId,
-    pub index_status_id: ElementId,
     pub menu_key: String,
     pub group_name: SharedString,
 }
 
 impl ProjectRowViewModel {
-    pub fn new(project: &Project, expanded: bool) -> Self {
+    pub fn new(project: &Project, _expanded: bool) -> Self {
         let id = &project.id.0;
         Self {
             project_id: project.id.clone(),
             name: project.name.clone(),
             count: project.conversations.len(),
-            count_label: project.conversations.len().to_string(),
-            index_badge_label: project.index_status.badge_label(),
-            index_phase: project.index_status.phase,
-            expanded,
             row_id: ElementId::from(SharedString::from(format!("project-{id}"))),
             toggle_id: element_key("project-toggle", id),
             name_id: element_key("project-name", id),
             new_conv_id: element_key("new-conv", id),
             overflow_id: element_key("project-overflow", id),
-            index_status_id: element_key("project-index-status", id),
             menu_key: format!("project-{id}"),
             group_name: SharedString::from(format!("project-row-{id}")),
         }
@@ -167,7 +148,7 @@ fn sidebar_drop_divider(active: bool, key: &str) -> impl IntoElement {
                     .rounded(Tokens::radius_full())
                     .with_animation(
                         element_key("sidebar-drop-anim", key),
-                        Animation::new(Duration::from_millis(160)).with_easing(ease_out_quint()),
+                        Motion::sidebar_expand(),
                         |line, delta| line.opacity(delta).bg(Tokens::accent()),
                     ),
             )
@@ -347,7 +328,6 @@ pub fn session_row(
     let conv_id = row.conv_id.clone();
     let selected = row.selected;
     let hover_group = group_name.clone();
-    let icon_hover_group = group_name.clone();
 
     let row_body = div()
         .id(row.row_id.clone())
@@ -360,7 +340,6 @@ pub fn session_row(
         .rounded(Tokens::radius_xs())
         .flex()
         .items_center()
-        .gap(Tokens::spacing_2())
         .group(group_name.clone())
         .cursor_pointer()
         .when(selected, |el| {
@@ -415,24 +394,13 @@ pub fn session_row(
         })
         .child(
             div()
-                .flex_shrink_0()
-                .text_color(sidebar_row_icon_color(selected))
-                .when(!selected, |el| {
-                    el.group_hover(icon_hover_group, |s| {
-                        s.text_color(Tokens::sidebar_text_hover())
-                    })
-                })
-                .opacity(if selected { 1.0 } else { 0.72 })
-                .child(Icon::new(icons::MESSAGE_SQUARE).size(px(13.0))),
-        )
-        .child(
-            div()
                 .id(row.title_id.clone())
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
                 .truncate()
-                .text_size(Tokens::text_sm())
+                .text_size(Tokens::text_base())
+                .font_weight(FontWeight::MEDIUM)
                 .text_color(sidebar_row_label_color(selected))
                 .when(!selected, |el| {
                     el.group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
@@ -506,7 +474,6 @@ pub fn project_row(
     let drop_project_id = row.project_id.clone();
     let entity_drop = entity.clone();
     let entity_sidebar = sidebar.clone();
-    let entity_context = entity.clone();
     let menu_items = project_menu_items(
         row.project_id.clone(),
         &name,
@@ -519,16 +486,14 @@ pub fn project_row(
     let menu_key_for_right = row.menu_key.clone();
     let sidebar_for_right = sidebar.clone();
     let group_name = row.group_name.clone();
-    let expanded = row.expanded;
     let hover_group = group_name.clone();
-    let chevron_hover_group = group_name.clone();
-    let count_hover_group = group_name.clone();
 
     div()
         .id(row.row_id.clone())
         .w_full()
         .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
+        .pl(Tokens::tree_indent(1))
         .pr(Tokens::spacing_2())
         .overflow_hidden()
         .rounded(Tokens::radius_xs())
@@ -573,7 +538,7 @@ pub fn project_row(
                 .overflow_hidden()
                 .flex()
                 .items_center()
-                .gap(Tokens::spacing_1())
+                .gap(Tokens::spacing_2())
                 .cursor_pointer()
                 .on_click(move |_, _, app: &mut gpui::App| {
                     entity_toggle.update(app, |view, cx| {
@@ -581,25 +546,10 @@ pub fn project_row(
                     });
                 })
                 .child(
-                    div()
-                        .flex_shrink_0()
-                        .text_color(Tokens::sidebar_text())
-                        .group_hover(chevron_hover_group, |s| {
-                            s.text_color(Tokens::sidebar_text_hover())
-                        })
-                        .child(
-                            Icon::new(if expanded {
-                                icons::CHEVRON_DOWN
-                            } else {
-                                icons::CHEVRON_RIGHT
-                            })
-                            .size(px(12.0)),
-                        ),
-                )
-                .child(
                     Icon::new(icons::FOLDER)
                         .size(px(14.0))
                         .flex_shrink_0()
+                        .mr(Tokens::spacing_1())
                         .text_color(Tokens::sidebar_text()),
                 )
                 .child(
@@ -620,39 +570,11 @@ pub fn project_row(
             div()
                 .relative()
                 .flex_shrink_0()
+                .w(px(48.0))
                 .h(px(Tokens::ROW_HEIGHT_MD))
                 .flex()
+                .justify_end()
                 .items_center()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(Tokens::spacing_1())
-                        .opacity(if is_menu_open { 0.0 } else { 1.0 })
-                        .when(!is_menu_open, |el| {
-                            el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                        })
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .text_size(Tokens::text_xs())
-                                .text_color(Tokens::sidebar_text_muted())
-                                .group_hover(count_hover_group, |s| {
-                                    s.text_color(Tokens::sidebar_text())
-                                })
-                                .child(row.count_label.clone()),
-                        )
-                        .child(project_index_badge(
-                            row.index_status_id.clone(),
-                            row.index_badge_label,
-                            row.index_phase,
-                            move |app: &mut gpui::App| {
-                                entity_context.update(app, |view, cx| {
-                                    view.select_inspector_view(InspectorView::Context, cx);
-                                });
-                            },
-                        )),
-                )
                 .child(
                     div()
                         .absolute()
@@ -681,46 +603,6 @@ pub fn project_row(
                             on_menu_open_change,
                         )),
                 ),
-        )
-}
-
-fn project_index_badge(
-    badge_id: ElementId,
-    label: &str,
-    phase: IndexPhase,
-    on_click: impl Fn(&mut gpui::App) + 'static,
-) -> impl IntoElement {
-    let color = match phase {
-        IndexPhase::Ready => Tokens::success(),
-        IndexPhase::Failed => Tokens::danger(),
-        IndexPhase::Stale => Tokens::warning(),
-        phase if phase.is_active() => Tokens::accent(),
-        _ => Tokens::sidebar_text_muted(),
-    };
-
-    div()
-        .id(badge_id)
-        .flex_shrink_0()
-        .h(px(Tokens::ROW_HEIGHT_XS))
-        .px(Tokens::spacing_1())
-        .flex()
-        .items_center()
-        .gap(Tokens::spacing_1())
-        .cursor_pointer()
-        .opacity(0.72)
-        .hover(|s| s.opacity(1.0))
-        .on_click(move |_, _, app: &mut gpui::App| on_click(app))
-        .child(
-            div()
-                .size(Tokens::spacing_1())
-                .rounded(Tokens::radius_full())
-                .bg(color),
-        )
-        .child(
-            div()
-                .text_size(Tokens::text_xs())
-                .text_color(Tokens::sidebar_text_muted())
-                .child(label.to_string()),
         )
 }
 
