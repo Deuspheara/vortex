@@ -48,11 +48,12 @@ use crate::ui::agent_window::AgentWindow;
 use crate::ui::thread_update::{ThreadAction, ThreadEffect};
 
 const MOTION_PAUSE_MS: u64 = 250;
-const ASSISTANT_STREAM_SYNC_MS: u64 = 100;
+const ASSISTANT_STREAM_SYNC_MS: u64 = 33;
 /// Frame-aligned coalescing window for the streaming tail. Tokens that arrive within
-/// one display frame are flushed together (one commit per frame). At ~16 ms this targets
-/// 60 Hz; GPUI further coalesces the resulting `notify()`s to the display refresh.
-const STREAM_FRAME_SYNC_MS: u64 = 16;
+/// one display frame are flushed together (one commit per frame). At ~8 ms this targets
+/// 120 Hz on fast displays; GPUI further coalesces the resulting `notify()`s to the display
+/// refresh and the backpressure path widens the batch if patch cost climbs.
+const STREAM_FRAME_SYNC_MS: u64 = 8;
 /// Fallback batch when render cost is elevated (≈30 fps).
 const STREAM_BATCH_SLOW_MS: u64 = 33;
 /// Backpressure batch when render falls behind (≈15 fps).

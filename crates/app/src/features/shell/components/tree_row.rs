@@ -363,7 +363,9 @@ pub fn session_row(
         .gap(Tokens::spacing_2())
         .group(group_name.clone())
         .cursor_pointer()
-        .when(selected, |el| el.bg(Tokens::surface_active()))
+        .when(selected, |el| {
+            el.bg(Tokens::sidebar_hover_bg().blend(Tokens::accent().opacity(0.08)))
+        })
         .when(!selected, |el| {
             el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
         })
@@ -420,6 +422,7 @@ pub fn session_row(
                         s.text_color(Tokens::sidebar_text_hover())
                     })
                 })
+                .opacity(if selected { 1.0 } else { 0.72 })
                 .child(Icon::new(icons::MESSAGE_SQUARE).size(px(13.0))),
         )
         .child(
@@ -597,7 +600,7 @@ pub fn project_row(
                     Icon::new(icons::FOLDER)
                         .size(px(14.0))
                         .flex_shrink_0()
-                        .text_color(Tokens::accent()),
+                        .text_color(Tokens::sidebar_text()),
                 )
                 .child(
                     div()
@@ -699,14 +702,13 @@ fn project_index_badge(
         .id(badge_id)
         .flex_shrink_0()
         .h(px(Tokens::ROW_HEIGHT_XS))
-        .px(Tokens::spacing_1p5())
-        .rounded(Tokens::radius_full())
+        .px(Tokens::spacing_1())
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
         .cursor_pointer()
-        .opacity(0.78)
-        .hover(|s| s.opacity(1.0).bg(Tokens::surface_hover()))
+        .opacity(0.72)
+        .hover(|s| s.opacity(1.0))
         .on_click(move |_, _, app: &mut gpui::App| on_click(app))
         .child(
             div()

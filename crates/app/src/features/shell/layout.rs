@@ -32,6 +32,24 @@ enum SidebarRow {
     ProjectAppendDrop { project_id: ProjectId },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SidebarRowShape {
+    RecentHeader,
+    ProjectsHeader,
+    Session {
+        conv_id: ConversationId,
+        indent_level: u32,
+        drop_before: bool,
+    },
+    Project {
+        project_id: ProjectId,
+    },
+    ProjectAppendDrop {
+        project_id: ProjectId,
+        active: bool,
+    },
+}
+
 pub struct SidebarView {
     agent: Entity<AgentWindow>,
     projects: Vec<Project>,
@@ -332,13 +350,7 @@ impl SidebarView {
             });
         }
 
-        let row_sizes = rows
-            .iter()
-            .map(|row| size(px(Tokens::SIDEBAR_MAX_WIDTH), self.row_height(row)))
-            .collect();
-
-        self.visible_rows = rows;
-        self.row_sizes = Rc::new(row_sizes);
+        self.apply_row_state_diff(rows);
         self.cached_search_query = search_query.to_string();
         self.rows_dirty = false;
         crate::shared::render_profile::record(
@@ -354,6 +366,85 @@ impl SidebarView {
             .iter()
             .map(|row| size(px(Tokens::SIDEBAR_MAX_WIDTH), self.row_height(row)))
             .collect();
+        self.row_sizes = Rc::new(row_sizes);
+    }
+
+    fn row_shape(&self, row: &SidebarRow) -> SidebarRowShape {
+        match row {
+            SidebarRow::RecentHeader => SidebarRowShape::RecentHeader,
+            SidebarRow::ProjectsHeader { .. } => SidebarRowShape::ProjectsHeader,
+            SidebarRow::Session { row } => SidebarRowShape::Session {
+                conv_id: row.conv_id.clone(),
+                indent_level: row.indent_level,
+                drop_before: matches!(
+                    self.drop_target,
+                    Some(SidebarDropTarget::BeforeSession(ref id)) if id == &row.conv_id
+                ),
+            },
+            SidebarRow::Project { row } => SidebarRowShape::Project {
+                project_id: row.project_id.clone(),
+            },
+            SidebarRow::ProjectAppendDrop { project_id } => SidebarRowShape::ProjectAppendDrop {
+                project_id: project_id.clone(),
+                active: matches!(
+                    self.drop_target,
+                    Some(SidebarDropTarget::AppendToProject(ref id)) if id == project_id
+                ),
+            },
+        }
+    }
+
+    fn apply_row_state_diff(&mut self, rows: Vec<SidebarRow>) {
+        let old_shapes: Vec<_> = self
+            .visible_rows
+            .iter()
+            .map(|row| self.row_shape(row))
+            .collect();
+        let new_shapes: Vec<_> = rows.iter().map(|row| self.row_shape(row)).collect();
+
+        let mut prefix = 0;
+        let shared = old_shapes.len().min(new_shapes.len());
+        while prefix < shared && old_shapes[prefix] == new_shapes[prefix] {
+            prefix += 1;
+        }
+
+        let mut suffix = 0;
+        while suffix < old_shapes.len().saturating_sub(prefix)
+            && suffix < new_shapes.len().saturating_sub(prefix)
+            && old_shapes[old_shapes.len() - 1 - suffix]
+                == new_shapes[new_shapes.len() - 1 - suffix]
+        {
+            suffix += 1;
+        }
+
+        let old_sizes = self.row_sizes.as_ref();
+        let mut row_sizes = Vec::with_capacity(rows.len());
+        for row_ix in 0..rows.len() {
+            let size = if row_ix < prefix {
+                old_sizes.get(row_ix).copied().unwrap_or_else(|| {
+                    size(
+                        px(Tokens::SIDEBAR_MAX_WIDTH),
+                        self.row_height(&rows[row_ix]),
+                    )
+                })
+            } else if row_ix >= rows.len().saturating_sub(suffix) {
+                let old_ix = old_shapes.len() - (rows.len() - row_ix);
+                old_sizes.get(old_ix).copied().unwrap_or_else(|| {
+                    size(
+                        px(Tokens::SIDEBAR_MAX_WIDTH),
+                        self.row_height(&rows[row_ix]),
+                    )
+                })
+            } else {
+                size(
+                    px(Tokens::SIDEBAR_MAX_WIDTH),
+                    self.row_height(&rows[row_ix]),
+                )
+            };
+            row_sizes.push(size);
+        }
+
+        self.visible_rows = rows;
         self.row_sizes = Rc::new(row_sizes);
     }
 

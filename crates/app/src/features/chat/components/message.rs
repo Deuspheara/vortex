@@ -10,7 +10,7 @@ use gpui::{
     App, Image, ImageFormat, IntoElement, ObjectFit, StyledImage, div, img, prelude::*, px,
 };
 
-/// User turn — accent bubble on flat thread surface.
+/// User turn — flatter Zed-like row with just a subtle accent wash.
 pub fn user_message(
     text: &str,
     attachments: &[MessageAttachment],
@@ -29,16 +29,18 @@ pub fn user_message(
         .items_end()
         .child(
             div()
-                .max_w(px(Tokens::THREAD_MAX_WIDTH * 0.82))
+                .max_w(px(Tokens::THREAD_MAX_WIDTH * 0.9))
                 .relative()
                 .flex()
                 .flex_col()
                 .items_start()
                 .gap(Tokens::spacing_1())
-                .px(Tokens::spacing_3())
-                .py(Tokens::spacing_2())
-                .rounded(Tokens::radius_md())
-                .bg(Tokens::accent().opacity(0.10))
+                .pl(Tokens::spacing_3())
+                .pr(Tokens::spacing_2())
+                .py(Tokens::spacing_1p5())
+                .border_l_1()
+                .border_color(Tokens::accent().opacity(0.35))
+                .bg(Tokens::surface_hover().opacity(0.45))
                 .text_size(Tokens::text_md())
                 .line_height(Tokens::text_md_leading())
                 .text_color(Tokens::text_primary())
@@ -79,8 +81,8 @@ pub fn user_message(
                 .child(
                     div()
                         .absolute()
-                        .top(Tokens::spacing_1())
-                        .right(Tokens::spacing_1())
+                        .top(Tokens::spacing_0p5())
+                        .right(Tokens::spacing_0p5())
                         .opacity(0.0)
                         .hover(|s| s.opacity(1.0))
                         .child(btn_copy_icon_arc(
