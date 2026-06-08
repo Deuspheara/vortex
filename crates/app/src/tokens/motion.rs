@@ -63,11 +63,11 @@ impl Motion {
     }
 
     pub fn sidebar_row() -> Animation {
-        Animation::new(Duration::from_millis(180)).with_easing(sidebar_snappy_ease)
+        Animation::new(Duration::from_millis(160)).with_easing(sidebar_snappy_ease)
     }
 
     pub fn sidebar_expand() -> Animation {
-        Animation::new(Duration::from_millis(260)).with_easing(sidebar_expand_ease)
+        Animation::new(Duration::from_millis(220)).with_easing(sidebar_expand_ease)
     }
 
     #[allow(dead_code)]
@@ -136,7 +136,7 @@ pub fn sidebar_row_in(content: impl IntoElement, id: impl Into<ElementId>) -> im
     div()
         .child(content)
         .with_animation(id, Motion::sidebar_row(), |el, delta| {
-            el.opacity(delta).mt(px(6.0 * (1.0 - delta)))
+            el.opacity(delta).mt(px(4.0 * (1.0 - delta)))
         })
 }
 
@@ -145,7 +145,7 @@ pub fn sidebar_expand_in(content: impl IntoElement, id: impl Into<ElementId>) ->
     div().overflow_hidden().child(content).with_animation(
         id,
         Motion::sidebar_expand(),
-        |el, delta| el.opacity(delta).mt(px(8.0 * (1.0 - delta))),
+        |el, delta| el.opacity(delta).mt(px(5.0 * (1.0 - delta))),
     )
 }
 

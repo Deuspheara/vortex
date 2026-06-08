@@ -10,7 +10,8 @@ use gpui_component::{VirtualListScrollHandle, v_virtual_list};
 
 use crate::features::shell::components::tree_row::{
     ProjectRowViewModel, SessionRowViewModel, expanded_for_search, filter_projects,
-    filter_sidebar_sessions, project_expand_key, project_row, section_label, session_row,
+    filter_sidebar_sessions, project_expand_key, project_row, project_show_all_key,
+    project_show_more_row, section_label, session_row,
 };
 use crate::features::shell::sidebar_helpers::{
     render_app_nav, render_projects_section_header, render_sidebar_footer,
@@ -27,10 +28,22 @@ use crate::window::AppScreen;
 #[derive(Clone)]
 enum SidebarRow {
     RecentHeader,
-    ProjectsHeader { first: bool },
-    Session { row: SessionRowViewModel },
-    Project { row: ProjectRowViewModel },
-    ProjectAppendDrop { project_id: ProjectId },
+    ProjectsHeader {
+        first: bool,
+    },
+    Session {
+        row: SessionRowViewModel,
+    },
+    Project {
+        row: ProjectRowViewModel,
+    },
+    ProjectShowMore {
+        project_id: ProjectId,
+        remaining: usize,
+    },
+    ProjectAppendDrop {
+        project_id: ProjectId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,11 +58,17 @@ enum SidebarRowShape {
     Project {
         project_id: ProjectId,
     },
+    ProjectShowMore {
+        project_id: ProjectId,
+        remaining: usize,
+    },
     ProjectAppendDrop {
         project_id: ProjectId,
         active: bool,
     },
 }
+
+const PROJECT_SESSION_PREVIEW_COUNT: usize = 5;
 
 pub struct SidebarView {
     agent: Entity<AgentWindow>,
@@ -331,11 +350,40 @@ impl SidebarView {
 
             if expanded {
                 let selected = self.selected_conversation_id.as_ref();
+                let show_all =
+                    search_active || expanded_items.contains(&project_show_all_key(&project.id));
+                let mut project_sessions: Vec<&SidebarSession> = project
+                    .conversations
+                    .iter()
+                    .filter_map(|cid| session_index.get(cid).map(|&idx| &self.sessions[idx]))
+                    .collect();
+
+                if !show_all && project_sessions.len() > PROJECT_SESSION_PREVIEW_COUNT {
+                    if let Some(selected_id) = selected {
+                        if let Some(selected_ix) = project_sessions
+                            .iter()
+                            .position(|session| &session.id == selected_id)
+                        {
+                            if selected_ix >= PROJECT_SESSION_PREVIEW_COUNT {
+                                let mut preview =
+                                    project_sessions[..PROJECT_SESSION_PREVIEW_COUNT - 1].to_vec();
+                                preview.push(project_sessions[selected_ix]);
+                                project_sessions = preview;
+                            } else {
+                                project_sessions.truncate(PROJECT_SESSION_PREVIEW_COUNT);
+                            }
+                        } else {
+                            project_sessions.truncate(PROJECT_SESSION_PREVIEW_COUNT);
+                        }
+                    } else {
+                        project_sessions.truncate(PROJECT_SESSION_PREVIEW_COUNT);
+                    }
+                }
+
+                let visible_count = project_sessions.len();
                 rows.extend(
-                    project
-                        .conversations
-                        .iter()
-                        .filter_map(|cid| session_index.get(cid).map(|&idx| &self.sessions[idx]))
+                    project_sessions
+                        .into_iter()
                         .map(|session| SidebarRow::Session {
                             row: SessionRowViewModel::new(
                                 session,
@@ -344,6 +392,14 @@ impl SidebarView {
                             ),
                         }),
                 );
+
+                let remaining = project.conversations.len().saturating_sub(visible_count);
+                if expanded && !search_active && remaining > 0 {
+                    rows.push(SidebarRow::ProjectShowMore {
+                        project_id: project.id.clone(),
+                        remaining,
+                    });
+                }
             }
 
             rows.push(SidebarRow::ProjectAppendDrop {
@@ -384,6 +440,13 @@ impl SidebarView {
             },
             SidebarRow::Project { row } => SidebarRowShape::Project {
                 project_id: row.project_id.clone(),
+            },
+            SidebarRow::ProjectShowMore {
+                project_id,
+                remaining,
+            } => SidebarRowShape::ProjectShowMore {
+                project_id: project_id.clone(),
+                remaining: *remaining,
             },
             SidebarRow::ProjectAppendDrop { project_id } => SidebarRowShape::ProjectAppendDrop {
                 project_id: project_id.clone(),
@@ -513,6 +576,10 @@ impl SidebarView {
                 )
                 .into_any_element()
             }
+            SidebarRow::ProjectShowMore {
+                project_id,
+                remaining,
+            } => project_show_more_row(project_id, remaining, entity).into_any_element(),
             SidebarRow::ProjectAppendDrop { project_id } => {
                 crate::features::shell::components::tree_row::project_append_drop_zone(
                     &project_id,
@@ -541,6 +608,7 @@ impl SidebarView {
                 }
             }
             SidebarRow::Project { .. } => px(Tokens::ROW_HEIGHT_MD),
+            SidebarRow::ProjectShowMore { .. } => px(Tokens::ROW_HEIGHT_MD),
             SidebarRow::ProjectAppendDrop { project_id } => {
                 let active = matches!(
                     self.drop_target,

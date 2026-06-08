@@ -7,7 +7,7 @@ use gpui::{Context, Window};
 use super::super::AgentWindow;
 use crate::agent::paths::git_local_branches;
 use crate::agent::{AgentBridge, ui_conversation_id, ui_project_id};
-use crate::features::shell::components::tree_row::project_expand_key;
+use crate::features::shell::components::tree_row::{project_expand_key, project_show_all_key};
 use crate::features::shell::state::{Conversation, ConversationId, Project, ProjectId};
 
 impl AgentWindow {
@@ -37,8 +37,21 @@ impl AgentWindow {
         let key = project_expand_key(&project_id);
         if self.expanded_items.contains(&key) {
             self.expanded_items.remove(&key);
+            self.expanded_items
+                .remove(&project_show_all_key(&project_id));
         } else {
             self.expanded_items.insert(key);
+        }
+        self.sync_sidebar_view(cx);
+    }
+
+    pub fn toggle_project_show_all(&mut self, project_id: ProjectId, cx: &mut Context<Self>) {
+        let key = project_show_all_key(&project_id);
+        if self.expanded_items.contains(&key) {
+            self.expanded_items.remove(&key);
+        } else {
+            self.expanded_items.insert(key);
+            self.expanded_items.insert(project_expand_key(&project_id));
         }
         self.sync_sidebar_view(cx);
     }

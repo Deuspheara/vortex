@@ -9,16 +9,17 @@ pub fn sidebar_section_label(title: &str, first: bool) -> impl IntoElement {
     let title = title.to_string();
     div()
         .pt(if first {
-            Tokens::spacing_0p5()
+            Tokens::spacing_1()
         } else {
-            Tokens::spacing_3()
+            Tokens::spacing_4()
         })
-        .pb(Tokens::spacing_1())
+        .pb(Tokens::spacing_1p5())
         .child(
             div()
                 .text_size(Tokens::text_xs())
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(Tokens::sidebar_text_muted())
+                .opacity(0.9)
                 .child(title),
         )
 }
@@ -35,16 +36,17 @@ pub fn sidebar_section_label_with_action(
         .items_center()
         .justify_between()
         .pt(if first {
-            Tokens::spacing_0p5()
+            Tokens::spacing_1()
         } else {
-            Tokens::spacing_3()
+            Tokens::spacing_4()
         })
-        .pb(Tokens::spacing_1())
+        .pb(Tokens::spacing_1p5())
         .child(
             div()
                 .text_size(Tokens::text_xs())
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(Tokens::sidebar_text_muted())
+                .opacity(0.9)
                 .child(title),
         )
         .child(trailing)

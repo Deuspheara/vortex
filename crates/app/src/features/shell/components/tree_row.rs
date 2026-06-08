@@ -16,11 +16,14 @@ use crate::shared::components::buttons::btn_icon_sm;
 use crate::tokens::icons;
 use crate::tokens::motion::Motion;
 use crate::tokens::{Tokens, element_key};
+
+const SESSION_META_WIDTH: f32 = 36.0;
+const PROJECT_META_WIDTH: f32 = 64.0;
 use crate::ui::agent_window::AgentWindow;
 
 use gpui::{
     AnimationExt, AppContext, Context, ElementId, Entity, FontWeight, IntoElement, MouseButton,
-    Render, SharedString, Window, div, prelude::*, px,
+    Render, SharedString, TextAlign, Window, div, prelude::*, px,
 };
 
 fn sidebar_row_label_color(selected: bool) -> gpui::Hsla {
@@ -29,6 +32,10 @@ fn sidebar_row_label_color(selected: bool) -> gpui::Hsla {
     } else {
         Tokens::sidebar_text()
     }
+}
+
+fn sidebar_session_selected_bg() -> gpui::Hsla {
+    Tokens::surface_hover().blend(Tokens::text_primary().opacity(0.03))
 }
 
 /// Drag payload for reordering / moving sidebar sessions.
@@ -192,6 +199,10 @@ pub fn project_expand_key(project_id: &ProjectId) -> String {
     format!("project-{}", project_id.0)
 }
 
+pub fn project_show_all_key(project_id: &ProjectId) -> String {
+    format!("project-show-all-{}", project_id.0)
+}
+
 fn menu_open_handler(
     sidebar: Entity<SidebarView>,
     menu_key: String,
@@ -339,12 +350,12 @@ pub fn session_row(
         .pl(Tokens::tree_indent(row.indent_level + 1))
         .pr(Tokens::spacing_2())
         .overflow_hidden()
-        .rounded(Tokens::radius_xs())
+        .rounded(Tokens::radius_md())
         .flex()
         .items_center()
         .group(group_name.clone())
         .cursor_pointer()
-        .when(selected, |el| el.bg(Tokens::sidebar_selected_bg()))
+        .when(selected, |el| el.bg(sidebar_session_selected_bg()))
         .when(!selected, |el| {
             el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
         })
@@ -394,47 +405,63 @@ pub fn session_row(
         })
         .child(
             div()
-                .id(row.title_id.clone())
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
-                .pr(Tokens::spacing_2())
-                .truncate()
-                .text_size(Tokens::text_sm())
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(sidebar_row_label_color(selected))
-                .when(!selected, |el| {
-                    el.group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
-                })
-                .child(title),
+                .flex()
+                .items_center()
+                .child(
+                    div()
+                        .id(row.title_id.clone())
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .max_w_full()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .text_size(Tokens::text_sm())
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(sidebar_row_label_color(selected))
+                        .when(!selected, |el| {
+                            el.group_hover(hover_group, |s| {
+                                s.text_color(Tokens::sidebar_text_hover())
+                            })
+                        })
+                        .child(title),
+                ),
         )
         .child(
             div()
                 .relative()
+                .w(px(SESSION_META_WIDTH))
+                .h_full()
                 .flex_shrink_0()
-                .w(px(64.0))
-                .h(px(Tokens::ROW_HEIGHT_MD))
-                .flex()
-                .items_center()
-                .justify_end()
                 .child(
                     div()
                         .absolute()
-                        .left(px(-28.0))
                         .top_0()
+                        .right_0()
                         .bottom_0()
-                        .w(px(32.0))
-                        .bg(Tokens::sidebar_time_fade_gradient(selected)),
-                )
-                .child(
-                    div()
-                        .text_size(Tokens::text_xs())
-                        .text_color(Tokens::sidebar_text_muted())
-                        .opacity(if is_menu_open { 0.0 } else { 1.0 })
-                        .when(!is_menu_open, |el| {
-                            el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                        })
-                        .child(updated_at),
+                        .left_0()
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            div()
+                                .w_full()
+                                .min_w(px(0.0))
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_size(Tokens::text_xs())
+                                .text_color(Tokens::sidebar_text_muted())
+                                .text_align(TextAlign::Right)
+                                .opacity(if is_menu_open { 0.0 } else { 1.0 })
+                                .when(!is_menu_open, |el| {
+                                    el.group_hover(group_name.clone(), |s| s.opacity(0.0))
+                                })
+                                .child(updated_at),
+                        ),
                 )
                 .child(
                     div()
@@ -444,10 +471,7 @@ pub fn session_row(
                         .bottom_0()
                         .flex()
                         .items_center()
-                        .opacity(if is_menu_open { 1.0 } else { 0.0 })
-                        .when(!is_menu_open, |el| {
-                            el.group_hover(group_name.clone(), |s| s.opacity(1.0))
-                        })
+                        .justify_end()
                         .child(sidebar_overflow_menu(
                             row.overflow_id.clone(),
                             group_name.clone(),
@@ -499,23 +523,22 @@ pub fn project_row(
     let sidebar_for_right = sidebar.clone();
     let group_name = row.group_name.clone();
     let hover_group = group_name.clone();
-    let expanded = row.expanded;
 
     div()
         .id(row.row_id.clone())
         .w_full()
         .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
-        .pl(Tokens::tree_indent(1))
+        .pl(Tokens::spacing_1())
         .pr(Tokens::spacing_2())
         .overflow_hidden()
-        .rounded(Tokens::radius_xs())
+        .rounded(Tokens::radius_sm())
         .flex()
         .items_center()
-        .gap(Tokens::spacing_1())
+        .gap(Tokens::spacing_1p5())
         .group(group_name.clone())
         .cursor_pointer()
-        .hover(|s| s.bg(Tokens::sidebar_hover_bg()))
+        .hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.72)))
         .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
             sidebar_for_right.update(app, |view, cx| {
                 view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
@@ -551,23 +574,13 @@ pub fn project_row(
                 .overflow_hidden()
                 .flex()
                 .items_center()
-                .gap(Tokens::spacing_2())
+                .gap(Tokens::spacing_1p5())
                 .cursor_pointer()
                 .on_click(move |_, _, app: &mut gpui::App| {
                     entity_toggle.update(app, |view, cx| {
                         view.toggle_project(project_id.clone(), cx);
                     });
                 })
-                .child(
-                    Icon::new(if expanded {
-                        icons::CHEVRON_DOWN
-                    } else {
-                        icons::CHEVRON_RIGHT
-                    })
-                    .size(px(13.0))
-                    .flex_shrink_0()
-                    .text_color(Tokens::sidebar_text_muted()),
-                )
                 .child(
                     Icon::new(icons::FOLDER)
                         .size(px(14.0))
@@ -580,7 +593,8 @@ pub fn project_row(
                         .flex_1()
                         .min_w(px(0.0))
                         .overflow_hidden()
-                        .truncate()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(Tokens::text_primary())
@@ -591,22 +605,36 @@ pub fn project_row(
         .child(
             div()
                 .relative()
+                .w(px(PROJECT_META_WIDTH))
+                .h_full()
                 .flex_shrink_0()
-                .w(px(72.0))
-                .h(px(Tokens::ROW_HEIGHT_MD))
-                .flex()
-                .justify_end()
-                .items_center()
                 .child(
                     div()
-                        .text_size(Tokens::text_xs())
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(Tokens::sidebar_text_muted())
-                        .opacity(if is_menu_open { 0.0 } else { 1.0 })
-                        .when(!is_menu_open, |el| {
-                            el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                        })
-                        .child(count.to_string()),
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .bottom_0()
+                        .left_0()
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            div()
+                                .w_full()
+                                .min_w(px(0.0))
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_size(Tokens::text_xs())
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(Tokens::sidebar_text_muted())
+                                .text_align(TextAlign::Right)
+                                .opacity(if is_menu_open { 0.0 } else { 1.0 })
+                                .when(!is_menu_open, |el| {
+                                    el.group_hover(group_name.clone(), |s| s.opacity(0.0))
+                                })
+                                .child(count.to_string()),
+                        ),
                 )
                 .child(
                     div()
@@ -616,7 +644,8 @@ pub fn project_row(
                         .bottom_0()
                         .flex()
                         .items_center()
-                        .gap(Tokens::spacing_1())
+                        .justify_end()
+                        .gap(Tokens::spacing_0p5())
                         .opacity(if is_menu_open { 1.0 } else { 0.0 })
                         .when(!is_menu_open, |el| {
                             el.group_hover(group_name.clone(), |s| s.opacity(1.0))
@@ -637,6 +666,36 @@ pub fn project_row(
                         )),
                 ),
         )
+}
+
+pub fn project_show_more_row(
+    project_id: ProjectId,
+    remaining: usize,
+    entity: Entity<AgentWindow>,
+) -> impl IntoElement {
+    div()
+        .id(element_key("project-show-more", &project_id.0))
+        .w_full()
+        .h(px(Tokens::ROW_HEIGHT_MD))
+        .pl(Tokens::tree_indent(2))
+        .pr(Tokens::spacing_2())
+        .rounded(Tokens::radius_sm())
+        .flex()
+        .items_center()
+        .cursor_pointer()
+        .text_size(Tokens::text_sm())
+        .text_color(Tokens::sidebar_text_muted())
+        .hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.55)))
+        .on_click(move |_, _, app: &mut gpui::App| {
+            entity.update(app, |view, cx| {
+                view.toggle_project_show_all(project_id.clone(), cx);
+            });
+        })
+        .child(if remaining == 1 {
+            "Show 1 more".to_string()
+        } else {
+            format!("Show {remaining} more")
+        })
 }
 
 /// Drop zone appended after a project's sessions (insert at end).
