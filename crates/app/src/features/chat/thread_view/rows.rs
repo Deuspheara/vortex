@@ -270,6 +270,13 @@ impl ThreadView {
                 let toggle_id = id.clone();
                 let agent_toggle = agent.clone();
                 let agent_select = agent.clone();
+                let agent_open = agent.clone();
+                let on_open_file: OpenToolFileCallback =
+                    Arc::new(move |path, line_range, app: &mut gpui::App| {
+                        agent_open.update(app, |view, cx| {
+                            view.open_file_in_external_editor(&path, line_range, cx);
+                        });
+                    });
                 render_tool_header_row(
                     id,
                     tool_name,
@@ -280,6 +287,7 @@ impl ThreadView {
                     animate,
                     group_pos,
                     change_counts,
+                    Some(on_open_file),
                     move |app: &mut gpui::App| {
                         agent_select.update(app, |view, cx| {
                             view.select_tool_artifact(&toggle_id, cx);
@@ -288,6 +296,54 @@ impl ThreadView {
                             view.toggle_thread_item(&toggle_id, cx);
                         });
                     },
+                )
+                .into_any_element()
+            }
+            RowRef::ToolDetailLine { line_ix, .. } => {
+                let Some(ThreadItem::ToolCall {
+                    id: _,
+                    tool_name,
+                    command,
+                    output,
+                    status,
+                    ..
+                }) = item
+                else {
+                    return div().into_any_element();
+                };
+                let preview = if matches!(
+                    status,
+                    crate::features::shell::state::AgentStatus::WaitingApproval
+                ) {
+                    output.as_deref().or(command.as_deref())
+                } else {
+                    command.as_deref()
+                };
+                let running = matches!(
+                    status,
+                    crate::features::shell::state::AgentStatus::RunningTool
+                );
+                let display_label = agent.read_with(cx, |window, _| {
+                    window.tool_row_label(tool_name, preview, running)
+                });
+                let details = tool_call_detail_rows(tool_name, &display_label, preview, status);
+                let Some(detail) = details.get(line_ix as usize).cloned() else {
+                    return div().into_any_element();
+                };
+                let agent_open = agent.clone();
+                let on_open_file: OpenToolFileCallback =
+                    Arc::new(move |path, line_range, app: &mut gpui::App| {
+                        agent_open.update(app, |view, cx| {
+                            view.open_file_in_external_editor(&path, line_range, cx);
+                        });
+                    });
+                activity_group_wrap(
+                    render_tool_detail_line_row(
+                        &format!("tool-{item_ix}-detail-{line_ix}"),
+                        detail,
+                        Some(on_open_file),
+                    ),
+                    group_pos,
                 )
                 .into_any_element()
             }
@@ -945,6 +1001,7 @@ pub(crate) fn stable_row_id(row_ref: RowRef, item: Option<&ThreadItem>) -> Strin
         }
         RowRef::ReasoningBody { .. } => format!("reasoning-body-{item_id}"),
         RowRef::ToolHeader { .. } => format!("tool-header-{item_id}"),
+        RowRef::ToolDetailLine { line_ix, .. } => format!("tool-detail-{item_id}-{line_ix}"),
         RowRef::ToolOutputLine { line_ix, .. } => format!("tool-line-{item_id}-{line_ix}"),
         RowRef::ToolOutputTruncated { .. } => format!("tool-truncated-{item_id}"),
         RowRef::DiffHeader { .. } => format!("diff-header-{item_id}"),

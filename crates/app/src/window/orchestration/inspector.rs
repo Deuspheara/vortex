@@ -1,8 +1,12 @@
 //! Inspector orchestration — set_inspector_mode, select_inspector_view, select_artifact, select_tool_artifact.
 
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
 use gpui::Context;
 
 use super::super::AgentWindow;
+use crate::features::agent_activity::components::tool_call::ToolLineRange;
 use crate::features::shell::state::{
     ArtifactId, ArtifactKind, ArtifactSelection, DockPlacement, InspectorMode, InspectorTabId,
     InspectorTabKind, InspectorView, ReviewPanelTab, ThreadItem,
@@ -157,6 +161,44 @@ impl AgentWindow {
             }
         }
         self.select_artifact(artifact_id, cx);
+    }
+
+    pub fn open_file_in_external_editor(
+        &mut self,
+        path: &str,
+        _line_range: Option<ToolLineRange>,
+        cx: &mut Context<Self>,
+    ) {
+        let target = self.resolve_external_editor_path(path);
+        if !target.exists() {
+            tracing::warn!(
+                path = %path,
+                resolved = %target.display(),
+                "tool file link target does not exist"
+            );
+            cx.notify();
+            return;
+        }
+
+        if let Err(error) = open_path_with_default_editor(&target) {
+            tracing::warn!(
+                path = %path,
+                resolved = %target.display(),
+                error = %error,
+                "failed to open tool file link in external editor"
+            );
+        }
+        cx.notify();
+    }
+
+    fn resolve_external_editor_path(&self, path: &str) -> PathBuf {
+        let target = Path::new(path);
+        if target.is_absolute() {
+            return target.to_path_buf();
+        }
+        self.selected_project()
+            .map(|project| Path::new(&project.root_path).join(target))
+            .unwrap_or_else(|| target.to_path_buf())
     }
 
     pub fn select_subagent_tab(&mut self, item_id: &str, cx: &mut Context<Self>) {
@@ -319,5 +361,29 @@ impl AgentWindow {
             }
             None => cx.notify(),
         }
+    }
+}
+
+fn open_path_with_default_editor(path: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open").arg(path).spawn()?.wait()?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(path)
+            .spawn()?
+            .wait()?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open").arg(path).spawn()?.wait()?;
+        return Ok(());
     }
 }

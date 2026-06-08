@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use gpui::{Pixels, Size, px, size};
 
+use crate::features::agent_activity::components::tool_call::tool_call_detail_row_count;
 use crate::features::chat::layout::{
     self, APPROVAL_H, DIFF_FILE_H, HEADER_H, LINE_H, PLAN_STATUS_H, REASONING_BODY_MAX_H,
     RUN_ERROR_TITLE_H, SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
@@ -122,6 +123,7 @@ pub enum RowRef {
     ReasoningPreviewLine { item_ix: u32, line_ix: u16 },
     ReasoningBody { item_ix: u32 },
     ToolHeader { item_ix: u32 },
+    ToolDetailLine { item_ix: u32, line_ix: u16 },
     ToolOutputLine { item_ix: u32, line_ix: u16 },
     ToolOutputTruncated { item_ix: u32 },
     DiffHeader { item_ix: u32 },
@@ -145,6 +147,7 @@ impl RowRef {
             | RowRef::ReasoningPreviewLine { item_ix, .. }
             | RowRef::ReasoningBody { item_ix }
             | RowRef::ToolHeader { item_ix }
+            | RowRef::ToolDetailLine { item_ix, .. }
             | RowRef::ToolOutputLine { item_ix, .. }
             | RowRef::ToolOutputTruncated { item_ix }
             | RowRef::DiffHeader { item_ix }
@@ -270,6 +273,7 @@ pub fn row_height_with_collapsed(
                 + estimate_assistant_height(summary).min(REASONING_BODY_MAX_H)
                 + gap
         }
+        RowRef::ToolDetailLine { .. } => LINE_H,
         RowRef::ReasoningPreviewLine { item_ix, line_ix }
         | RowRef::ToolOutputLine { item_ix, line_ix } => {
             line_height_for(items, item_ix, line_ix as usize)
@@ -636,11 +640,21 @@ pub fn row_refs_for_item_with_mode(
             ..
         } => reasoning_refs_with_mode(item_ix, summary, *expanded, status, mode),
         ThreadItem::ToolCall {
+            tool_name,
+            command,
             output,
             expanded,
             status,
             ..
-        } => tool_refs_with_mode(item_ix, output.as_deref(), *expanded, status, mode),
+        } => tool_refs_with_mode(
+            item_ix,
+            tool_name,
+            command.as_deref(),
+            output.as_deref(),
+            *expanded,
+            status,
+            mode,
+        ),
         ThreadItem::DiffSummary {
             files, expanded, ..
         } => diff_refs(item_ix, files, *expanded),
@@ -724,6 +738,8 @@ fn reasoning_refs(
 
 fn tool_refs_with_mode(
     item_ix: u32,
+    tool_name: &str,
+    command: Option<&str>,
     output: Option<&str>,
     expanded: bool,
     status: &AgentStatus,
@@ -732,6 +748,12 @@ fn tool_refs_with_mode(
     let mut rows = vec![RowRef::ToolHeader { item_ix }];
     if !expanded || !mode.shows_tool_output_rows() {
         return rows;
+    }
+    for line_ix in 0..tool_call_detail_row_count(tool_name, command, status) {
+        rows.push(RowRef::ToolDetailLine {
+            item_ix,
+            line_ix: line_ix as u16,
+        });
     }
     tool_output_rows(item_ix, output, status, &mut rows);
     rows

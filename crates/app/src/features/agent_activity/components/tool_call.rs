@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use gpui::{App, FontWeight, IntoElement, div, prelude::*, px};
+use gpui::{App, FontWeight, IntoElement, MouseButton, div, prelude::*, px};
 
 use crate::features::agent_activity::components::{
     activity_output_line_row, activity_truncated_row_with_trailing,
@@ -29,11 +29,15 @@ fn is_raw_json_fragment(s: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ToolCallSummary {
+pub struct ToolCallSummary {
     verb: String,
     primary: String,
     secondary: Option<String>,
     primary_mono: bool,
+    pub target_path: Option<String>,
+    pub line_range: Option<ToolLineRange>,
+    pub detail_rows: Vec<ToolCallDetailRow>,
+    pub expandable: bool,
 }
 
 impl ToolCallSummary {
@@ -48,9 +52,49 @@ impl ToolCallSummary {
             primary: primary.into(),
             secondary,
             primary_mono,
+            target_path: None,
+            line_range: None,
+            detail_rows: Vec::new(),
+            expandable: false,
         }
     }
+
+    fn with_target(mut self, path: impl Into<String>, line_range: Option<ToolLineRange>) -> Self {
+        self.target_path = Some(path.into());
+        self.line_range = line_range;
+        self
+    }
+
+    fn with_detail_rows(mut self, detail_rows: Vec<ToolCallDetailRow>) -> Self {
+        self.expandable = !detail_rows.is_empty();
+        self.detail_rows = detail_rows;
+        self
+    }
 }
+
+pub type ToolLineRange = (Option<u32>, Option<u32>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolCallDetailRow {
+    File {
+        verb: String,
+        path: String,
+        line_range: Option<ToolLineRange>,
+        metadata: Option<String>,
+    },
+    Command {
+        label: String,
+        command: String,
+        context: Option<String>,
+    },
+    Text {
+        label: String,
+        value: String,
+        metadata: Option<String>,
+    },
+}
+
+pub type OpenToolFileCallback = Arc<dyn Fn(String, Option<ToolLineRange>, &mut App) + 'static>;
 
 fn clean_command(command: Option<&str>) -> Option<&str> {
     command
@@ -81,9 +125,11 @@ fn tool_call_summary(
             command,
             display_label,
         ),
-        "list_files" | "related_files" | "repo_map" => {
-            list_summary(if running { "Listing" } else { "Listed" }, command)
-        }
+        "list_files" | "related_files" | "repo_map" => list_summary(
+            if running { "Listing" } else { "Listed" },
+            command,
+            display_label,
+        ),
         "search_project" | "find_symbol" => search_summary(
             if running { "Searching" } else { "Searched" },
             command,
@@ -144,50 +190,116 @@ fn tool_call_summary(
     }
 }
 
+pub fn tool_call_detail_rows(
+    tool_name: &str,
+    display_label: &str,
+    command: Option<&str>,
+    status: &AgentStatus,
+) -> Vec<ToolCallDetailRow> {
+    tool_call_summary(tool_name, display_label, command, status).detail_rows
+}
+
+pub fn tool_call_detail_row_count(
+    tool_name: &str,
+    command: Option<&str>,
+    status: &AgentStatus,
+) -> usize {
+    tool_call_summary(tool_name, "", command, status)
+        .detail_rows
+        .len()
+}
+
 fn file_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
     let raw = command.unwrap_or_else(|| label_remainder(display_label).unwrap_or("file"));
-    let (path, range) = split_line_range(raw);
+    let (path, line_range, range_label) = split_line_range(raw);
     let primary = file_name(path).unwrap_or(path).to_string();
     let mut secondary = Vec::new();
-    if let Some(range) = range {
-        secondary.push(range.to_string());
+    if let Some(range) = range_label.clone() {
+        secondary.push(range);
     }
     if let Some(parent) = parent_path(path) {
         secondary.push(parent.to_string());
     }
     ToolCallSummary::new(verb, primary, join_secondary(secondary), false)
+        .with_target(path.to_string(), line_range)
+        .with_detail_rows(vec![ToolCallDetailRow::File {
+            verb: verb.to_string(),
+            path: path.to_string(),
+            line_range,
+            metadata: range_label,
+        }])
 }
 
-fn list_summary(verb: &str, command: Option<&str>) -> ToolCallSummary {
+fn list_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
     let Some(command) = command else {
-        return ToolCallSummary::new(verb, "files", None, false);
+        return ToolCallSummary::new(verb, "files", None, false).with_detail_rows(vec![
+            ToolCallDetailRow::Text {
+                label: verb.to_string(),
+                value: label_remainder(display_label)
+                    .unwrap_or("files")
+                    .to_string(),
+                metadata: None,
+            },
+        ]);
     };
     let (primary, secondary) = split_first_meta(command);
-    ToolCallSummary::new(verb, primary, secondary, false)
+    ToolCallSummary::new(verb, primary.clone(), secondary.clone(), false).with_detail_rows(vec![
+        ToolCallDetailRow::Text {
+            label: verb.to_string(),
+            value: primary,
+            metadata: secondary,
+        },
+    ])
 }
 
 fn search_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
     let raw = command.unwrap_or_else(|| label_remainder(display_label).unwrap_or("project"));
     let (primary, secondary) = split_first_meta(raw);
-    ToolCallSummary::new(verb, quote_if_plain(primary), secondary, false)
+    ToolCallSummary::new(
+        verb,
+        quote_if_plain(primary.clone()),
+        secondary.clone(),
+        false,
+    )
+    .with_detail_rows(vec![ToolCallDetailRow::Text {
+        label: verb.to_string(),
+        value: quote_if_plain(primary),
+        metadata: secondary,
+    }])
 }
 
 fn command_summary(verb: &str, command: Option<&str>, context: Option<&str>) -> ToolCallSummary {
+    let command_preview = command
+        .map(|cmd| trim_to_chars(cmd, 140))
+        .unwrap_or_else(|| "command".to_string());
     ToolCallSummary::new(
         verb,
-        command
-            .map(|cmd| trim_to_chars(cmd, 140))
-            .unwrap_or_else(|| "command".to_string()),
+        command_preview.clone(),
         context.map(str::to_string),
         true,
     )
+    .with_detail_rows(vec![ToolCallDetailRow::Command {
+        label: if verb == "Ran" {
+            "Command executed:".to_string()
+        } else {
+            "Command:".to_string()
+        },
+        command: command_preview,
+        context: context.map(str::to_string),
+    }])
 }
 
 fn web_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
     let raw = command.unwrap_or_else(|| label_remainder(display_label).unwrap_or("URL"));
     let primary = url_host(raw).unwrap_or_else(|| trim_to_chars(raw, 96));
     let secondary = (primary != raw).then(|| trim_to_chars(raw, 96));
-    ToolCallSummary::new(verb, primary, secondary, false)
+    ToolCallSummary::new(verb, primary.clone(), secondary.clone(), false).with_detail_rows(vec![
+        ToolCallDetailRow::Text {
+            label: verb.to_string(),
+            value: primary,
+            metadata: secondary,
+        },
+    ])
 }
 
 fn android_summary(
@@ -226,17 +338,28 @@ fn android_summary(
         None,
         false,
     )
+    .with_detail_rows(vec![ToolCallDetailRow::Text {
+        label: verb.to_string(),
+        value: command
+            .map(|cmd| trim_to_chars(cmd, 96))
+            .or_else(|| label_remainder(display_label).map(str::to_string))
+            .unwrap_or_else(|| fallback_primary.to_string()),
+        metadata: None,
+    }])
 }
 
 fn fallback_summary(display_label: &str, command: Option<&str>) -> ToolCallSummary {
     let (verb, rest) = split_verb(display_label);
-    ToolCallSummary::new(
-        verb,
-        rest.or_else(|| command.map(str::to_string))
-            .unwrap_or_else(|| "tool".to_string()),
-        None,
-        false,
-    )
+    let primary = rest
+        .or_else(|| command.map(str::to_string))
+        .unwrap_or_else(|| "tool".to_string());
+    ToolCallSummary::new(verb.clone(), primary.clone(), None, false).with_detail_rows(vec![
+        ToolCallDetailRow::Text {
+            label: verb,
+            value: primary,
+            metadata: None,
+        },
+    ])
 }
 
 fn split_verb(label: &str) -> (String, Option<String>) {
@@ -271,15 +394,41 @@ fn split_first_meta(value: &str) -> (String, Option<String>) {
     }
 }
 
-fn split_line_range(path: &str) -> (&str, Option<&str>) {
+fn split_line_range(path: &str) -> (&str, Option<ToolLineRange>, Option<String>) {
     let Some((base, suffix)) = path.rsplit_once(':') else {
-        return (path, None);
+        return (path, None, None);
     };
-    let line_range = suffix.chars().all(|c| c.is_ascii_digit() || c == '-') && suffix.contains('-');
-    if line_range {
-        (base, Some(suffix))
+    let Some(range) = parse_line_range(suffix) else {
+        return (path, None, None);
+    };
+    (base, Some(range), Some(suffix.to_string()))
+}
+
+fn parse_line_range(value: &str) -> Option<ToolLineRange> {
+    if value.is_empty() || !value.chars().all(|c| c.is_ascii_digit() || c == '-') {
+        return None;
+    }
+    if let Some((start, end)) = value.split_once('-') {
+        let start = parse_optional_line(start)?;
+        let end = parse_optional_line(end)?;
+        if start.is_none() && end.is_none() {
+            None
+        } else {
+            Some((start, end))
+        }
     } else {
-        (path, None)
+        value
+            .parse::<u32>()
+            .ok()
+            .map(|line| (Some(line), Some(line)))
+    }
+}
+
+fn parse_optional_line(value: &str) -> Option<Option<u32>> {
+    if value.is_empty() {
+        Some(None)
+    } else {
+        value.parse::<u32>().ok().map(Some)
     }
 }
 
@@ -334,11 +483,12 @@ pub fn render_tool_header_row(
     tool_name: &str,
     display_label: &str,
     command: Option<&str>,
-    _expanded: bool,
+    expanded: bool,
     status: &AgentStatus,
     animate: bool,
     group_pos: Option<ActivityGroupPos>,
     change_counts: Option<(usize, usize)>,
+    on_open_file: Option<OpenToolFileCallback>,
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
     let summary = tool_call_summary(tool_name, display_label, command, status);
@@ -350,8 +500,15 @@ pub fn render_tool_header_row(
             .flex_col()
             .child(timeline_row(
                 element_key("tool-header", item_id),
-                render_tool_summary(item_id, summary, is_running(status), animate)
-                    .into_any_element(),
+                render_tool_summary(
+                    item_id,
+                    summary,
+                    expanded,
+                    is_running(status),
+                    animate,
+                    on_open_file,
+                )
+                .into_any_element(),
                 change_counts_badge(item_id, change_counts).into_any_element(),
                 move |_, _, app: &mut App| on_toggle(app),
             )),
@@ -362,9 +519,12 @@ pub fn render_tool_header_row(
 fn render_tool_summary(
     item_id: &str,
     summary: ToolCallSummary,
+    expanded: bool,
     running: bool,
     animate: bool,
+    on_open_file: Option<OpenToolFileCallback>,
 ) -> impl IntoElement {
+    let primary = render_tool_primary(item_id, &summary, on_open_file);
     div()
         .id(element_key("tool-summary", item_id))
         .w_full()
@@ -384,27 +544,7 @@ fn render_tool_summary(
                 .text_color(gpui::rgb(0xffffff))
                 .child(summary.verb),
         )
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .overflow_hidden()
-                .truncate()
-                .text_size(Tokens::text_sm())
-                .line_height(Tokens::text_sm_leading())
-                .font_weight(FontWeight::MEDIUM)
-                .when(summary.primary_mono, |el| {
-                    el.font_family("monospace")
-                        .text_size(Tokens::text_code())
-                        .text_color(Tokens::text_secondary())
-                })
-                .when(!summary.primary_mono, |el| {
-                    el.font_family(Tokens::ui_font_family())
-                        .text_color(Tokens::text_secondary())
-                })
-                .hover(|s| s.text_color(Tokens::text_primary()))
-                .child(summary.primary),
-        )
+        .child(primary)
         .when_some(summary.secondary, |el, secondary| {
             el.child(
                 div()
@@ -421,6 +561,99 @@ fn render_tool_summary(
                     .child(secondary),
             )
         })
+        .when(summary.expandable, |el| {
+            el.child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(Tokens::text_sm())
+                    .line_height(Tokens::text_sm_leading_compact())
+                    .text_color(Tokens::text_tertiary())
+                    .opacity(0.78)
+                    .child(if expanded { "⌄" } else { "›" }),
+            )
+        })
+}
+
+fn render_tool_primary(
+    item_id: &str,
+    summary: &ToolCallSummary,
+    on_open_file: Option<OpenToolFileCallback>,
+) -> gpui::AnyElement {
+    if let (Some(path), Some(on_open_file)) = (summary.target_path.clone(), on_open_file) {
+        return render_file_link(
+            element_key("tool-primary-file", item_id),
+            summary.primary.clone(),
+            path,
+            summary.line_range,
+            on_open_file,
+        );
+    }
+
+    div()
+        .flex_1()
+        .min_w(px(0.0))
+        .overflow_hidden()
+        .truncate()
+        .text_size(Tokens::text_sm())
+        .line_height(Tokens::text_sm_leading())
+        .font_weight(FontWeight::MEDIUM)
+        .when(summary.primary_mono, |el| {
+            el.font_family("monospace")
+                .text_size(Tokens::text_code())
+                .text_color(Tokens::text_secondary())
+        })
+        .when(!summary.primary_mono, |el| {
+            el.font_family(Tokens::ui_font_family())
+                .text_color(Tokens::text_secondary())
+        })
+        .hover(|s| s.text_color(Tokens::text_primary()))
+        .child(summary.primary.clone())
+        .into_any_element()
+}
+
+fn render_file_link(
+    id: impl Into<gpui::ElementId>,
+    label: String,
+    path: String,
+    line_range: Option<ToolLineRange>,
+    on_open_file: OpenToolFileCallback,
+) -> gpui::AnyElement {
+    let click_path = path.clone();
+    div()
+        .flex_1()
+        .min_w(px(0.0))
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .child(
+            div()
+                .id(id)
+                .max_w_full()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .truncate()
+                .cursor_pointer()
+                .border_b_1()
+                .border_color(Tokens::info().opacity(0.72))
+                .text_size(Tokens::text_sm())
+                .line_height(Tokens::text_sm_leading())
+                .font_family(Tokens::ui_font_family())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(Tokens::info())
+                .hover(|s| {
+                    s.text_color(Tokens::accent_hover())
+                        .border_color(Tokens::accent_hover())
+                })
+                .on_mouse_down(MouseButton::Left, move |_, _, app| {
+                    app.stop_propagation();
+                })
+                .on_click(move |_, _, app| {
+                    app.stop_propagation();
+                    on_open_file(click_path.clone(), line_range, app);
+                })
+                .child(label),
+        )
+        .into_any_element()
 }
 
 fn tool_loading_dots(item_id: &str, animate: bool) -> gpui::AnyElement {
@@ -439,6 +672,127 @@ fn tool_loading_dots(item_id: &str, animate: bool) -> gpui::AnyElement {
     } else {
         indicator.opacity(0.62).into_any_element()
     }
+}
+
+pub fn render_tool_detail_line_row(
+    item_id: &str,
+    detail: ToolCallDetailRow,
+    on_open_file: Option<OpenToolFileCallback>,
+) -> impl IntoElement {
+    div()
+        .id(element_key("tool-detail-line", item_id))
+        .w_full()
+        .h(px(Tokens::ROW_HEIGHT_SM))
+        .pl(Tokens::spacing_6())
+        .pr(Tokens::spacing_1())
+        .flex()
+        .items_center()
+        .gap(Tokens::spacing_2())
+        .child(render_tool_detail_content(item_id, detail, on_open_file))
+}
+
+fn render_tool_detail_content(
+    item_id: &str,
+    detail: ToolCallDetailRow,
+    on_open_file: Option<OpenToolFileCallback>,
+) -> gpui::AnyElement {
+    match detail {
+        ToolCallDetailRow::File {
+            verb,
+            path,
+            line_range,
+            metadata,
+        } => div()
+            .w_full()
+            .min_w(px(0.0))
+            .flex()
+            .items_center()
+            .gap(Tokens::spacing_2())
+            .child(detail_label(verb))
+            .child(render_file_link(
+                element_key("tool-detail-file", item_id),
+                file_name(&path).unwrap_or(&path).to_string(),
+                path,
+                line_range,
+                on_open_file.unwrap_or_else(|| Arc::new(|_, _, _| {})),
+            ))
+            .when_some(metadata, |el, meta| el.child(detail_metadata(meta)))
+            .into_any_element(),
+        ToolCallDetailRow::Command {
+            label,
+            command,
+            context,
+        } => div()
+            .w_full()
+            .min_w(px(0.0))
+            .flex()
+            .items_center()
+            .gap(Tokens::spacing_2())
+            .child(detail_label(label))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .truncate()
+                    .font_family("monospace")
+                    .text_size(Tokens::text_code())
+                    .line_height(Tokens::text_sm_leading_compact())
+                    .text_color(Tokens::text_secondary())
+                    .child(command),
+            )
+            .when_some(context, |el, context| el.child(detail_metadata(context)))
+            .into_any_element(),
+        ToolCallDetailRow::Text {
+            label,
+            value,
+            metadata,
+        } => div()
+            .w_full()
+            .min_w(px(0.0))
+            .flex()
+            .items_center()
+            .gap(Tokens::spacing_2())
+            .child(detail_label(label))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .truncate()
+                    .text_size(Tokens::text_sm())
+                    .line_height(Tokens::text_sm_leading_compact())
+                    .font_family(Tokens::ui_font_family())
+                    .text_color(Tokens::text_secondary())
+                    .child(value),
+            )
+            .when_some(metadata, |el, meta| el.child(detail_metadata(meta)))
+            .into_any_element(),
+    }
+}
+
+fn detail_label(label: String) -> impl IntoElement {
+    div()
+        .flex_shrink_0()
+        .text_size(Tokens::text_sm())
+        .line_height(Tokens::text_sm_leading_compact())
+        .font_family(Tokens::ui_font_family())
+        .text_color(Tokens::text_faint())
+        .child(label)
+}
+
+fn detail_metadata(metadata: String) -> impl IntoElement {
+    div()
+        .max_w(px(240.0))
+        .min_w(px(0.0))
+        .overflow_hidden()
+        .truncate()
+        .text_size(Tokens::text_sm())
+        .line_height(Tokens::text_sm_leading_compact())
+        .font_family(Tokens::ui_font_family())
+        .text_color(Tokens::text_faint())
+        .opacity(0.78)
+        .child(metadata)
 }
 
 fn change_counts_badge(item_id: &str, change_counts: Option<(usize, usize)>) -> impl IntoElement {
@@ -509,6 +863,19 @@ mod tests {
         AgentStatus::RunningTool
     }
 
+    fn assert_visible_summary(
+        summary: &ToolCallSummary,
+        verb: &str,
+        primary: &str,
+        secondary: Option<&str>,
+        primary_mono: bool,
+    ) {
+        assert_eq!(summary.verb, verb);
+        assert_eq!(summary.primary, primary);
+        assert_eq!(summary.secondary.as_deref(), secondary);
+        assert_eq!(summary.primary_mono, primary_mono);
+    }
+
     #[test]
     fn read_file_emphasizes_file_and_line_range() {
         let summary = tool_call_summary(
@@ -518,15 +885,23 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(
-            summary,
-            ToolCallSummary::new(
-                "Read",
-                "build.gradle.kts",
-                Some("73-120 · android_todo/app".into()),
-                false,
-            )
+        assert_visible_summary(
+            &summary,
+            "Read",
+            "build.gradle.kts",
+            Some("73-120 · android_todo/app"),
+            false,
         );
+        assert_eq!(
+            summary.target_path.as_deref(),
+            Some("android_todo/app/build.gradle.kts")
+        );
+        assert_eq!(summary.line_range, Some((Some(73), Some(120))));
+        assert!(matches!(
+            summary.detail_rows.first(),
+            Some(ToolCallDetailRow::File { path, .. })
+                if path == "android_todo/app/build.gradle.kts"
+        ));
     }
 
     #[test]
@@ -538,10 +913,18 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(
-            summary,
-            ToolCallSummary::new("Listed", "android_todo/app", Some("max 20".into()), false)
+        assert_visible_summary(
+            &summary,
+            "Listed",
+            "android_todo/app",
+            Some("max 20"),
+            false,
         );
+        assert!(matches!(
+            summary.detail_rows.first(),
+            Some(ToolCallDetailRow::Text { value, metadata, .. })
+                if value == "android_todo/app" && metadata.as_deref() == Some("max 20")
+        ));
     }
 
     #[test]
@@ -553,14 +936,12 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(
-            summary,
-            ToolCallSummary::new(
-                "Searched",
-                "\"TODO\"",
-                Some("@ crates/app · regex".into()),
-                false
-            )
+        assert_visible_summary(
+            &summary,
+            "Searched",
+            "\"TODO\"",
+            Some("@ crates/app · regex"),
+            false,
         );
     }
 
@@ -579,23 +960,25 @@ mod tests {
             &running(),
         );
 
-        assert_eq!(
-            virtual_summary,
-            ToolCallSummary::new(
-                "Ran",
-                "find android_todo -name \"*.kt\"",
-                Some("virtual shell".into()),
-                true,
-            )
+        assert_visible_summary(
+            &virtual_summary,
+            "Ran",
+            "find android_todo -name \"*.kt\"",
+            Some("virtual shell"),
+            true,
         );
-        assert_eq!(
-            real_summary,
-            ToolCallSummary::new(
-                "Running",
-                "cargo check -p app",
-                Some("real command".into()),
-                true,
-            )
+        assert!(matches!(
+            virtual_summary.detail_rows.first(),
+            Some(ToolCallDetailRow::Command { command, context, .. })
+                if command == "find android_todo -name \"*.kt\""
+                    && context.as_deref() == Some("virtual shell")
+        ));
+        assert_visible_summary(
+            &real_summary,
+            "Running",
+            "cargo check -p app",
+            Some("real command"),
+            true,
         );
     }
 
@@ -620,22 +1003,26 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(
-            wrote,
-            ToolCallSummary::new(
-                "Wrote",
-                "Todo.kt",
-                Some("android_todo/app/src".into()),
-                false
-            )
+        assert_visible_summary(
+            &wrote,
+            "Wrote",
+            "Todo.kt",
+            Some("android_todo/app/src"),
+            false,
         );
         assert_eq!(
-            edited,
-            ToolCallSummary::new("Editing", "main.rs", Some("crates/app/src".into()), false)
+            wrote.target_path.as_deref(),
+            Some("android_todo/app/src/Todo.kt")
         );
+        assert_visible_summary(&edited, "Editing", "main.rs", Some("crates/app/src"), false);
         assert_eq!(
-            deleted,
-            ToolCallSummary::new("Deleted", "old.rs", Some("crates/app/src".into()), false)
+            edited.target_path.as_deref(),
+            Some("crates/app/src/main.rs")
+        );
+        assert_visible_summary(&deleted, "Deleted", "old.rs", Some("crates/app/src"), false);
+        assert_eq!(
+            deleted.target_path.as_deref(),
+            Some("crates/app/src/old.rs")
         );
     }
 
@@ -648,14 +1035,12 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(
-            summary,
-            ToolCallSummary::new(
-                "Fetched",
-                "docs.rs",
-                Some("https://docs.rs/gpui/latest/gpui/".into()),
-                false,
-            )
+        assert_visible_summary(
+            &summary,
+            "Fetched",
+            "docs.rs",
+            Some("https://docs.rs/gpui/latest/gpui/"),
+            false,
         );
     }
 
@@ -668,10 +1053,7 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(
-            summary,
-            ToolCallSummary::new("Processed", "workspace", None, false)
-        );
+        assert_visible_summary(&summary, "Processed", "workspace", None, false);
     }
 
     #[test]
@@ -684,10 +1066,36 @@ mod tests {
             &completed(),
         );
 
-        assert_eq!(empty, ToolCallSummary::new("Read", "file", None, false));
+        assert_visible_summary(&empty, "Read", "file", None, false);
+        assert_visible_summary(&json, "Ran", "command", Some("virtual shell"), true);
+    }
+
+    #[test]
+    fn line_range_parsing_supports_single_and_open_ranges() {
         assert_eq!(
-            json,
-            ToolCallSummary::new("Ran", "command", Some("virtual shell".into()), true)
+            split_line_range("src/main.rs:42").1,
+            Some((Some(42), Some(42)))
+        );
+        assert_eq!(
+            split_line_range("src/main.rs:10-").1,
+            Some((Some(10), None))
+        );
+        assert_eq!(
+            split_line_range("src/main.rs:-20").1,
+            Some((None, Some(20)))
+        );
+        assert_eq!(split_line_range("src/main.rs:not-a-line").1, None);
+    }
+
+    #[test]
+    fn detail_row_count_tracks_expanded_rows() {
+        assert_eq!(
+            tool_call_detail_row_count("read_file", Some("src/main.rs:1-2"), &completed()),
+            1
+        );
+        assert_eq!(
+            tool_call_detail_row_count("bash_virtual", Some("cargo test"), &completed()),
+            1
         );
     }
 

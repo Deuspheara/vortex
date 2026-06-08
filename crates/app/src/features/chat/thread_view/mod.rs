@@ -20,7 +20,8 @@ use crate::features::agent_activity::components::reasoning::{
     render_reasoning_header_row, render_reasoning_preview_line_row,
 };
 use crate::features::agent_activity::components::tool_call::{
-    render_tool_header_row, render_tool_output_line_row, render_tool_output_truncated_row,
+    OpenToolFileCallback, render_tool_detail_line_row, render_tool_header_row,
+    render_tool_output_line_row, render_tool_output_truncated_row, tool_call_detail_rows,
 };
 use crate::features::chat::components::choice_card::choice_card;
 use crate::features::chat::components::error_card::{ErrorCardProps, error_card};
