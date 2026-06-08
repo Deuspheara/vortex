@@ -556,7 +556,11 @@ impl SidebarView {
                 .h(self.row_height(&SidebarRow::ProjectsHeader { first }))
                 .flex()
                 .items_end()
-                .child(render_projects_section_header(first, entity))
+                .child(
+                    div()
+                        .w_full()
+                        .child(render_projects_section_header(first, entity)),
+                )
                 .into_any_element(),
             SidebarRow::Session { row } => {
                 let animation_id = row.row_id.clone();

@@ -2,12 +2,12 @@
 //!
 //! Tree rendering lives in `sidebar_view` (isolated entity).
 
-use gpui::{Entity, IntoElement, div, prelude::*, px};
+use gpui::{Entity, FontWeight, IntoElement, div, prelude::*, px};
 use gpui_component::Icon;
 
 use crate::features::shell::layout::SidebarView;
 use crate::features::shell::state::AppNavItem;
-use crate::shared::components::buttons::btn_icon_sm;
+use crate::shared::components::buttons::btn_ghost_icon;
 use crate::shared::components::flat_list_row::flat_list_row;
 use crate::tokens::Tokens;
 use crate::tokens::icons;
@@ -94,18 +94,49 @@ pub(crate) fn render_app_nav(
 }
 
 pub(crate) fn render_projects_section_header(
-    first: bool,
+    _first: bool,
     entity: Entity<AgentWindow>,
 ) -> impl IntoElement {
-    crate::shared::components::section_label::sidebar_section_label_with_action(
-        "PROJECTS",
-        first,
-        btn_icon_sm("open-project-from-projects", icons::PLUS).on_click(
-            move |_, window, app: &mut gpui::App| {
-                entity.update(app, |view, cx| view.open_project_folder(window, cx));
-            },
-        ),
-    )
+    div()
+        .w_full()
+        .h(px(Tokens::ROW_HEIGHT_LG))
+        .px(Tokens::spacing_2())
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(Tokens::spacing_2())
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .text_size(Tokens::text_sm())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(Tokens::sidebar_text_muted())
+                .opacity(0.78)
+                .child("Projects"),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_1())
+                .child(btn_ghost_icon("filter-projects", icons::SEARCH).on_click({
+                    let entity = entity.clone();
+                    move |_, _, app: &mut gpui::App| {
+                        entity.update(app, |view, cx| view.open_search(cx));
+                    }
+                }))
+                .child(
+                    btn_ghost_icon("open-project-from-projects", icons::PLUS)
+                        .h(px(Tokens::ROW_HEIGHT_SM))
+                        .w(px(Tokens::ROW_HEIGHT_SM))
+                        .on_click(move |_, window, app: &mut gpui::App| {
+                            entity.update(app, |view, cx| {
+                                view.open_project_folder(window, cx);
+                            });
+                        }),
+                ),
+        )
 }
 
 pub(crate) fn render_sidebar_footer(

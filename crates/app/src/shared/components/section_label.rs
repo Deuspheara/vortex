@@ -9,17 +9,20 @@ pub fn sidebar_section_label(title: &str, first: bool) -> impl IntoElement {
     let title = title.to_string();
     div()
         .pt(if first {
-            Tokens::spacing_1()
+            Tokens::spacing_2()
         } else {
             Tokens::spacing_4()
         })
-        .pb(Tokens::spacing_1p5())
+        .pb(Tokens::spacing_1())
         .child(
             div()
+                .h(px(Tokens::ROW_HEIGHT_SM))
+                .flex()
+                .items_center()
                 .text_size(Tokens::text_xs())
-                .font_weight(FontWeight::SEMIBOLD)
+                .font_weight(FontWeight::MEDIUM)
                 .text_color(Tokens::sidebar_text_muted())
-                .opacity(0.9)
+                .opacity(0.82)
                 .child(title),
         )
 }
@@ -32,24 +35,33 @@ pub fn sidebar_section_label_with_action(
 ) -> impl IntoElement {
     let title = title.to_string();
     div()
-        .flex()
-        .items_center()
-        .justify_between()
         .pt(if first {
-            Tokens::spacing_1()
+            Tokens::spacing_3()
         } else {
             Tokens::spacing_4()
         })
-        .pb(Tokens::spacing_1p5())
+        .pb(Tokens::spacing_1())
         .child(
             div()
-                .text_size(Tokens::text_xs())
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(Tokens::sidebar_text_muted())
-                .opacity(0.9)
-                .child(title),
+                .w_full()
+                .h(px(Tokens::ROW_HEIGHT_SM))
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(Tokens::spacing_2())
+                .overflow_hidden()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .text_size(Tokens::text_xs())
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(Tokens::sidebar_text_muted())
+                        .opacity(0.74)
+                        .child(title),
+                )
+                .child(trailing),
         )
-        .child(trailing)
 }
 
 /// Settings panel section label (accent bar + title).

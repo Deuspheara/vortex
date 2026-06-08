@@ -26,16 +26,25 @@ use gpui::{
     Render, SharedString, TextAlign, Window, div, prelude::*, px,
 };
 
-fn sidebar_row_label_color(selected: bool) -> gpui::Hsla {
-    if selected {
-        Tokens::text_primary()
-    } else {
-        Tokens::sidebar_text()
-    }
+fn sidebar_row_label_color(_selected: bool) -> gpui::Hsla {
+    Tokens::text_primary()
 }
 
 fn sidebar_session_selected_bg() -> gpui::Hsla {
     Tokens::surface_hover().blend(Tokens::text_primary().opacity(0.03))
+}
+
+fn session_title_opacity(_indent_level: u32, _selected: bool) -> f32 {
+    1.0
+}
+
+fn session_meta_opacity(indent_level: u32, is_menu_open: bool) -> f32 {
+    if is_menu_open {
+        0.0
+    } else {
+        let _ = indent_level;
+        0.82
+    }
 }
 
 /// Drag payload for reordering / moving sidebar sessions.
@@ -341,6 +350,8 @@ pub fn session_row(
     let conv_id = row.conv_id.clone();
     let selected = row.selected;
     let hover_group = group_name.clone();
+    let title_opacity = session_title_opacity(row.indent_level, selected);
+    let meta_opacity = session_meta_opacity(row.indent_level, is_menu_open);
 
     let row_body = div()
         .id(row.row_id.clone())
@@ -422,6 +433,7 @@ pub fn session_row(
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(sidebar_row_label_color(selected))
+                        .opacity(title_opacity)
                         .when(!selected, |el| {
                             el.group_hover(hover_group, |s| {
                                 s.text_color(Tokens::sidebar_text_hover())
@@ -454,9 +466,9 @@ pub fn session_row(
                                 .text_ellipsis()
                                 .whitespace_nowrap()
                                 .text_size(Tokens::text_xs())
-                                .text_color(Tokens::sidebar_text_muted())
+                                .text_color(Tokens::text_primary())
                                 .text_align(TextAlign::Right)
-                                .opacity(if is_menu_open { 0.0 } else { 1.0 })
+                                .opacity(meta_opacity)
                                 .when(!is_menu_open, |el| {
                                     el.group_hover(group_name.clone(), |s| s.opacity(0.0))
                                 })
@@ -585,7 +597,8 @@ pub fn project_row(
                     Icon::new(icons::FOLDER)
                         .size(px(14.0))
                         .flex_shrink_0()
-                        .text_color(Tokens::sidebar_text()),
+                        .text_color(Tokens::sidebar_text())
+                        .opacity(0.66),
                 )
                 .child(
                     div()
@@ -598,6 +611,7 @@ pub fn project_row(
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(Tokens::text_primary())
+                        .opacity(0.72)
                         .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                         .child(name),
                 ),
@@ -629,7 +643,7 @@ pub fn project_row(
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(Tokens::sidebar_text_muted())
                                 .text_align(TextAlign::Right)
-                                .opacity(if is_menu_open { 0.0 } else { 1.0 })
+                                .opacity(if is_menu_open { 0.0 } else { 0.62 })
                                 .when(!is_menu_open, |el| {
                                     el.group_hover(group_name.clone(), |s| s.opacity(0.0))
                                 })
@@ -685,6 +699,7 @@ pub fn project_show_more_row(
         .cursor_pointer()
         .text_size(Tokens::text_sm())
         .text_color(Tokens::sidebar_text_muted())
+        .opacity(0.64)
         .hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.55)))
         .on_click(move |_, _, app: &mut gpui::App| {
             entity.update(app, |view, cx| {
