@@ -17,11 +17,12 @@ use agent_protocol::{
 use agent_store::{EventStore, StoredApprovalRule, StoredRun, StoredSession};
 use agent_tools::{
     BrowserMcpConfigState, ToolOrchestrator, ToolRegistry, args_preview, args_preview_raw,
-    is_git_repo, task_visible_tool_specs, tool_finish_summary,
+    is_git_repo, tool_finish_summary,
 };
 use chrono::Utc;
 use flume::{Receiver, Sender};
 use futures::StreamExt;
+use project_index::RepoIndex;
 use tokio::sync::Mutex;
 
 use crate::ChannelEventSink;
@@ -96,6 +97,8 @@ struct ActiveRun {
     /// Outstanding `ask_user` choice awaiting a `SubmitChoice` command.
     pending_choice: Option<PendingChoiceState>,
     android_lane: AndroidExecutionLane,
+    repo_index: Option<Arc<std::sync::Mutex<RepoIndex>>>,
+    previous_response_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -544,6 +547,8 @@ impl AgentRuntime {
                 todos: Vec::new(),
                 pending_choice: None,
                 android_lane: AndroidExecutionLane::default(),
+                repo_index: None,
+                previous_response_id: None,
             },
         );
 

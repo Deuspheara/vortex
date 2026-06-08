@@ -181,20 +181,12 @@ fn serialize_content(content: &ModelMessageContent) -> serde_json::Value {
     }
 }
 
-fn serialize_tools(tools: &[agent_protocol::ToolSpec]) -> Vec<serde_json::Value> {
+fn serialize_tools(tools: &[agent_protocol::PromptToolSpec]) -> Vec<serde_json::Value> {
     let last = tools.len().saturating_sub(1);
-    tools
-        .iter()
+    agent_protocol::prompt_tool_payload(tools)
+        .into_iter()
         .enumerate()
-        .map(|(ix, tool)| {
-            let mut value = serde_json::json!({
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                }
-            });
+        .map(|(ix, mut value)| {
             // A single cache breakpoint after the last tool covers the whole (stable) tool block.
             if ix == last {
                 value["cache_control"] = serde_json::json!({ "type": "ephemeral" });
@@ -516,6 +508,13 @@ impl SseParser {
 
 #[async_trait]
 impl ModelProvider for OpenRouterProvider {
+    fn capabilities(&self) -> agent_protocol::ModelProviderCapabilities {
+        agent_protocol::ModelProviderCapabilities {
+            supports_prompt_cache_key: true,
+            supports_stateful_turns: false,
+        }
+    }
+
     async fn stream(
         &self,
         request: ModelRequest,
@@ -541,6 +540,9 @@ impl ModelProvider for OpenRouterProvider {
         if !request.tools.is_empty() {
             body["tools"] = serde_json::Value::Array(serialize_tools(&request.tools));
             body["tool_choice"] = serde_json::Value::String("auto".into());
+        }
+        if let Some(key) = request.prompt_cache_key.as_ref() {
+            body["prompt_cache_key"] = serde_json::Value::String(key.clone());
         }
 
         info!(

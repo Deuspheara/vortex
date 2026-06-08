@@ -23,9 +23,9 @@
 use agent_context::ContextBuilder;
 use agent_protocol::{
     AgentMode, AssistantToolCall, ModelId, ModelMessage, ModelMessageRole, ModelRequest,
-    ToolCallId, ToolSpec,
+    PromptToolSpec, ToolCallId, ToolPhase,
 };
-use agent_tools::{ToolRegistry, mode_visible_tool_specs};
+use agent_tools::{ToolRegistry, task_visible_prompt_tool_specs};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -325,11 +325,13 @@ fn estimate_request_tokens(req: &ModelRequest) -> usize {
     chars / 4
 }
 
-fn tools_chars(tools: &[ToolSpec]) -> usize {
-    serde_json::to_string(tools).map(|s| s.len()).unwrap_or(0)
+fn tools_chars(tools: &[PromptToolSpec]) -> usize {
+    serde_json::to_string(&agent_protocol::prompt_tool_payload(tools))
+        .map(|s| s.len())
+        .unwrap_or(0)
 }
 
-fn estimate_tool_tokens(tools: &[ToolSpec]) -> usize {
+fn estimate_tool_tokens(tools: &[PromptToolSpec]) -> usize {
     tools_chars(tools) / 4
 }
 
@@ -412,6 +414,7 @@ pub fn run_scenario(
     builder: &ContextBuilder,
 ) -> ScenarioReport {
     let full_specs = registry.tool_specs();
+    let full_prompt_specs = registry.prompt_tool_specs();
     let model = ModelId::new("mock-eval");
 
     // Resolve the full concrete trajectory.
@@ -424,8 +427,17 @@ pub fn run_scenario(
     let mut turn_tokens: Vec<usize> = Vec::new();
     let mut tool_token_turns: Vec<usize> = Vec::new();
 
-    let build_turn = |history: &[ModelMessage]| -> (ModelRequest, Vec<ToolSpec>) {
-        let specs = mode_visible_tool_specs(full_specs.clone(), &scenario.mode, 0, true);
+    let build_turn = |history: &[ModelMessage]| -> (ModelRequest, Vec<PromptToolSpec>) {
+        let phase = infer_eval_phase(history, &scenario.mode);
+        let specs = task_visible_prompt_tool_specs(
+            full_prompt_specs.clone(),
+            &full_specs,
+            &scenario.mode,
+            0,
+            true,
+            agent_context::tool_pack_for_task(agent_context::classify_task(&scenario.task)),
+            phase,
+        );
         let built = builder
             .build(model.clone(), &scenario.task, &[], history, specs.clone())
             .expect("eval context build");
@@ -534,5 +546,48 @@ pub fn run_eval(label: &str) -> EvalReport {
         mean_argument_f1: reports.iter().map(|r| r.argument_f1).sum::<f64>() / n,
         mean_recovery_rate: reports.iter().map(|r| r.recovery_rate).sum::<f64>() / n,
         scenarios: reports,
+    }
+}
+
+fn infer_eval_phase(history: &[ModelMessage], mode: &AgentMode) -> ToolPhase {
+    if matches!(mode, AgentMode::PlanOnly | AgentMode::ChatOnly) {
+        return ToolPhase::Explore;
+    }
+    let mut saw_tool = false;
+    for message in history.iter().rev() {
+        if let Some(name) = message.name.as_deref() {
+            if matches!(
+                name,
+                "edit_file" | "write_file" | "delete_file" | "apply_patch"
+            ) {
+                return ToolPhase::Validate;
+            }
+            saw_tool = true;
+        }
+    }
+    if saw_tool {
+        ToolPhase::Edit
+    } else {
+        ToolPhase::Explore
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_eval;
+
+    #[test]
+    fn token_efficiency_thresholds_hold() {
+        let report = run_eval("threshold");
+        assert!(report.total_tokens_per_task <= 22_574, "{report:?}");
+        for scenario in &report.scenarios {
+            assert!(scenario.avg_tool_tokens_per_turn <= 400, "{scenario:?}");
+            if scenario.name == "single_file_edit" {
+                assert!(scenario.tokens_per_task <= 6_000, "{scenario:?}");
+            }
+            if scenario.name == "multi_file_edit" {
+                assert!(scenario.tokens_per_task <= 12_000, "{scenario:?}");
+            }
+        }
     }
 }

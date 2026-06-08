@@ -79,7 +79,7 @@ impl MapBudget {
     pub fn compact() -> Self {
         Self {
             max_depth: 4,
-            max_entries: 400,
+            max_entries: 120,
             focus: None,
         }
     }
@@ -804,15 +804,49 @@ fn read_file_slice(
     let content = std::fs::read_to_string(&abs).map_err(|e| e.to_string())?;
     let lines: Vec<&str> = content.lines().collect();
     let start = start_line.max(1) as usize;
-    let end = end_line.max(start_line) as usize;
-    let slice = if start > lines.len() {
-        String::new()
+    let requested_end = end_line.max(start_line) as usize;
+    let max_lines = if end_line > start_line {
+        400usize
     } else {
-        lines[(start - 1)..lines.len().min(end)].join("\n")
+        250usize
     };
-    Ok(format!(
-        "<file_slice path=\"{rel}\" lines=\"{start_line}-{end_line}\">\n{slice}\n</file_slice>\n"
-    ))
+    let max_bytes = if end_line > start_line {
+        24 * 1024
+    } else {
+        16 * 1024
+    };
+
+    if start > lines.len() {
+        return Ok(format!(
+            "<file_slice path=\"{rel}\" lines=\"{start_line}-{end_line}\">\n</file_slice>\n"
+        ));
+    }
+
+    let capped_end = lines.len().min(requested_end).min(start - 1 + max_lines);
+    let mut shown = Vec::new();
+    let mut bytes = 0usize;
+    let mut truncated = capped_end < requested_end;
+    let mut last_line = start - 1;
+    for (idx, line) in lines[(start - 1)..capped_end].iter().enumerate() {
+        bytes += line.len() + 1;
+        if bytes > max_bytes && !shown.is_empty() {
+            truncated = true;
+            break;
+        }
+        shown.push(*line);
+        last_line = start - 1 + idx + 1;
+    }
+    let mut out = format!(
+        "<file_slice path=\"{rel}\" lines=\"{start_line}-{last_line}\">\n{}\n</file_slice>\n",
+        shown.join("\n")
+    );
+    if truncated {
+        out.push_str(&format!(
+            "[truncated: call open_node/read_file with start_line={} to continue]\n",
+            last_line + 1
+        ));
+    }
+    Ok(out)
 }
 
 fn line_count(path: &Path) -> u32 {
@@ -972,6 +1006,20 @@ mod tests {
         let slice = index.open_node(&hits[0].symbol_id).unwrap();
         assert!(slice.contains("<file_slice"));
         assert!(slice.contains("DeltaCoalescer"));
+    }
+
+    #[test]
+    fn open_node_truncates_large_file_slices() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let body = (0..500)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        write(root, "large.rs", &body);
+        let index = RepoIndex::build_in_memory(root).unwrap();
+        let slice = index.open_node("large.rs").unwrap();
+        assert!(slice.contains("[truncated:"));
     }
 
     #[test]

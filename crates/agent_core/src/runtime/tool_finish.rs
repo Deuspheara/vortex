@@ -151,7 +151,14 @@ pub(crate) fn model_facing_tool_summary(
 }
 
 fn model_summary_text(summary: &agent_protocol::ToolResultSummary) -> String {
-    serde_json::to_string_pretty(summary).unwrap_or_else(|_| summary.summary.clone())
+    let mut out = format!("[tool_result] {}: {}", summary.tool, summary.summary);
+    for fact in summary.facts.iter().take(2) {
+        out.push_str("\n- ");
+        out.push_str(fact);
+    }
+    out.push_str("\nraw_handle: ");
+    out.push_str(&summary.raw_handle);
+    out
 }
 
 fn affected_paths_from_args(

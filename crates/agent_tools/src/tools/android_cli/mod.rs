@@ -116,13 +116,11 @@ fn cli_policy(name: &str) -> ToolPolicy {
         }
         "android_cli.doctor" | "android_cli.info" => ToolPackPolicy::Only(vec![
             ToolPack::Dependency,
-            ToolPack::CodeEdit,
             ToolPack::UiBrowser,
             ToolPack::GitCi,
             ToolPack::General,
         ]),
         _ => ToolPackPolicy::Only(vec![
-            ToolPack::CodeEdit,
             ToolPack::UiBrowser,
             ToolPack::GitCi,
             ToolPack::General,

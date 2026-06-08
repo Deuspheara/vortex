@@ -1,0 +1,54 @@
+{
+  "label": "aggressive-token-refactor",
+  "scenarios": [
+    {
+      "name": "explore",
+      "mode": "ReadOnlyInspect",
+      "tokens_per_task": 4897,
+      "avg_tool_tokens_per_turn": 232,
+      "trajectory_length": 3,
+      "tool_selection_accuracy": 1.0,
+      "argument_f1": 1.0,
+      "recovery_rate": 1.0,
+      "turns": 4
+    },
+    {
+      "name": "single_file_edit",
+      "mode": "ApplyWithApproval",
+      "tokens_per_task": 3460,
+      "avg_tool_tokens_per_turn": 383,
+      "trajectory_length": 2,
+      "tool_selection_accuracy": 1.0,
+      "argument_f1": 1.0,
+      "recovery_rate": 1.0,
+      "turns": 3
+    },
+    {
+      "name": "multi_file_edit",
+      "mode": "ApplyWithApproval",
+      "tokens_per_task": 4833,
+      "avg_tool_tokens_per_turn": 395,
+      "trajectory_length": 3,
+      "tool_selection_accuracy": 1.0,
+      "argument_f1": 1.0,
+      "recovery_rate": 1.0,
+      "turns": 4
+    },
+    {
+      "name": "error_recovery",
+      "mode": "ReadOnlyInspect",
+      "tokens_per_task": 4016,
+      "avg_tool_tokens_per_turn": 232,
+      "trajectory_length": 3,
+      "tool_selection_accuracy": 1.0,
+      "argument_f1": 1.0,
+      "recovery_rate": 1.0,
+      "turns": 4
+    }
+  ],
+  "total_tokens_per_task": 17206,
+  "mean_trajectory_length": 2.75,
+  "mean_tool_selection_accuracy": 1.0,
+  "mean_argument_f1": 1.0,
+  "mean_recovery_rate": 1.0
+}

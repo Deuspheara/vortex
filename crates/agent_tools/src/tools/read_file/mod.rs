@@ -171,9 +171,20 @@ impl AgentTool for ReadFileTool {
             ));
         }
 
+        let max_lines = if explicit_end.is_some() {
+            MAX_EXPLICIT_READ_LINES
+        } else {
+            DEFAULT_READ_LINES
+        };
+        let max_bytes = if explicit_end.is_some() {
+            MAX_EXPLICIT_READ_BYTES
+        } else {
+            DEFAULT_READ_BYTES
+        };
+
         // Hard cap so a single read can never blow the context budget.
         let requested_last = explicit_end.unwrap_or(total_lines);
-        let cap_last = (first_ix + MAX_READ_LINES).min(requested_last);
+        let cap_last = (first_ix + max_lines).min(requested_last);
         let last_ix = cap_last.min(total_lines);
 
         let mut out_lines: Vec<&str> = Vec::new();
@@ -181,7 +192,7 @@ impl AgentTool for ReadFileTool {
         let mut byte_truncated_at: Option<usize> = None;
         for (offset, line) in all_lines[first_ix..last_ix].iter().enumerate() {
             bytes += line.len() + 1;
-            if bytes > MAX_READ_BYTES && !out_lines.is_empty() {
+            if bytes > max_bytes && !out_lines.is_empty() {
                 byte_truncated_at = Some(first_ix + offset);
                 break;
             }
@@ -208,13 +219,50 @@ impl AgentTool for ReadFileTool {
 }
 
 /// Maximum lines returned by a single `read_file` call before truncation.
-const MAX_READ_LINES: usize = 1_500;
+const DEFAULT_READ_LINES: usize = 250;
+const MAX_EXPLICIT_READ_LINES: usize = 400;
 /// Maximum bytes returned by a single `read_file` call before truncation.
-const MAX_READ_BYTES: usize = 96_000;
+const DEFAULT_READ_BYTES: usize = 16 * 1024;
+const MAX_EXPLICIT_READ_BYTES: usize = 24 * 1024;
 
 fn args_path(args: &Value) -> Result<PathBuf, String> {
     args.get("path")
         .and_then(|v| v.as_str())
         .map(PathBuf::from)
         .ok_or_else(|| "missing path".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn read_file_truncates_large_default_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.txt");
+        let body = (0..300)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, body).unwrap();
+
+        let tool = ReadFileTool;
+        let runtime = Runtime::new().unwrap();
+        let result = runtime
+            .block_on(tool.execute(
+                json!({ "path": "big.txt" }),
+                ToolContext {
+                    project_root: dir.path().to_path_buf(),
+                    project_id: agent_protocol::ProjectId::new("p"),
+                    session_id: agent_protocol::SessionId::new("s"),
+                    run_id: agent_protocol::RunId::new("r"),
+                    mode: agent_protocol::AgentMode::ReadOnlyInspect,
+                    output_sink: None,
+                },
+            ))
+            .unwrap();
+        assert!(result.output.contains("[truncated:"));
+    }
 }

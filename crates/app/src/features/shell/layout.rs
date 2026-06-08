@@ -19,8 +19,8 @@ use crate::features::shell::state::{
     AppNavItem, ConversationId, ExpandedItems, Project, ProjectId, SidebarDropTarget,
     SidebarSession,
 };
-use crate::tokens::motion::{sidebar_expand_in, sidebar_row_in};
 use crate::tokens::Tokens;
+use crate::tokens::motion::{sidebar_expand_in, sidebar_row_in};
 use crate::ui::agent_window::AgentWindow;
 use crate::window::AppScreen;
 
@@ -507,8 +507,11 @@ impl SidebarView {
             }
             SidebarRow::Project { row } => {
                 let animation_id = row.row_id.clone();
-                sidebar_row_in(project_row(row, &open_action_menu, entity, sidebar), animation_id)
-                    .into_any_element()
+                sidebar_row_in(
+                    project_row(row, &open_action_menu, entity, sidebar),
+                    animation_id,
+                )
+                .into_any_element()
             }
             SidebarRow::ProjectAppendDrop { project_id } => {
                 crate::features::shell::components::tree_row::project_append_drop_zone(

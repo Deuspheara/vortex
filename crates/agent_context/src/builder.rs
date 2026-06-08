@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use agent_protocol::{
     AgentError, AttachmentKind, AttachmentSource, ContextAttachment, ContextBudget,
     ContextBudgetProfile, ContextSectionEstimate, ModelContentPart, ModelId, ModelMessage,
-    ModelMessageContent, ModelMessageRole, ModelRequest, TaskClass, ToolPack, ToolResultSummary,
-    ToolSpec,
+    ModelMessageContent, ModelMessageRole, ModelRequest, PromptToolSpec, TaskClass, ToolPack,
+    ToolResultSummary,
 };
 use base64::Engine;
 
@@ -87,7 +87,7 @@ impl ModelContextState {
         append_list(&mut out, "compact_turns", &self.compact_turns);
         if !self.tool_result_summaries.is_empty() {
             out.push_str("tool_results:\n");
-            for summary in self.tool_result_summaries.iter().rev().take(10).rev() {
+            for summary in self.tool_result_summaries.iter().rev().take(5).rev() {
                 out.push_str(&format!(
                     "- {} {}: {}",
                     summary.tool, summary.call_id.0, summary.summary
@@ -96,7 +96,7 @@ impl ModelContextState {
                     out.push_str(" [truncated]");
                 }
                 out.push('\n');
-                for fact in summary.facts.iter().take(4) {
+                for fact in summary.facts.iter().take(2) {
                     out.push_str(&format!("  fact: {fact}\n"));
                 }
                 if !summary.next_actions.is_empty() {
@@ -241,9 +241,43 @@ pub fn classify_task(prompt: &str) -> TaskClass {
         ],
     ) {
         TaskClass::TestFailure
+    } else if contains_any(&p, &["portfolio", "website", "landing page", "web page"])
+        || contains_any(
+            &p,
+            &[
+                "create",
+                "build",
+                "make",
+                "implement",
+                "generate",
+                "scaffold",
+                "add",
+            ],
+        ) && contains_any(
+            &p,
+            &[
+                "app",
+                "website",
+                "portfolio",
+                "landing page",
+                "web page",
+                "html",
+                "css",
+                "javascript",
+                "script",
+                "frontend",
+                "component",
+            ],
+        )
+    {
+        TaskClass::CodeGeneration
     } else if contains_any(
         &p,
         &[
+            "android",
+            "emulator",
+            "browser",
+            "visual",
             "ui",
             "sidebar",
             "button",
@@ -269,9 +303,10 @@ pub fn classify_task(prompt: &str) -> TaskClass {
 pub fn budget_profile_for_task(task_class: TaskClass) -> ContextBudgetProfile {
     match task_class {
         TaskClass::DependencyUpdate => ContextBudgetProfile::SmallTask,
-        TaskClass::UiChange | TaskClass::BugFix | TaskClass::TestFailure => {
-            ContextBudgetProfile::Normal
-        }
+        TaskClass::CodeGeneration
+        | TaskClass::UiChange
+        | TaskClass::BugFix
+        | TaskClass::TestFailure => ContextBudgetProfile::Normal,
         TaskClass::ArchitectureQuestion | TaskClass::Refactor | TaskClass::Unknown => {
             ContextBudgetProfile::Normal
         }
@@ -281,6 +316,7 @@ pub fn budget_profile_for_task(task_class: TaskClass) -> ContextBudgetProfile {
 pub fn tool_pack_for_task(task_class: TaskClass) -> ToolPack {
     match task_class {
         TaskClass::DependencyUpdate => ToolPack::Dependency,
+        TaskClass::CodeGeneration => ToolPack::CodeEdit,
         TaskClass::UiChange => ToolPack::UiBrowser,
         TaskClass::TestFailure => ToolPack::GitCi,
         TaskClass::ArchitectureQuestion => ToolPack::Planning,
@@ -293,10 +329,48 @@ fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| haystack.contains(needle))
 }
 
-fn tools_tokens(tools: &[ToolSpec]) -> usize {
-    serde_json::to_string(tools)
+fn tools_tokens(tools: &[PromptToolSpec]) -> usize {
+    serde_json::to_string(&agent_protocol::prompt_tool_payload(tools))
         .map(|s| estimate_tokens(&s))
         .unwrap_or(0)
+}
+
+fn effective_budget(profile: ContextBudgetProfile, base: &ContextBudget) -> ContextBudget {
+    match profile {
+        ContextBudgetProfile::SmallTask => ContextBudget {
+            max_tokens: 12_000,
+            reserved_for_response: 2_000,
+            reserved_for_tools: 6_000.min(base.reserved_for_tools),
+            max_file_tokens: 1_500,
+            max_history_tokens: 2_000,
+        },
+        ContextBudgetProfile::Normal => ContextBudget {
+            max_tokens: 24_000,
+            reserved_for_response: 4_000,
+            reserved_for_tools: 6_000.min(base.reserved_for_tools),
+            max_file_tokens: 2_000,
+            max_history_tokens: 6_000,
+        },
+        ContextBudgetProfile::Deep => ContextBudget {
+            max_tokens: 48_000,
+            reserved_for_response: 8_000,
+            reserved_for_tools: 6_000.min(base.reserved_for_tools),
+            max_file_tokens: 4_000,
+            max_history_tokens: 12_000,
+        },
+    }
+}
+
+fn relevant_context_block(blocks: &[String]) -> String {
+    let mut out = String::new();
+    if !blocks.is_empty() {
+        out.push_str("[RELEVANT_CONTEXT]\n");
+        for block in blocks {
+            out.push_str(block.trim());
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Truncate a single message's content to a per-message token cap, preserving head + tail so the
@@ -402,7 +476,7 @@ impl ContextBuilder {
         prompt: &str,
         attachments: &[ContextAttachment],
         history: &[ModelMessage],
-        tools: Vec<ToolSpec>,
+        tools: Vec<PromptToolSpec>,
     ) -> Result<BuiltContext, AgentError> {
         self.build_with_dynamic(model, prompt, attachments, history, tools, None)
     }
@@ -415,7 +489,7 @@ impl ContextBuilder {
         prompt: &str,
         attachments: &[ContextAttachment],
         history: &[ModelMessage],
-        tools: Vec<ToolSpec>,
+        tools: Vec<PromptToolSpec>,
         dynamic_prefix: Option<String>,
     ) -> Result<BuiltContext, AgentError> {
         let packet = ContextPacket::from_history(prompt, history);
@@ -428,9 +502,10 @@ impl ContextBuilder {
         prompt: &str,
         attachments: &[ContextAttachment],
         packet: ContextPacket,
-        tools: Vec<ToolSpec>,
+        tools: Vec<PromptToolSpec>,
         dynamic_prefix: Option<String>,
     ) -> Result<BuiltContext, AgentError> {
+        let budget = effective_budget(packet.budget_profile, &self.budget);
         let mut system_prompt = super::prompt::system_prompt_with_tools(&tools);
         if let Some(prefix) = dynamic_prefix {
             system_prompt = format!("{prefix}\n{system_prompt}");
@@ -484,19 +559,18 @@ impl ContextBuilder {
             tool_calls: None,
         };
 
-        let mut packet_context = packet
+        let packet_context = packet
             .state
             .to_context_block(packet.task_class, packet.tool_pack);
-        if !packet.relevant_context.is_empty() {
-            packet_context.push_str("\n[RELEVANT_CONTEXT]\n");
-            for block in &packet.relevant_context {
-                packet_context.push_str(block.trim());
-                packet_context.push('\n');
-            }
-        }
+        let relevant_context = relevant_context_block(&packet.relevant_context);
+        let combined_context = if relevant_context.is_empty() {
+            packet_context.clone()
+        } else {
+            format!("{packet_context}\n{relevant_context}")
+        };
         let packet_msg = ModelMessage {
             role: ModelMessageRole::System,
-            content: ModelMessageContent::text(packet_context),
+            content: ModelMessageContent::text(combined_context),
             tool_call_id: None,
             name: None,
             tool_calls: None,
@@ -507,31 +581,25 @@ impl ContextBuilder {
         let capped: Vec<ModelMessage> = packet
             .recent_turns
             .iter()
-            .map(|m| cap_message_content(m, self.budget.max_file_tokens))
+            .map(|m| cap_message_content(m, budget.max_file_tokens))
             .collect();
 
         // Reserve room for system + user + response + tools; the rest is the history budget.
         let fixed =
             message_tokens(&system_msg) + message_tokens(&user_msg) + message_tokens(&packet_msg);
-        let tools_cost = tools_tokens(&tools).min(self.budget.reserved_for_tools);
-        let available = self
-            .budget
+        let tools_cost = tools_tokens(&tools);
+        let tools_reserve = tools_cost.min(budget.reserved_for_tools);
+        let available = budget
             .max_tokens
-            .saturating_sub(self.budget.reserved_for_response)
-            .saturating_sub(self.budget.reserved_for_tools)
+            .saturating_sub(budget.reserved_for_response)
+            .saturating_sub(tools_reserve)
             .saturating_sub(fixed);
-        let profile_history_cap = match packet.budget_profile {
-            ContextBudgetProfile::SmallTask => 3_000,
-            ContextBudgetProfile::Normal => self.budget.max_history_tokens,
-            ContextBudgetProfile::Deep => self.budget.max_history_tokens.saturating_mul(2),
-        };
-        let history_budget = available
-            .min(self.budget.max_history_tokens)
-            .min(profile_history_cap);
+        let history_budget = available.min(budget.max_history_tokens);
 
         let system_tokens = message_tokens(&system_msg);
         let user_tokens = message_tokens(&user_msg);
-        let packet_tokens = message_tokens(&packet_msg);
+        let packet_tokens = estimate_tokens(&packet_context);
+        let relevant_context_tokens = estimate_tokens(&relevant_context);
 
         let (kept, dropped) = fit_history(&capped, history_budget);
 
@@ -548,10 +616,11 @@ impl ContextBuilder {
         summaries.push(format!("{} messages in context", messages.len()));
         summaries.push(format!("task class: {:?}", packet.task_class));
         summaries.push(format!("tool pack: {:?}", packet.tool_pack));
+        summaries.push(format!("tool phase budget: {:?}", packet.budget_profile));
 
         let section_estimates = vec![
             ContextSectionEstimate {
-                name: "system".into(),
+                name: "system_static".into(),
                 tokens: system_tokens,
             },
             ContextSectionEstimate {
@@ -559,15 +628,19 @@ impl ContextBuilder {
                 tokens: user_tokens,
             },
             ContextSectionEstimate {
-                name: "task_state_and_context".into(),
+                name: "task_state".into(),
                 tokens: packet_tokens,
             },
             ContextSectionEstimate {
-                name: "recent_turns".into(),
+                name: "relevant_context".into(),
+                tokens: relevant_context_tokens,
+            },
+            ContextSectionEstimate {
+                name: "history".into(),
                 tokens: history_tokens,
             },
             ContextSectionEstimate {
-                name: "tool_specs".into(),
+                name: "tools".into(),
                 tokens: tools_cost,
             },
         ];
@@ -579,6 +652,8 @@ impl ContextBuilder {
                 tools,
                 temperature: Some(0.2),
                 max_tokens: Some(4096),
+                prompt_cache_key: None,
+                previous_response_id: None,
             },
             token_estimate,
             files,
@@ -800,6 +875,20 @@ mod tests {
     }
 
     #[test]
+    fn classifies_simple_portfolio_generation_as_code_edit() {
+        let task = classify_task("imagine the nicest portfolio app");
+        assert_eq!(task, TaskClass::CodeGeneration);
+        assert_eq!(tool_pack_for_task(task), ToolPack::CodeEdit);
+    }
+
+    #[test]
+    fn classifies_script_creation_as_code_edit() {
+        let task = classify_task("Create script.js with interactivity");
+        assert_eq!(task, TaskClass::CodeGeneration);
+        assert_eq!(tool_pack_for_task(task), ToolPack::CodeEdit);
+    }
+
+    #[test]
     fn packet_build_preserves_task_state_before_history() {
         let mut state = ModelContextState::new("fix failing tests");
         state
@@ -840,7 +929,7 @@ mod tests {
             built
                 .section_estimates
                 .iter()
-                .any(|section| section.name == "task_state_and_context")
+                .any(|section| section.name == "task_state")
         );
     }
 
@@ -880,5 +969,58 @@ mod tests {
         assert!(block.contains("android_observation: obs-1"));
         assert!(block.contains("android_target: Settings"));
         assert!(block.contains("resource_id=com.example:id/settings"));
+    }
+
+    #[test]
+    fn tool_prompt_tokens_use_prompt_specs_not_internal_policy() {
+        let prompt_tools = vec![agent_protocol::PromptToolSpec {
+            name: "read_file".into(),
+            description: "Read file".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+            }),
+        }];
+        let prompt_cost = tools_tokens(&prompt_tools);
+        let full_cost = estimate_tokens(
+            &serde_json::to_string(&vec![agent_protocol::ToolSpec {
+                name: "read_file".into(),
+                description: "Read file".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": { "path": { "type": "string", "description": "path" } },
+                    "required": ["path"]
+                }),
+                policy: agent_protocol::ToolPolicy::default(),
+            }])
+            .unwrap(),
+        );
+        assert!(prompt_cost < full_cost);
+    }
+
+    #[test]
+    fn task_state_keeps_tool_result_summary_out_of_history_json() {
+        let mut state = ModelContextState::new("fix bug");
+        state.record_tool_summary(ToolResultSummary {
+            call_id: agent_protocol::ToolCallId::new("call-1"),
+            tool: "search_project".into(),
+            summary: "Found symbol".into(),
+            facts: vec!["fact one".into(), "fact two".into(), "fact three".into()],
+            affected_paths: Vec::new(),
+            ranges: Vec::new(),
+            raw_handle: "tool://run/call-1".into(),
+            token_cost: 10,
+            truncated: false,
+            next_actions: Vec::new(),
+            is_error: false,
+            android_evidence: None,
+        });
+        let block = state.to_context_block(TaskClass::BugFix, ToolPack::CodeEdit);
+        assert!(block.contains("Found symbol"));
+        assert!(block.contains("fact one"));
+        assert!(block.contains("fact two"));
+        assert!(!block.contains("fact three"));
+        assert!(!block.contains("\"tool\""));
     }
 }

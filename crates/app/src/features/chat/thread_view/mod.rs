@@ -32,8 +32,8 @@ use crate::features::chat::manifest::{
     assistant_provenance_for_item, assistant_row_height_from_blocks,
     build_manifest_with_transcript, build_tool_output_preview, collapsed_item_header_changed,
     context_trace_counts_summary, context_trace_entry_line, manifest_span, phase_from_u8,
-    reasoning_preview_line_text, row_height_with_collapsed, row_refs_for_item_with_mode,
-    row_size, row_sizes_for_manifest, row_sizes_for_rows, row_top_gap,
+    reasoning_preview_line_text, row_height_with_collapsed, row_refs_for_item_with_mode, row_size,
+    row_sizes_for_manifest, row_sizes_for_rows, row_top_gap,
 };
 use crate::features::composer::layout::render_composer_fade;
 use crate::features::shell::state::{ConversationId, ThreadItem};

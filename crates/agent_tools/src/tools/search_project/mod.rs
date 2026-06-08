@@ -153,16 +153,16 @@ impl AgentTool for SearchProjectTool {
             context_before: args
                 .get("context_before")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(0) as usize,
+                .unwrap_or(1) as usize,
             context_after: args
                 .get("context_after")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(0) as usize,
-            max_hits: args.get("max_hits").and_then(|v| v.as_u64()).unwrap_or(50) as usize,
+                .unwrap_or(1) as usize,
+            max_hits: args.get("max_hits").and_then(|v| v.as_u64()).unwrap_or(12) as usize,
             max_matches_per_file: args
                 .get("max_matches_per_file")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(10) as usize,
+                .unwrap_or(3) as usize,
             names_only: args
                 .get("names_only")
                 .and_then(|v| v.as_bool())
@@ -175,7 +175,7 @@ impl AgentTool for SearchProjectTool {
         let hits = index
             .search_with_options(&options)
             .map_err(|e| e.to_string())?;
-        let output = hits
+        let mut output = hits
             .iter()
             .map(|h| {
                 if options.names_only {
@@ -209,11 +209,53 @@ impl AgentTool for SearchProjectTool {
             })
             .collect::<Vec<_>>()
             .join("\n\n");
+        if output.len() > MAX_OUTPUT_BYTES {
+            let mut truncated = output.chars().take(MAX_OUTPUT_BYTES).collect::<String>();
+            truncated.push_str(
+                "\n\n[truncated: narrow query, include path filter, or reduce context lines]",
+            );
+            output = truncated;
+        }
         Ok(ToolResult {
             call_id: agent_protocol::ToolCallId::new(""),
             name: self.name().to_string(),
             output,
             is_error: false,
         })
+    }
+}
+
+const MAX_OUTPUT_BYTES: usize = 12 * 1024;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn search_project_truncates_large_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = (0..1000)
+            .map(|i| format!("needle line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(dir.path().join("big.txt"), body).unwrap();
+        let tool = SearchProjectTool;
+        let runtime = Runtime::new().unwrap();
+        let result = runtime
+            .block_on(tool.execute(
+                json!({ "query": "needle", "max_hits": 200, "max_matches_per_file": 200 }),
+                ToolContext {
+                    project_root: dir.path().to_path_buf(),
+                    project_id: agent_protocol::ProjectId::new("p"),
+                    session_id: agent_protocol::SessionId::new("s"),
+                    run_id: agent_protocol::RunId::new("r"),
+                    mode: agent_protocol::AgentMode::ReadOnlyInspect,
+                    output_sink: None,
+                },
+            ))
+            .unwrap();
+        assert!(result.output.contains("[truncated:"));
     }
 }

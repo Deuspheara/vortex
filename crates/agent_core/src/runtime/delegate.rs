@@ -100,6 +100,8 @@ impl AgentRuntime {
                 todos: Vec::new(),
                 pending_choice: None,
                 android_lane: super::AndroidExecutionLane::default(),
+                repo_index: None,
+                previous_response_id: None,
             },
         );
         let sink = self.sink();

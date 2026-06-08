@@ -37,11 +37,11 @@ pub struct ContextBudget {
 impl Default for ContextBudget {
     fn default() -> Self {
         Self {
-            max_tokens: 100_000,
-            reserved_for_response: 8_000,
-            reserved_for_tools: 16_000,
-            max_file_tokens: 8_000,
-            max_history_tokens: 32_000,
+            max_tokens: 24_000,
+            reserved_for_response: 4_000,
+            reserved_for_tools: 6_000,
+            max_file_tokens: 2_000,
+            max_history_tokens: 6_000,
         }
     }
 }

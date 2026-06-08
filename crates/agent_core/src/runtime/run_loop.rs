@@ -1,5 +1,8 @@
 use super::*;
 use agent_models::extract_inline_tool_calls_with_tools;
+use agent_protocol::ToolPhase;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 impl AgentRuntime {
     pub(crate) async fn run_loop(
@@ -44,18 +47,26 @@ impl AgentRuntime {
 
         let mut dynamic_prefix = dynamic_prefix;
 
-        if super::context::context_selection_enabled() {
-            let (root, project_id, model) = {
+        if super::context::context_selection_enabled()
+            && should_run_context_selection(classify_task(&prompt), &prompt)
+        {
+            let (root, project_id, model, repo_index) = {
                 let runs = self.active_runs.lock().await;
                 let run = runs.get(run_id);
                 (
                     run.map(|r| r.project_root.clone()),
                     run.map(|r| r.project_id.clone()),
                     model_for_selection,
+                    run.and_then(|r| r.repo_index.clone()),
                 )
             };
             if let (Some(root), Some(project_id), Some(model)) = (root, project_id, model) {
-                if let Some(index) = super::context::open_repo_index(&root, &project_id) {
+                let maybe_index =
+                    repo_index.or_else(|| super::context::open_repo_index(&root, &project_id));
+                if let Some(index) = maybe_index {
+                    if let Some(run) = self.active_runs.lock().await.get_mut(run_id) {
+                        run.repo_index = Some(index.clone());
+                    }
                     let service = super::context::build_context_service(index, &root);
                     if let Ok((opened, _trace)) = super::context::run_context_selection(
                         self.provider.as_ref(),
@@ -94,22 +105,29 @@ impl AgentRuntime {
                 model_context_state,
                 task_class,
                 tool_pack,
-                tools,
+                prompt_tools,
                 project_root,
                 project_id,
                 session_id,
                 mode,
+                repo_index,
+                previous_response_id,
+                first_turn,
             ) = {
                 let runs = self.active_runs.lock().await;
                 let run = runs
                     .get(run_id)
                     .ok_or(AgentError::Other("run not found".into()))?;
-                let tool_specs = task_visible_tool_specs(
-                    self.tools.registry.tool_specs(),
+                let exec_specs = self.tools.registry.tool_specs();
+                let phase = infer_tool_phase(&run.message_history, run.task_class, &run.mode);
+                let prompt_tool_specs = agent_tools::task_visible_prompt_tool_specs(
+                    self.tools.registry.prompt_tool_specs(),
+                    &exec_specs,
                     &run.mode,
                     run.depth,
                     is_git_repo(&run.project_root),
                     run.tool_pack,
+                    phase,
                 );
                 (
                     run.model.clone(),
@@ -117,11 +135,14 @@ impl AgentRuntime {
                     run.model_context_state.clone(),
                     run.task_class,
                     run.tool_pack,
-                    tool_specs,
+                    prompt_tool_specs,
                     run.project_root.clone(),
                     run.project_id.clone(),
                     run.session_id.clone(),
                     run.mode.clone(),
+                    run.repo_index.clone(),
+                    run.previous_response_id.clone(),
+                    run.message_history.is_empty(),
                 )
             };
 
@@ -129,16 +150,29 @@ impl AgentRuntime {
                 run_id = %run_id.0,
                 loop_count,
                 history_len = message_history.len(),
-                tools = tools.len(),
+                tools = prompt_tools.len(),
                 "model loop iteration"
             );
 
+            let repo_index = match repo_index {
+                Some(index) => Some(index),
+                None => {
+                    let opened = super::context::open_repo_index(&project_root, &project_id);
+                    if let Some(run) = self.active_runs.lock().await.get_mut(run_id) {
+                        run.repo_index = opened.clone();
+                    }
+                    opened
+                }
+            };
+
             let (relevant_context, trace_entries) =
                 super::context::deterministic_context_for_prompt(
+                    repo_index.as_ref(),
                     &project_root,
                     &project_id,
                     &prompt,
                     task_class,
+                    first_turn,
                 );
             if !trace_entries.is_empty() {
                 sink.emit(
@@ -161,16 +195,24 @@ impl AgentRuntime {
                 recent_turns: message_history,
             };
             let inline_tool_names: Vec<String> =
-                tools.iter().map(|tool| tool.name.clone()).collect();
+                prompt_tools.iter().map(|tool| tool.name.clone()).collect();
 
-            let built = self.context_builder.build_packet_with_dynamic(
+            let mut built = self.context_builder.build_packet_with_dynamic(
                 model.clone(),
                 &prompt,
                 &attachments,
                 packet,
-                tools,
+                prompt_tools,
                 dynamic_prefix.clone(),
             )?;
+
+            if self.provider.capabilities().supports_prompt_cache_key {
+                built.request.prompt_cache_key =
+                    Some(prompt_cache_key(&session_id, &mode, &built.request.tools));
+            }
+            if self.provider.capabilities().supports_stateful_turns {
+                built.request.previous_response_id = previous_response_id;
+            }
 
             sink.emit(
                 run_id,
@@ -506,9 +548,66 @@ fn extract_proposed_plan(text: &str) -> Option<String> {
     best
 }
 
+fn infer_tool_phase(
+    history: &[ModelMessage],
+    _task_class: agent_protocol::TaskClass,
+    mode: &AgentMode,
+) -> ToolPhase {
+    if matches!(mode, AgentMode::PlanOnly | AgentMode::ChatOnly) {
+        return ToolPhase::Explore;
+    }
+
+    let mut saw_tool = false;
+    for message in history.iter().rev() {
+        if let Some(name) = message.name.as_deref() {
+            if matches!(
+                name,
+                "edit_file" | "write_file" | "delete_file" | "apply_patch"
+            ) {
+                return ToolPhase::Validate;
+            }
+            saw_tool = true;
+        }
+    }
+    if saw_tool {
+        ToolPhase::Edit
+    } else {
+        ToolPhase::Explore
+    }
+}
+
+fn should_run_context_selection(task_class: agent_protocol::TaskClass, prompt: &str) -> bool {
+    if matches!(task_class, agent_protocol::TaskClass::ArchitectureQuestion) {
+        return true;
+    }
+    let lower = prompt.to_lowercase();
+    ["understand", "explain", "review", "architecture"]
+        .iter()
+        .any(|needle| lower.contains(needle))
+}
+
+fn prompt_cache_key(
+    session_id: &SessionId,
+    mode: &AgentMode,
+    tools: &[agent_protocol::PromptToolSpec],
+) -> String {
+    let mut hasher = DefaultHasher::new();
+    agent_context::SYSTEM_PROMPT_VERSION.hash(&mut hasher);
+    session_id.0.hash(&mut hasher);
+    format!("{mode:?}").hash(&mut hasher);
+    for tool in tools {
+        tool.name.hash(&mut hasher);
+        tool.description.hash(&mut hasher);
+    }
+    format!("vortex:{:x}", hasher.finish())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::extract_proposed_plan;
+    use super::{extract_proposed_plan, infer_tool_phase};
+    use agent_protocol::{
+        AgentMode, ModelMessage, ModelMessageContent, ModelMessageRole, TaskClass, ToolPhase,
+    };
 
     #[test]
     fn extracts_plan_markdown_from_wrapped_response() {
@@ -530,6 +629,46 @@ mod tests {
         assert_eq!(
             extract_proposed_plan(text).as_deref(),
             Some("# Plan\n- Real step")
+        );
+    }
+
+    #[test]
+    fn infer_tool_phase_moves_from_explore_to_edit_to_validate() {
+        assert_eq!(
+            infer_tool_phase(&[], TaskClass::BugFix, &AgentMode::ApplyWithApproval),
+            ToolPhase::Explore
+        );
+
+        let search_history = vec![ModelMessage {
+            role: ModelMessageRole::Tool,
+            content: ModelMessageContent::text("searched"),
+            tool_call_id: None,
+            name: Some("search_project".into()),
+            tool_calls: None,
+        }];
+        assert_eq!(
+            infer_tool_phase(
+                &search_history,
+                TaskClass::BugFix,
+                &AgentMode::ApplyWithApproval
+            ),
+            ToolPhase::Edit
+        );
+
+        let edit_history = vec![ModelMessage {
+            role: ModelMessageRole::Tool,
+            content: ModelMessageContent::text("edited"),
+            tool_call_id: None,
+            name: Some("edit_file".into()),
+            tool_calls: None,
+        }];
+        assert_eq!(
+            infer_tool_phase(
+                &edit_history,
+                TaskClass::BugFix,
+                &AgentMode::ApplyWithApproval
+            ),
+            ToolPhase::Validate
         );
     }
 }

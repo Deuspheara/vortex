@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::{AndroidToolEvidence, ModelId, OutputStreamKind, ToolCallId, ToolName, ToolPolicy};
 
@@ -71,6 +71,7 @@ pub struct ToolResultSummary {
 #[serde(rename_all = "snake_case")]
 pub enum TaskClass {
     DependencyUpdate,
+    CodeGeneration,
     BugFix,
     UiChange,
     TestFailure,
@@ -117,6 +118,20 @@ impl Default for ToolPack {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPhase {
+    Explore,
+    Edit,
+    Validate,
+}
+
+impl Default for ToolPhase {
+    fn default() -> Self {
+        Self::Explore
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolSpec {
     pub name: ToolName,
@@ -124,6 +139,37 @@ pub struct ToolSpec {
     pub parameters: Value,
     #[serde(default)]
     pub policy: ToolPolicy,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PromptToolSpec {
+    pub name: ToolName,
+    pub description: String,
+    pub parameters: Value,
+}
+
+pub fn prompt_tool_payload(tools: &[PromptToolSpec]) -> Vec<Value> {
+    tools
+        .iter()
+        .map(|tool| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                }
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct ModelProviderCapabilities {
+    #[serde(default)]
+    pub supports_prompt_cache_key: bool,
+    #[serde(default)]
+    pub supports_stateful_turns: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -277,9 +323,13 @@ fn cap_text_head_tail(text: &str, max_chars: usize) -> String {
 pub struct ModelRequest {
     pub model: ModelId,
     pub messages: Vec<ModelMessage>,
-    pub tools: Vec<ToolSpec>,
+    pub tools: Vec<PromptToolSpec>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_response_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

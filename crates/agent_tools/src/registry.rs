@@ -2,14 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_protocol::{
-    AgentMode, ApprovalDecision, ApprovalId, PendingToolCall, RiskLevel, ToolCallId,
-    ToolCapabilities, ToolCategory, ToolContext, ToolDescriptor, ToolModeGate, ToolPack,
-    ToolPackPolicy, ToolPolicy, ToolRepoRequirement, ToolResult, ToolRuntimeFamily, ToolStatus,
+    AgentMode, ApprovalDecision, ApprovalId, PendingToolCall, PromptToolSpec, RiskLevel,
+    ToolCallId, ToolCapabilities, ToolCategory, ToolContext, ToolDescriptor, ToolModeGate,
+    ToolPack, ToolPackPolicy, ToolPhase, ToolPolicy, ToolRepoRequirement, ToolResult,
+    ToolRuntimeFamily, ToolStatus,
 };
 use agent_sandbox::ApprovalEngine;
 use agent_store::{EventStore, StoredToolCall, storage_tool_call_id};
 use chrono::Utc;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::shared::{BrowserMcpClient, BrowserMcpConfigState, UnconfiguredVisionPort};
 use crate::tool::AgentTool;
@@ -34,6 +35,17 @@ pub fn default_tool_specs(tools: &[Box<dyn AgentTool>]) -> Vec<agent_protocol::T
             description: tool.description().to_string(),
             parameters: tool.schema(),
             policy: tool.policy(),
+        })
+        .collect()
+}
+
+pub fn default_prompt_tool_specs(tools: &[Box<dyn AgentTool>]) -> Vec<PromptToolSpec> {
+    tools
+        .iter()
+        .map(|tool| PromptToolSpec {
+            name: tool.name().to_string(),
+            description: compact_tool_description(tool.name(), tool.description()),
+            parameters: prompt_schema_for_tool(tool.name(), &tool.schema()),
         })
         .collect()
 }
@@ -81,6 +93,7 @@ pub fn mode_visible_tool_specs(
 pub fn tool_pack_for_task(task_class: agent_protocol::TaskClass) -> ToolPack {
     match task_class {
         agent_protocol::TaskClass::DependencyUpdate => ToolPack::Dependency,
+        agent_protocol::TaskClass::CodeGeneration => ToolPack::CodeEdit,
         agent_protocol::TaskClass::UiChange => ToolPack::UiBrowser,
         agent_protocol::TaskClass::TestFailure => ToolPack::GitCi,
         agent_protocol::TaskClass::ArchitectureQuestion => ToolPack::Planning,
@@ -104,6 +117,29 @@ pub fn task_visible_tool_specs(
         .collect()
 }
 
+pub fn task_visible_prompt_tool_specs(
+    prompt_specs: Vec<PromptToolSpec>,
+    exec_specs: &[agent_protocol::ToolSpec],
+    mode: &AgentMode,
+    depth: u8,
+    is_git_repo: bool,
+    pack: ToolPack,
+    phase: ToolPhase,
+) -> Vec<PromptToolSpec> {
+    let visible_exec_specs =
+        task_visible_tool_specs(exec_specs.to_vec(), mode, depth, is_git_repo, pack);
+    let visible_names: std::collections::HashSet<&str> = visible_exec_specs
+        .iter()
+        .map(|spec| spec.name.as_str())
+        .collect();
+
+    prompt_specs
+        .into_iter()
+        .filter(|spec| visible_names.contains(spec.name.as_str()))
+        .filter(|spec| tool_allowed_in_phase(spec.name.as_str(), phase, mode))
+        .collect()
+}
+
 pub fn tool_allowed_in_pack(policy: &ToolPolicy, pack: ToolPack) -> bool {
     match &policy.pack_policy {
         ToolPackPolicy::All => true,
@@ -123,6 +159,191 @@ pub fn tool_allowed_in_mode(policy: &ToolPolicy, mode: &AgentMode) -> bool {
         ToolModeGate::ApplyPatches => mode.can_apply_patches(),
         ToolModeGate::RunVirtualBash => mode.can_run_virtual_bash(),
         ToolModeGate::RunRealCommands => mode.can_run_real_commands(),
+    }
+}
+
+pub fn tool_allowed_in_phase(name: &str, phase: ToolPhase, mode: &AgentMode) -> bool {
+    if mode == &AgentMode::PlanOnly || mode == &AgentMode::ChatOnly {
+        return matches!(phase, ToolPhase::Explore);
+    }
+
+    let explore = matches!(
+        name,
+        "repo_map" | "list_files" | "search_project" | "find_symbol" | "open_node" | "read_file"
+    );
+    let edit = matches!(
+        name,
+        "search_project"
+            | "open_node"
+            | "read_file"
+            | "edit_file"
+            | "write_file"
+            | "delete_file"
+            | "apply_patch"
+            | "todo_write"
+    );
+    let validate = matches!(
+        name,
+        "read_file"
+            | "search_project"
+            | "edit_file"
+            | "write_file"
+            | "delete_file"
+            | "apply_patch"
+            | "run_real_command"
+            | "bash_virtual"
+    );
+
+    match phase {
+        ToolPhase::Explore => explore,
+        ToolPhase::Edit => edit,
+        ToolPhase::Validate => validate,
+    }
+}
+
+fn compact_tool_description(name: &str, raw: &str) -> String {
+    match name {
+        "repo_map" => return "Map repo".into(),
+        "list_files" => return "List files".into(),
+        "search_project" => return "Search code".into(),
+        "find_symbol" => return "Find symbol".into(),
+        "open_node" => return "Open node".into(),
+        "read_file" => return "Read slice".into(),
+        "edit_file" => return "Edit text".into(),
+        "write_file" => return "Write file".into(),
+        "delete_file" => return "Delete file".into(),
+        "apply_patch" => return "Apply patch".into(),
+        "todo_write" => return "Update todo list".into(),
+        "run_real_command" => return "Run command".into(),
+        "bash_virtual" => return "Run virtual shell".into(),
+        _ => {}
+    }
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(48)
+        .collect()
+}
+
+fn minify_prompt_schema(schema: &Value) -> Value {
+    match schema {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (key, value) in map {
+                if matches!(
+                    key.as_str(),
+                    "description" | "default" | "title" | "examples"
+                ) {
+                    continue;
+                }
+                if key == "properties" {
+                    if let Some(props) = value.as_object() {
+                        let mut new_props = serde_json::Map::new();
+                        for (prop_name, prop_schema) in props {
+                            new_props.insert(prop_name.clone(), minify_prompt_schema(prop_schema));
+                        }
+                        out.insert(key.clone(), Value::Object(new_props));
+                    }
+                    continue;
+                }
+                out.insert(key.clone(), minify_prompt_schema(value));
+            }
+            Value::Object(out)
+        }
+        Value::Array(values) => Value::Array(values.iter().map(minify_prompt_schema).collect()),
+        _ => schema.clone(),
+    }
+}
+
+fn prompt_schema_for_tool(name: &str, schema: &Value) -> Value {
+    match name {
+        "repo_map" => json!({
+            "type": "object",
+            "properties": {
+                "focus": { "type": "string" }
+            }
+        }),
+        "list_files" => json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "pattern": { "type": "string" }
+            }
+        }),
+        "search_project" => json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string" },
+                "path": { "type": "string" },
+                "include": { "type": "string" },
+                "regex": { "type": "boolean" }
+            },
+            "required": ["query"]
+        }),
+        "find_symbol" => json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" },
+                "kind": { "type": "string" }
+            },
+            "required": ["name"]
+        }),
+        "open_node" => json!({
+            "type": "object",
+            "properties": { "node_id": { "type": "string" } },
+            "required": ["node_id"]
+        }),
+        "read_file" => json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "start_line": { "type": "integer" },
+                "end_line": { "type": "integer" }
+            },
+            "required": ["path"]
+        }),
+        "edit_file" => json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "old_string": { "type": "string" },
+                "new_string": { "type": "string" }
+            },
+            "required": ["path", "old_string", "new_string"]
+        }),
+        "write_file" => json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "content": { "type": "string" }
+            },
+            "required": ["path", "content"]
+        }),
+        "delete_file" => json!({
+            "type": "object",
+            "properties": { "path": { "type": "string" } },
+            "required": ["path"]
+        }),
+        "apply_patch" | "propose_patch" => json!({
+            "type": "object",
+            "properties": { "unified_diff": { "type": "string" } },
+            "required": ["unified_diff"]
+        }),
+        "todo_write" => json!({
+            "type": "object",
+            "properties": { "todos": { "type": "array" } },
+            "required": ["todos"]
+        }),
+        "run_real_command" | "bash_virtual" => json!({
+            "type": "object",
+            "properties": {
+                "command": { "type": "string" },
+                "cwd": { "type": "string" }
+            },
+            "required": ["command"]
+        }),
+        _ => minify_prompt_schema(schema),
     }
 }
 
@@ -226,6 +447,10 @@ impl ToolRegistry {
 
     pub fn tool_specs(&self) -> Vec<agent_protocol::ToolSpec> {
         default_tool_specs(&self.tools)
+    }
+
+    pub fn prompt_tool_specs(&self) -> Vec<PromptToolSpec> {
+        default_prompt_tool_specs(&self.tools)
     }
 
     pub fn catalog(&self) -> Vec<ToolDescriptor> {
@@ -471,6 +696,33 @@ mod tests {
     }
 
     #[test]
+    fn code_generation_pack_excludes_browser_android_and_research_tools() {
+        let registry = ToolRegistry::new(
+            PathBuf::from("/tmp/checkpoints"),
+            BrowserMcpConfigState::Unconfigured,
+        );
+        let visible = task_visible_tool_specs(
+            registry.tool_specs(),
+            &AgentMode::ApplyWithApproval,
+            0,
+            true,
+            ToolPack::CodeEdit,
+        );
+        let names: Vec<_> = visible.iter().map(|spec| spec.name.as_str()).collect();
+
+        assert!(names.contains(&"read_file"));
+        assert!(names.contains(&"write_file"));
+        assert!(names.contains(&"apply_patch"));
+        assert!(names.contains(&"todo_write"));
+        assert!(!names.contains(&"browser_screenshot"));
+        assert!(!names.contains(&"browser_snapshot"));
+        assert!(!names.contains(&"android.observe"));
+        assert!(!names.contains(&"android_cli.run"));
+        assert!(!names.contains(&"web_search"));
+        assert!(!names.contains(&"delegate"));
+    }
+
+    #[test]
     fn output_cache_key_uses_range_policy() {
         let registry = ToolRegistry::new(
             PathBuf::from("/tmp/checkpoints"),
@@ -498,6 +750,61 @@ mod tests {
             registry.output_cache_key("repo_map", &args).as_deref(),
             Some("focus=crates/app")
         );
+    }
+
+    #[test]
+    fn prompt_specs_strip_policy_and_heavy_schema_fields() {
+        let registry = ToolRegistry::new(
+            PathBuf::from("/tmp/checkpoints"),
+            BrowserMcpConfigState::Unconfigured,
+        );
+        let read = registry
+            .prompt_tool_specs()
+            .into_iter()
+            .find(|spec| spec.name == "read_file")
+            .expect("read_file prompt spec");
+        let text = serde_json::to_string(&read).unwrap();
+        assert!(!text.contains("\"policy\""));
+        assert!(!text.contains("\"description\":\"Relative path within the project\""));
+    }
+
+    #[test]
+    fn prompt_tool_phase_filters_visible_tools() {
+        let registry = ToolRegistry::new(
+            PathBuf::from("/tmp/checkpoints"),
+            BrowserMcpConfigState::Unconfigured,
+        );
+        let prompt_visible = task_visible_prompt_tool_specs(
+            registry.prompt_tool_specs(),
+            &registry.tool_specs(),
+            &AgentMode::ApplyWithApproval,
+            0,
+            true,
+            ToolPack::CodeEdit,
+            ToolPhase::Explore,
+        );
+        let names: Vec<_> = prompt_visible
+            .iter()
+            .map(|spec| spec.name.as_str())
+            .collect();
+        assert!(names.contains(&"search_project"));
+        assert!(!names.contains(&"edit_file"));
+
+        let prompt_visible = task_visible_prompt_tool_specs(
+            registry.prompt_tool_specs(),
+            &registry.tool_specs(),
+            &AgentMode::ApplyWithApproval,
+            0,
+            true,
+            ToolPack::CodeEdit,
+            ToolPhase::Validate,
+        );
+        let names: Vec<_> = prompt_visible
+            .iter()
+            .map(|spec| spec.name.as_str())
+            .collect();
+        assert!(names.contains(&"run_real_command"));
+        assert!(names.contains(&"edit_file"));
     }
 }
 

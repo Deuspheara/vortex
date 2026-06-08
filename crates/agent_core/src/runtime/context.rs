@@ -84,14 +84,16 @@ pub fn build_context_service(index: Arc<Mutex<RepoIndex>>, root: &Path) -> Conte
 }
 
 pub fn deterministic_context_for_prompt(
+    index: Option<&Arc<Mutex<RepoIndex>>>,
     root: &Path,
     project_id: &ProjectId,
     prompt: &str,
     task_class: TaskClass,
+    include_repo_map: bool,
 ) -> (Vec<String>, Vec<ContextTraceEntry>) {
     match task_class {
         TaskClass::DependencyUpdate => gradle_dependency_context(root),
-        _ => indexed_context_for_prompt(root, project_id, prompt),
+        _ => indexed_context_for_prompt(index, root, project_id, prompt, include_repo_map),
     }
 }
 
@@ -102,26 +104,24 @@ fn gradle_dependency_context(root: &Path) -> (Vec<String>, Vec<ContextTraceEntry
     candidates.dedup();
     candidates.truncate(8);
 
-    let mut blocks = Vec::new();
-    let mut traces = Vec::new();
-    let mut total_context_bytes = 0usize;
-    for rel in candidates {
-        let path = root.join(&rel);
-        if total_context_bytes >= 32_000 {
-            break;
-        }
-        if let Some(block) = read_bounded_file_block(root, &path, 220, 8_000) {
-            total_context_bytes += block.len();
-            blocks.push(block);
-            traces.push(ContextTraceEntry {
-                kind: ContextEntryKind::FileSlice,
-                label: rel.display().to_string(),
-                detail: Some("dependency context".into()),
-                reason: "dependency update task uses Gradle/catalog files".into(),
-            });
-        }
+    if candidates.is_empty() {
+        return (Vec::new(), Vec::new());
     }
-    (blocks, traces)
+    let mut block = String::from("[DEPENDENCY_CONTEXT]\n");
+    for rel in candidates.iter().take(8) {
+        block.push_str("- ");
+        block.push_str(&rel.display().to_string());
+        block.push('\n');
+    }
+    (
+        vec![block],
+        vec![ContextTraceEntry {
+            kind: ContextEntryKind::RepoMap,
+            label: "dependency context".into(),
+            detail: Some(format!("{} files", candidates.len().min(8))),
+            reason: "dependency update task uses Gradle/catalog files".into(),
+        }],
+    )
 }
 
 fn collect_gradle_context_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
@@ -164,11 +164,13 @@ fn collect_gradle_context_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>,
 }
 
 fn indexed_context_for_prompt(
+    index: Option<&Arc<Mutex<RepoIndex>>>,
     root: &Path,
     project_id: &ProjectId,
     prompt: &str,
+    include_repo_map: bool,
 ) -> (Vec<String>, Vec<ContextTraceEntry>) {
-    let Some(index) = open_repo_index(root, project_id) else {
+    let Some(index) = index.cloned().or_else(|| open_repo_index(root, project_id)) else {
         return (Vec::new(), Vec::new());
     };
     let Ok(guard) = index.lock() else {
@@ -176,13 +178,39 @@ fn indexed_context_for_prompt(
     };
     let mut blocks = Vec::new();
     let mut traces = Vec::new();
+    if include_repo_map {
+        let map = guard.compact_map(MapBudget {
+            max_depth: 4,
+            max_entries: 120,
+            focus: None,
+        });
+        if !map.trim().is_empty() {
+            blocks.push(map);
+            traces.push(ContextTraceEntry {
+                kind: ContextEntryKind::RepoMap,
+                label: "Repo map".into(),
+                detail: Some("compact".into()),
+                reason: "lightweight repository structure for initial orientation".into(),
+            });
+        }
+    }
+    let mut summary_tokens = 0usize;
     for hit in guard.rank(prompt, 4).into_iter().take(2) {
         let id = if hit.symbol_id.is_empty() {
             hit.path.clone()
         } else {
             hit.symbol_id.clone()
         };
-        if let Ok(block) = guard.open_node(&id) {
+        if let Ok(summary) = guard.summarize_node(&id) {
+            let block = format!(
+                "[NODE_SUMMARY]\n{} :: {} {}\n{}\n",
+                hit.path, hit.kind, hit.name, summary
+            );
+            let block_tokens = agent_context::estimate_tokens(&block);
+            if summary_tokens + block_tokens > 500 {
+                break;
+            }
+            summary_tokens += block_tokens;
             blocks.push(block);
             traces.push(ContextTraceEntry {
                 kind: ContextEntryKind::Symbol,
@@ -193,40 +221,6 @@ fn indexed_context_for_prompt(
         }
     }
     (blocks, traces)
-}
-
-fn read_bounded_file_block(
-    root: &Path,
-    path: &Path,
-    max_lines: usize,
-    max_bytes: usize,
-) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let rel = path.strip_prefix(root).ok()?.display().to_string();
-    let mut bytes = 0usize;
-    let mut shown = Vec::new();
-    for line in content.lines().take(max_lines) {
-        bytes += line.len() + 1;
-        if bytes > max_bytes {
-            break;
-        }
-        shown.push(line);
-    }
-    let total_lines = content.lines().count();
-    let truncated = shown.len() < total_lines;
-    let mut out = format!(
-        "<file_slice path=\"{rel}\" start=\"1\" end=\"{}\">\n",
-        shown.len()
-    );
-    out.push_str(&shown.join("\n"));
-    if truncated {
-        out.push_str(&format!(
-            "\n[truncated: showing first {} of {total_lines} lines]",
-            shown.len()
-        ));
-    }
-    out.push_str("\n</file_slice>\n");
-    Some(out)
 }
 
 /// One model turn that asks for `<context_selection>`, opens chosen nodes, and returns trace entries.
@@ -265,6 +259,8 @@ pub async fn run_context_selection(
         tools: Vec::new(),
         temperature: Some(0.0),
         max_tokens: Some(1024),
+        prompt_cache_key: None,
+        previous_response_id: None,
     };
 
     let mut stream = provider.stream(request, cancel.clone()).await?;
@@ -326,6 +322,46 @@ pub async fn run_context_selection(
         Some(opened_text)
     };
     Ok((injected, entries))
+}
+
+#[cfg(test)]
+mod deterministic_context_tests {
+    use super::*;
+    use std::fs;
+
+    fn write(root: &Path, rel: &str, contents: &str) {
+        let path = root.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn deterministic_context_uses_summaries_not_file_slices() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "src/lib.rs", "pub struct Alpha;\npub fn beta() {}\n");
+        let project_id = ProjectId::new("ctx-test");
+        let index = Arc::new(std::sync::Mutex::new(
+            RepoIndex::build_in_memory(root).expect("repo index"),
+        ));
+        let (blocks, traces) = deterministic_context_for_prompt(
+            Some(&index),
+            root,
+            &project_id,
+            "find beta",
+            TaskClass::BugFix,
+            true,
+        );
+        assert!(!blocks.is_empty());
+        assert!(blocks.iter().all(|block| !block.contains("<file_slice")));
+        assert!(
+            traces
+                .iter()
+                .any(|entry| entry.kind == ContextEntryKind::RepoMap)
+        );
+    }
 }
 
 fn trace_kind_for_id(id: &str) -> ContextEntryKind {

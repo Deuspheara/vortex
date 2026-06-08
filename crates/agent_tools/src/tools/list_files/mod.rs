@@ -40,7 +40,7 @@ impl AgentTool for ListFilesTool {
                     "enum": ["path", "modified_desc"],
                     "default": "path"
                 },
-                "max_files": { "type": "integer", "default": 200 }
+                "max_files": { "type": "integer", "default": 100 }
             }
         })
     }
@@ -160,7 +160,7 @@ impl AgentTool for ListFilesTool {
             max_files: args
                 .get("max_files")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(200) as usize,
+                .unwrap_or(100) as usize,
             respect_git_ignore: args
                 .get("respect_git_ignore")
                 .and_then(|v| v.as_bool())
