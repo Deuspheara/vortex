@@ -272,7 +272,7 @@ fn project_item(
             id: id.clone(),
             item_ix,
             kind: TimelineEventKind::ContextTrace,
-            label: "Context used".into(),
+            label: "Context".into(),
             detail: Some(format!("{} items", entries.len())),
             phase: ActivityPhase::Explore,
             status: AgentStatus::Completed,

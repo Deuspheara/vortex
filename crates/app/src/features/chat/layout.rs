@@ -66,8 +66,8 @@ pub const USER_SEE_MORE_H: f32 = 22.0;
 /// Activity header row height — `Tokens::TOOL_ROW_HEIGHT`.
 pub const HEADER_H: f32 = Tokens::TOOL_ROW_HEIGHT;
 
-/// Multi-line plan status row height.
-pub const PLAN_STATUS_H: f32 = 82.0;
+/// Compact plan status row height — `Tokens::TOOL_ROW_HEIGHT`.
+pub const PLAN_STATUS_H: f32 = Tokens::TOOL_ROW_HEIGHT;
 
 /// Monospace output line height — `Tokens::DIFF_LINE_HEIGHT`.
 pub const LINE_H: f32 = Tokens::DIFF_LINE_HEIGHT;
@@ -80,6 +80,16 @@ pub const APPROVAL_H: f32 = Tokens::ROW_HEIGHT_SM;
 
 /// Top padding on assistant markdown body — `Tokens::spacing_1()`.
 pub fn assistant_body_pt() -> f32 {
+    px(Tokens::spacing_1())
+}
+
+/// Compact "Result" label height above assistant prose.
+pub fn assistant_result_label_h() -> f32 {
+    px(Tokens::text_sm_leading_compact())
+}
+
+/// Gap between the result label and assistant prose.
+pub fn assistant_result_label_gap() -> f32 {
     px(Tokens::spacing_1())
 }
 

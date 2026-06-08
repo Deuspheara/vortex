@@ -13,12 +13,20 @@ pub fn timeline_section_header(phase: ActivityPhase) -> impl IntoElement {
         .w_full()
         .max_w(px(Tokens::THREAD_MAX_WIDTH))
         .pt(Tokens::spacing_2())
-        .pb(Tokens::spacing_0p5())
+        .pb(Tokens::spacing_1())
         .child(
             div()
-                .text_size(Tokens::text_xs())
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(Tokens::text_tertiary())
-                .child(label.to_uppercase()),
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .child(div().w(px(20.0)).h(px(1.0)).bg(Tokens::timeline_border()))
+                .child(
+                    div()
+                        .text_size(Tokens::text_xs())
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(Tokens::text_tertiary())
+                        .child(label.to_uppercase()),
+                )
+                .child(div().flex_1().h(px(1.0)).bg(Tokens::timeline_border())),
         )
 }

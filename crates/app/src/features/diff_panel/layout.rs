@@ -8,8 +8,7 @@ use gpui_component::button::{Button, ButtonVariants};
 
 use crate::features::agent_activity::components::approval::diff_approval_bar;
 use crate::features::shell::state::{
-    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, PlanExecutionState,
-    ReviewPanelTab,
+    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, ReviewPanelTab,
 };
 use crate::features::todos::components::todo_list;
 use crate::shared::components::buttons::{btn_approve, btn_ghost_label};
@@ -269,11 +268,7 @@ fn render_plan_action_strip(
     show_choice: bool,
     recommend_fresh_context: bool,
 ) -> impl IntoElement {
-    let can_start = can_implement
-        && matches!(
-            artifact.execution_state,
-            PlanExecutionState::NotStarted | PlanExecutionState::Stale
-        );
+    let can_start = can_implement && artifact.execution_state.can_start();
     let state_label = artifact.execution_state.label();
     let show_entity = entity.clone();
     let fresh_entity = entity.clone();
@@ -290,12 +285,6 @@ fn render_plan_action_strip(
         .child(
             div()
                 .w_full()
-                .rounded(Tokens::radius_lg())
-                .border_1()
-                .border_color(Tokens::border_subtle())
-                .bg(Tokens::surface())
-                .px(Tokens::spacing_3())
-                .py(Tokens::spacing_2())
                 .flex()
                 .flex_col()
                 .gap(Tokens::spacing_2())
@@ -316,12 +305,12 @@ fn render_plan_action_strip(
                                         .text_size(Tokens::text_sm())
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(Tokens::text_primary())
-                                        .child("Plan ready to implement"),
+                                        .child("Plan review"),
                                 )
                                 .child(
                                     div()
                                         .text_size(Tokens::text_xs())
-                                        .text_color(Tokens::text_tertiary())
+                                        .text_color(Tokens::text_secondary())
                                         .child(format!("Status · {state_label}")),
                                 ),
                         )
@@ -468,6 +457,15 @@ fn render_header(
                                 .child("Applied"),
                         )
                     })
+                })
+                .when(!changes_selected, |el| {
+                    el.child(
+                        div()
+                            .text_size(Tokens::text_sm())
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(Tokens::text_primary())
+                            .child("Plan review"),
+                    )
                 }),
         )
         .child(

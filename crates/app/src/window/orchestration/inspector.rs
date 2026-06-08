@@ -7,6 +7,9 @@ use crate::features::shell::state::{
     ArtifactId, ArtifactKind, ArtifactSelection, DockPlacement, InspectorMode, InspectorTabId,
     InspectorTabKind, InspectorView, ReviewPanelTab, ThreadItem,
 };
+use crate::features::workspace_layout::state::{
+    BOTTOM_PANE_ID, RIGHT_PANE_ID, WorkspaceItemId, WorkspaceTab,
+};
 
 impl AgentWindow {
     pub fn set_inspector_mode(&mut self, mode: InspectorMode, cx: &mut Context<Self>) {
@@ -28,12 +31,14 @@ impl AgentWindow {
 
     pub fn select_inspector_view(&mut self, view: InspectorView, cx: &mut Context<Self>) {
         let id = self.inspector_tabs.select_builtin(view);
+        self.sync_inspector_tab_in_workspace_layout(id, None);
         self.apply_inspector_tab_by_id(id);
         self.reveal_dock_for_tab(id, cx);
     }
 
     pub fn select_inspector_tab(&mut self, tab_id: InspectorTabId, cx: &mut Context<Self>) {
         if self.inspector_tabs.select(tab_id).is_some() {
+            self.sync_inspector_tab_in_workspace_layout(tab_id, None);
             self.apply_inspector_tab_by_id(tab_id);
             self.reveal_dock_for_tab(tab_id, cx);
         }
@@ -46,12 +51,18 @@ impl AgentWindow {
         cx: &mut Context<Self>,
     ) {
         if self.inspector_tabs.reorder(dragged_id, target_id) {
+            self.workspace_layout.reorder_item(
+                &WorkspaceItemId::inspector_tab(dragged_id),
+                &WorkspaceItemId::inspector_tab(target_id),
+            );
             cx.notify();
         }
     }
 
     pub fn close_inspector_tab(&mut self, tab_id: InspectorTabId, cx: &mut Context<Self>) {
         self.inspector_tabs.close(tab_id);
+        self.workspace_layout
+            .remove_item(&WorkspaceItemId::inspector_tab(tab_id));
         if self
             .inspector_tabs
             .tabs_for_dock(DockPlacement::Right)
@@ -65,6 +76,7 @@ impl AgentWindow {
 
     pub fn new_inspector_tab(&mut self, cx: &mut Context<Self>) {
         let id = self.inspector_tabs.open_empty();
+        self.sync_inspector_tab_in_workspace_layout(id, Some(DockPlacement::Right));
         self.apply_inspector_tab_by_id(id);
         self.set_inspector_mode(InspectorMode::Review, cx);
     }
@@ -75,10 +87,12 @@ impl AgentWindow {
                 let id = self
                     .inspector_tabs
                     .select_artifact(artifact_id.clone(), artifact.title.clone());
+                self.sync_inspector_tab_in_workspace_layout(id, None);
                 self.apply_inspector_tab_by_id(id);
                 self.reveal_dock_for_tab(id, cx);
             } else {
                 let id = self.inspector_tabs.select_builtin(InspectorView::Changes);
+                self.sync_inspector_tab_in_workspace_layout(id, None);
                 self.apply_inspector_tab_by_id(id);
             }
         }
@@ -156,6 +170,7 @@ impl AgentWindow {
                 self.inspector_tabs
                     .select_subagent(item_id.to_string(), format!("Subagent · {task}"));
                 if let Some(id) = self.inspector_tabs.last_selected_id {
+                    self.sync_inspector_tab_in_workspace_layout(id, None);
                     self.apply_inspector_tab_by_id(id);
                 }
                 self.set_inspector_mode(InspectorMode::Review, cx);
@@ -195,6 +210,7 @@ impl AgentWindow {
         cx: &mut Context<Self>,
     ) {
         if self.inspector_tabs.move_tab_to_dock(tab_id, dock) {
+            self.sync_inspector_tab_in_workspace_layout(tab_id, Some(dock));
             self.apply_inspector_tab_by_id(tab_id);
         }
         match dock {
@@ -203,6 +219,30 @@ impl AgentWindow {
                 self.terminal_panel_open = true;
                 cx.notify();
             }
+        }
+    }
+
+    fn sync_inspector_tab_in_workspace_layout(
+        &mut self,
+        tab_id: InspectorTabId,
+        placement_override: Option<DockPlacement>,
+    ) {
+        let Some(tab) = self.inspector_tabs.tabs.iter().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let dock = placement_override.unwrap_or(tab.placement);
+        let pane_id = match dock {
+            DockPlacement::Right => RIGHT_PANE_ID,
+            DockPlacement::Bottom => BOTTOM_PANE_ID,
+        };
+        let item = WorkspaceItemId::inspector_tab(tab_id);
+        let workspace_tab = WorkspaceTab::new(item.clone(), tab.title.clone(), tab.closeable);
+        if !self
+            .workspace_layout
+            .move_item_to_pane(&item, pane_id, None)
+        {
+            self.workspace_layout
+                .ensure_tab_in_pane(pane_id, workspace_tab, None);
         }
     }
 

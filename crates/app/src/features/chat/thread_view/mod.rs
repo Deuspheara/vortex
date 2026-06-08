@@ -29,11 +29,10 @@ use crate::features::chat::components::message::user_message;
 use crate::features::chat::components::timeline_section::timeline_section_header;
 use crate::features::chat::manifest::{
     RowRef, activity_group_pos, assistant_accessory_height, assistant_actions_height,
-    assistant_provenance_for_item, assistant_row_height_from_blocks,
-    build_manifest_with_transcript, build_tool_output_preview, collapsed_item_header_changed,
-    context_trace_counts_summary, context_trace_entry_line, manifest_span, phase_from_u8,
-    reasoning_preview_line_text, row_height_with_collapsed, row_refs_for_item_with_mode, row_size,
-    row_sizes_for_manifest, row_sizes_for_rows, row_top_gap,
+    assistant_row_height_from_blocks, build_manifest_with_transcript, build_tool_output_preview,
+    collapsed_item_header_changed, context_trace_counts_summary, context_trace_entry_line,
+    manifest_span, phase_from_u8, reasoning_preview_line_text, row_height_with_collapsed,
+    row_refs_for_item_with_mode, row_size, row_sizes_for_manifest, row_sizes_for_rows, row_top_gap,
 };
 use crate::features::composer::layout::render_composer_fade;
 use crate::features::shell::state::{ConversationId, ThreadItem};
@@ -334,14 +333,6 @@ impl ThreadView {
 
     pub fn reveal_item(&mut self, item_id: &str) {
         self.pending_scroll_item_id = Some(item_id.to_string());
-    }
-
-    pub fn open_context_trace(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        let agent = self.agent.clone();
-        let target_id = item_id.to_string();
-        agent.update(cx, move |window, cx| {
-            window.open_context_trace(&target_id, cx);
-        });
     }
 
     pub fn push_item(&mut self, item: ThreadItem, cx: &mut Context<Self>) {

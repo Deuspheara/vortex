@@ -2,7 +2,7 @@
 
 use crate::features::shell::state::ApprovalRisk;
 use crate::shared::components::buttons::{btn_approve, btn_deny};
-use crate::tokens::{Tokens, activity_action_line};
+use crate::tokens::{Tokens, activity_action_line_with_loading};
 use gpui::{App, FontWeight, IntoElement, div, prelude::*, px};
 
 /// Sticky elevated approval card — primary blocking action surface near composer.
@@ -109,13 +109,13 @@ pub fn thread_approval_row(
     div()
         .id("thread-approval-row")
         .w_full()
-        .child(activity_action_line(
+        .child(activity_action_line_with_loading(
             title,
             detail.as_deref(),
             !resolved && approval_active,
+            false,
             approval_active,
             "approval-legacy",
-            0,
         ))
 }
 

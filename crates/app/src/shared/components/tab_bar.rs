@@ -1,11 +1,12 @@
 //! Reusable tab bar component — used by terminal bottom panel and diff panel file tabs.
 //!
-//! Flat tabs at rest; the selected tab gets a light full border. Unselected tabs
-//! show a hover highlight only.
+//! Flat tabs at rest; the selected tab gets a stronger text treatment plus an
+//! underline. Unselected tabs stay quiet and only pick up a hover wash.
 
 use std::rc::Rc;
 
 use crate::features::shell::state::DockPlacement;
+use crate::features::workspace_layout::state::WorkspaceItemId;
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::tokens::icons;
 use crate::tokens::{Tokens, element_key};
@@ -18,6 +19,7 @@ pub(crate) struct DraggedTab {
     pub group_id: SharedString,
     pub kind: DraggedTabKind,
     pub tab_id: u64,
+    pub workspace_item: WorkspaceItemId,
     pub label: String,
 }
 
@@ -31,6 +33,13 @@ pub(crate) fn dock_tab_drag_placement(drag: &DraggedTab) -> Option<DockPlacement
     match drag.kind {
         DraggedTabKind::InspectorDock(dock) => Some(dock),
         DraggedTabKind::TerminalSession => None,
+    }
+}
+
+pub(crate) fn workspace_item_for_drag_kind(kind: &DraggedTabKind, tab_id: u64) -> WorkspaceItemId {
+    match kind {
+        DraggedTabKind::InspectorDock(_) => WorkspaceItemId::inspector_tab(tab_id),
+        DraggedTabKind::TerminalSession => WorkspaceItemId::terminal_session(tab_id),
     }
 }
 
@@ -97,9 +106,8 @@ pub fn tab_bar(props: TabBarProps) -> impl IntoElement {
             div()
                 .flex()
                 .items_center()
-                .gap(Tokens::spacing_1())
+                .gap(Tokens::spacing_0p5())
                 .py(Tokens::spacing_1())
-                .px(Tokens::spacing_1())
                 .min_w(px(0.0))
                 .flex_nowrap()
                 .children(props.tabs.iter().map(|tab| {
@@ -142,27 +150,32 @@ fn render_tab(
         .h(px(Tokens::ROW_HEIGHT_SM))
         .px(Tokens::spacing_2())
         .max_w(px(180.0))
-        .rounded(Tokens::radius_xs())
+        .border_b_1()
+        .border_color(if is_selected {
+            Tokens::accent().opacity(0.92)
+        } else {
+            Tokens::surface_hover().alpha(0.0)
+        })
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
         .flex_shrink_0()
         .cursor_pointer()
-        .when(is_selected, |el| {
-            el.bg(Tokens::surface_active())
-                .text_color(Tokens::text_primary())
-        })
+        .when(is_selected, |el| el.text_color(Tokens::text_primary()))
         .when(!is_selected, |el| {
-            el.hover(|s| s.bg(Tokens::surface_hover()))
+            el.rounded(Tokens::radius_xs())
+                .hover(|s| s.bg(Tokens::surface_hover().opacity(0.6)))
         })
         .when_some(on_select, |el, cb| {
             el.on_click(move |_, _, app: &mut gpui::App| cb(tab_id, app))
         })
         .when_some(drag_kind.clone(), |el, kind| {
+            let workspace_item = workspace_item_for_drag_kind(&kind, tab_id);
             let drag_payload = DraggedTab {
                 group_id: SharedString::from(bar_id),
                 kind,
                 tab_id,
+                workspace_item,
                 label: label.clone(),
             };
             el.on_drag(drag_payload, |drag, _, _, cx| cx.new(|_| drag.clone()))
@@ -186,11 +199,11 @@ fn render_tab(
         });
 
     if let Some(icon) = icon {
-        tab_div = tab_div.child(
-            Icon::new(icon)
-                .size(px(13.0))
-                .text_color(Tokens::text_secondary()),
-        );
+        tab_div = tab_div.child(Icon::new(icon).size(px(13.0)).text_color(if is_selected {
+            Tokens::text_primary()
+        } else {
+            Tokens::text_tertiary()
+        }));
     }
 
     tab_div = tab_div.child(

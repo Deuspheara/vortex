@@ -4,24 +4,15 @@
 
 use std::rc::Rc;
 
-use gpui::{
-    AnyElement, Corner, Entity, FontWeight, IntoElement, SharedString, div, prelude::*, px,
-};
+use gpui::{Corner, FontWeight, IntoElement, div, prelude::*, px};
 use gpui_component::Icon;
 use gpui_component::IconName;
 use gpui_component::popover::Popover;
 
 use crate::shared::components::buttons::{btn_ghost_icon, btn_icon_sm, btn_outline};
-use crate::shared::components::dropdown::{
-    DropdownAnchor, DropdownItem, PickerDropdownProps, picker_dropdown,
-};
 use crate::shared::components::panel_controls::{PanelControlClusterProps, panel_control_cluster};
-use crate::shared::state::WorkspaceReadiness;
-use crate::shared::state::model_catalog::DEFAULT_PROVIDER;
-use crate::shared::state::model_catalog::provider_options;
 use crate::tokens::Tokens;
 use crate::tokens::icons;
-use crate::ui::agent_window::AgentWindow;
 
 pub struct TopBarProps {
     pub conversation_title: String,
@@ -29,13 +20,7 @@ pub struct TopBarProps {
     pub inspector_open: bool,
     pub terminal_panel_open: bool,
     pub show_panel_controls: bool,
-    pub active_theme: String,
-    pub themes: Vec<SharedString>,
-    pub selected_provider: String,
-    pub dark_mode: bool,
-    pub workspace_readiness: WorkspaceReadiness,
     pub workspace_readiness_label: Option<String>,
-    pub entity: Entity<AgentWindow>,
     pub on_toggle_sidebar: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_toggle_inspector: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_toggle_terminal: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
@@ -96,21 +81,13 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                 .when_some(props.workspace_readiness_label, |el, label| {
                     el.child(render_workspace_status(label, props.on_workspace_status))
                 })
-                .child(render_provider_status(
-                    &props.selected_provider,
-                    &props.workspace_readiness,
-                    props.on_open_settings.clone(),
-                ))
-                .child(render_provider_picker(
-                    &props.selected_provider,
-                    props.entity.clone(),
-                ))
-                .child(render_theme_picker(
-                    props.active_theme,
-                    props.themes,
-                    props.dark_mode,
-                    props.entity.clone(),
-                )),
+                .when_some(props.on_open_settings, |el, cb| {
+                    el.child(
+                        btn_ghost_icon("topbar-open-settings", icons::SETTINGS)
+                            .tooltip("Open settings")
+                            .on_click(move |_, _, app: &mut gpui::App| cb(app)),
+                    )
+                }),
         )
 }
 
@@ -234,34 +211,6 @@ fn render_workspace_status(
     }
 }
 
-fn render_provider_status(
-    selected: &str,
-    readiness: &WorkspaceReadiness,
-    on_click: Option<Rc<dyn Fn(&mut gpui::App)>>,
-) -> impl IntoElement {
-    let label = if readiness.provider_connected {
-        format!(
-            "{} ready",
-            if selected.is_empty() {
-                DEFAULT_PROVIDER
-            } else {
-                selected
-            }
-        )
-    } else if readiness.uses_mock_provider {
-        "Connect provider".to_string()
-    } else {
-        "Finish provider setup".to_string()
-    };
-
-    let button = btn_outline("topbar-provider-status", label);
-    if let Some(cb) = on_click {
-        button.on_click(move |_, _, app: &mut gpui::App| cb(app))
-    } else {
-        button
-    }
-}
-
 fn render_dock_actions(
     on_new_terminal_tab: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
 ) -> impl IntoElement {
@@ -272,78 +221,4 @@ fn render_dock_actions(
                 button.on_click(move |_, _, app: &mut gpui::App| cb(app))
             }),
     )
-}
-
-fn render_provider_picker(selected: &str, entity: Entity<AgentWindow>) -> AnyElement {
-    let selected = if selected.is_empty() {
-        DEFAULT_PROVIDER
-    } else {
-        selected
-    };
-    let items: Vec<DropdownItem> = provider_options()
-        .into_iter()
-        .map(|opt| DropdownItem {
-            label: opt.name.to_string(),
-            icon: Some(opt.icon),
-        })
-        .collect();
-
-    let current_icon = provider_options()
-        .into_iter()
-        .find(|opt| opt.name == selected)
-        .map(|opt| opt.icon);
-
-    picker_dropdown(PickerDropdownProps {
-        id: "topbar-provider".into(),
-        label: selected.to_string(),
-        items,
-        selected: Some(selected.to_string()),
-        anchor: DropdownAnchor::Below,
-        menu_min_width: 140.0,
-        trigger_icon: current_icon,
-        searchable: false,
-        search_texts: None,
-        search_placeholder: None,
-        on_select: Rc::new(move |_index, selected, app| {
-            entity.update(app, |view, cx| {
-                view.on_provider_selected(selected, cx);
-            });
-        }),
-    })
-    .into_any_element()
-}
-
-fn render_theme_picker(
-    active_theme: String,
-    themes: Vec<SharedString>,
-    dark_mode: bool,
-    entity: Entity<AgentWindow>,
-) -> AnyElement {
-    let theme_icon = if dark_mode { icons::MOON } else { icons::SUN };
-    let items: Vec<DropdownItem> = themes
-        .into_iter()
-        .map(|name| DropdownItem {
-            label: name.to_string(),
-            icon: None,
-        })
-        .collect();
-
-    picker_dropdown(PickerDropdownProps {
-        id: "theme-picker".into(),
-        label: active_theme.clone(),
-        items,
-        selected: Some(active_theme),
-        anchor: DropdownAnchor::Below,
-        menu_min_width: 200.0,
-        trigger_icon: Some(theme_icon),
-        searchable: false,
-        search_texts: None,
-        search_placeholder: None,
-        on_select: Rc::new(move |_, theme, app| {
-            entity.update(app, |view, cx| {
-                view.apply_color_theme(&theme, None, cx);
-            });
-        }),
-    })
-    .into_any_element()
 }

@@ -77,6 +77,7 @@ pub struct ProjectRowViewModel {
     pub project_id: ProjectId,
     pub name: String,
     pub count: usize,
+    pub expanded: bool,
     pub row_id: ElementId,
     pub toggle_id: ElementId,
     pub name_id: ElementId,
@@ -87,12 +88,13 @@ pub struct ProjectRowViewModel {
 }
 
 impl ProjectRowViewModel {
-    pub fn new(project: &Project, _expanded: bool) -> Self {
+    pub fn new(project: &Project, expanded: bool) -> Self {
         let id = &project.id.0;
         Self {
             project_id: project.id.clone(),
             name: project.name.clone(),
             count: project.conversations.len(),
+            expanded,
             row_id: ElementId::from(SharedString::from(format!("project-{id}"))),
             toggle_id: element_key("project-toggle", id),
             name_id: element_key("project-name", id),
@@ -328,11 +330,6 @@ pub fn session_row(
     let conv_id = row.conv_id.clone();
     let selected = row.selected;
     let hover_group = group_name.clone();
-    let row_bg = if selected {
-        Tokens::sidebar_selected_bg()
-    } else {
-        Tokens::sidebar_bg()
-    };
 
     let row_body = div()
         .id(row.row_id.clone())
@@ -403,7 +400,7 @@ pub fn session_row(
                 .overflow_hidden()
                 .pr(Tokens::spacing_2())
                 .truncate()
-                .text_size(Tokens::text_base())
+                .text_size(Tokens::text_sm())
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(sidebar_row_label_color(selected))
                 .when(!selected, |el| {
@@ -415,12 +412,11 @@ pub fn session_row(
             div()
                 .relative()
                 .flex_shrink_0()
-                .w(px(72.0))
+                .w(px(64.0))
                 .h(px(Tokens::ROW_HEIGHT_MD))
                 .flex()
                 .items_center()
                 .justify_end()
-                .bg(row_bg)
                 .child(
                     div()
                         .absolute()
@@ -503,6 +499,7 @@ pub fn project_row(
     let sidebar_for_right = sidebar.clone();
     let group_name = row.group_name.clone();
     let hover_group = group_name.clone();
+    let expanded = row.expanded;
 
     div()
         .id(row.row_id.clone())
@@ -562,10 +559,19 @@ pub fn project_row(
                     });
                 })
                 .child(
+                    Icon::new(if expanded {
+                        icons::CHEVRON_DOWN
+                    } else {
+                        icons::CHEVRON_RIGHT
+                    })
+                    .size(px(13.0))
+                    .flex_shrink_0()
+                    .text_color(Tokens::sidebar_text_muted()),
+                )
+                .child(
                     Icon::new(icons::FOLDER)
                         .size(px(14.0))
                         .flex_shrink_0()
-                        .mr(Tokens::spacing_1())
                         .text_color(Tokens::sidebar_text()),
                 )
                 .child(
@@ -586,11 +592,22 @@ pub fn project_row(
             div()
                 .relative()
                 .flex_shrink_0()
-                .w(px(48.0))
+                .w(px(72.0))
                 .h(px(Tokens::ROW_HEIGHT_MD))
                 .flex()
                 .justify_end()
                 .items_center()
+                .child(
+                    div()
+                        .text_size(Tokens::text_xs())
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(Tokens::sidebar_text_muted())
+                        .opacity(if is_menu_open { 0.0 } else { 1.0 })
+                        .when(!is_menu_open, |el| {
+                            el.group_hover(group_name.clone(), |s| s.opacity(0.0))
+                        })
+                        .child(count.to_string()),
+                )
                 .child(
                     div()
                         .absolute()

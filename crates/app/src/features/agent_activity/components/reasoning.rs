@@ -2,7 +2,9 @@
 
 use gpui::{App, IntoElement};
 
-use crate::features::agent_activity::components::{activity_header_row, activity_output_line_row};
+use crate::features::agent_activity::components::{
+    ActivityRowVisual, activity_header_row_with_visual, activity_output_line_row,
+};
 use crate::features::shell::state::{
     ActivityGroupPos, AgentStatus, REASONING_OUTPUT_PREVIEW_LINES,
 };
@@ -16,7 +18,7 @@ fn reasoning_title(title: &str, running: bool) -> String {
         return title.to_string();
     }
     match title {
-        "Thinking" | "thinking" => "Thought".into(),
+        "Thinking" | "thinking" => "Reasoning".into(),
         other => other.to_string(),
     }
 }
@@ -34,15 +36,18 @@ pub fn render_reasoning_header_row(
     let running = is_running(status);
     let title_owned = reasoning_title(title, running);
 
-    activity_header_row(
-        "reasoning-row",
-        "reasoning-header",
-        item_id,
+    activity_header_row_with_visual(
+        ActivityRowVisual {
+            row_key: "reasoning-row",
+            header_key: "reasoning-header",
+            item_id,
+            running,
+            show_loading: false,
+            animate,
+            group_pos,
+        },
         title_owned,
         None,
-        running,
-        animate,
-        group_pos,
         gpui::div().into_any_element(),
         on_toggle,
     )

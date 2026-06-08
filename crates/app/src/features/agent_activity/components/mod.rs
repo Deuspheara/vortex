@@ -11,7 +11,18 @@ use gpui::{AnyElement, App, IntoElement, div, prelude::*, px};
 
 use crate::features::shell::state::ActivityGroupPos;
 use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
-use crate::tokens::{Tokens, activity_action_line, element_key};
+use crate::tokens::{Tokens, activity_action_line_with_loading, element_key};
+
+#[derive(Clone, Copy)]
+pub struct ActivityRowVisual<'a> {
+    pub row_key: &'static str,
+    pub header_key: &'static str,
+    pub item_id: &'a str,
+    pub running: bool,
+    pub show_loading: bool,
+    pub animate: bool,
+    pub group_pos: Option<ActivityGroupPos>,
+}
 
 /// Collapsible activity header (tool, reasoning).
 pub fn activity_header_row(
@@ -26,20 +37,46 @@ pub fn activity_header_row(
     trailing: AnyElement,
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
+    let visual = ActivityRowVisual {
+        row_key,
+        header_key,
+        item_id,
+        running,
+        show_loading: running,
+        animate,
+        group_pos,
+    };
+    activity_header_row_with_visual(visual, label, detail, trailing, on_toggle)
+}
+
+pub fn activity_header_row_with_visual(
+    visual: ActivityRowVisual<'_>,
+    label: String,
+    detail: Option<String>,
+    trailing: AnyElement,
+    on_toggle: impl Fn(&mut App) + 'static,
+) -> impl IntoElement {
     activity_group_wrap(
         div()
-            .id(element_key(row_key, item_id))
+            .id(element_key(visual.row_key, visual.item_id))
             .w_full()
             .flex()
             .flex_col()
             .child(timeline_row(
-                element_key(header_key, item_id),
-                activity_action_line(&label, detail.as_deref(), running, animate, item_id, 0)
-                    .into_any_element(),
+                element_key(visual.header_key, visual.item_id),
+                activity_action_line_with_loading(
+                    &label,
+                    detail.as_deref(),
+                    visual.running,
+                    visual.show_loading,
+                    visual.animate,
+                    visual.item_id,
+                )
+                .into_any_element(),
                 trailing,
                 move |_, _, app: &mut App| on_toggle(app),
             )),
-        group_pos,
+        visual.group_pos,
     )
 }
 
@@ -57,13 +94,13 @@ pub fn activity_output_line_row(line_id: &str, text: &str, mono: bool) -> impl I
             el.font_family("monospace")
                 .text_size(Tokens::text_code())
                 .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                .opacity(0.68)
+                .opacity(0.8)
         })
         .when(!mono, |el| {
             el.font_family(Tokens::ui_font_family())
                 .text_size(Tokens::text_sm())
                 .line_height(Tokens::text_sm_leading())
-                .opacity(0.64)
+                .opacity(0.76)
         })
         .text_color(Tokens::activity_detail_text())
         .overflow_hidden()

@@ -122,30 +122,30 @@ impl VortexPalette {
             panel_bg: gpui::rgb(0x0d0e0f).into(),
             main_bg: gpui::rgb(0x070808).into(),
             surface: gpui::rgb(0x121314).into(),
-            surface_hover: gpui::rgb(0x191a1c).into(),
-            surface_active: gpui::rgb(0x1a1d21).into(),
+            surface_hover: gpui::rgb(0x181a1d).into(),
+            surface_active: gpui::rgb(0x20242a).into(),
             surface_overlay: gpui::rgb(0x121314).into(),
             chrome: gpui::rgb(0x0b0c0d).into(),
             input_bg: gpui::rgb(0x141516).into(),
             diff_bg: gpui::rgb(0x080909).into(),
             sidebar_bg: gpui::rgb(0x0b0c0d).into(),
             border: gpui::rgb(0x2a2d31).into(),
-            border_subtle: gpui::rgb(0x1f2124).into(),
+            border_subtle: gpui::rgb(0x24282d).into(),
             divider: {
                 let c: Hsla = gpui::rgb(0x2a2d31).into();
-                c.opacity(0.22)
+                c.opacity(0.34)
             },
             border_strong: gpui::rgb(0x3a3d42).into(),
             border_focus: gpui::rgb(0x7aa2ff).into(),
             sidebar_border: gpui::rgb(0x202225).into(),
             text_primary: gpui::rgb(0xe6e6e6).into(),
-            text_secondary: gpui::rgb(0xa2a4a8).into(),
-            text_tertiary: gpui::rgb(0x71747a).into(),
-            text_faint: gpui::rgb(0x52555a).into(),
+            text_secondary: gpui::rgb(0xb3b7bc).into(),
+            text_tertiary: gpui::rgb(0x888d95).into(),
+            text_faint: gpui::rgb(0x696f77).into(),
             text_bright: gpui::rgb(0xffffff).into(),
-            sidebar_text: gpui::rgb(0x8d9096).into(),
+            sidebar_text: gpui::rgb(0x9ca1a8).into(),
             sidebar_text_hover: gpui::rgb(0xd6d7d9).into(),
-            sidebar_text_muted: gpui::rgb(0x5f6268).into(),
+            sidebar_text_muted: gpui::rgb(0x767c84).into(),
             accent: gpui::rgb(0x7aa2ff).into(),
             accent_hover: gpui::rgb(0x92b4ff).into(),
             accent_dim: gpui::rgb(0x5a7fd9).into(),
@@ -169,8 +169,8 @@ impl VortexPalette {
     pub fn from_theme(theme: &Theme) -> Self {
         let dark = theme.is_dark();
         let workspace = theme.background;
-        let border_subtle = theme.border.opacity(if dark { 0.4 } else { 0.55 });
-        let divider = workspace.blend(theme.border.opacity(if dark { 0.2 } else { 0.32 }));
+        let border_subtle = theme.border.opacity(if dark { 0.56 } else { 0.64 });
+        let divider = workspace.blend(theme.border.opacity(if dark { 0.3 } else { 0.42 }));
         let input_bg = theme.secondary.opacity(if dark { 0.92 } else { 1.0 });
         let highlight = &theme.highlight_theme.style;
         let diff_bg = highlight.editor_background.unwrap_or(theme.background);
@@ -228,7 +228,7 @@ impl VortexPalette {
 }
 
 fn caption_color(muted: Hsla, bg: Hsla) -> Hsla {
-    bg.blend(muted.opacity(0.72))
+    bg.blend(muted.opacity(0.84))
 }
 
 static ACTIVE_PALETTE: OnceLock<RwLock<VortexPalette>> = OnceLock::new();

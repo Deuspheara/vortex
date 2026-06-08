@@ -119,11 +119,12 @@ pub(crate) fn render_sidebar_footer(
         .border_t_1()
         .border_color(Tokens::sidebar_border())
         .bg(Tokens::sidebar_bg())
+        .p(Tokens::spacing_2())
         .child(flat_list_row(
             "sidebar-settings-row",
-            Tokens::ROW_HEIGHT_LG,
-            Tokens::sidebar_padding(),
-            Tokens::sidebar_padding(),
+            Tokens::ROW_HEIGHT_MD,
+            Tokens::spacing_2(),
+            Tokens::spacing_2(),
             selected,
             true,
             Some(move |app: &mut gpui::App| {

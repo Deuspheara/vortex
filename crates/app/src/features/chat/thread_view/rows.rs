@@ -511,7 +511,7 @@ impl ThreadView {
                     "context-trace-row",
                     "context-trace-header",
                     id,
-                    "Context used".to_string(),
+                    "Context".to_string(),
                     Some(summary),
                     false,
                     animate && *expanded,
@@ -611,16 +611,6 @@ impl ThreadView {
 
             let sealed = self.sealed_blocks.get(&id).cloned().unwrap_or_default();
             let show_cursor = markdown.len() > 2;
-            let provenance = assistant_provenance_for_item(item_ix, &self.items);
-            let provenance_strip = provenance.map(|vm| {
-                let agent = self.agent.clone();
-                let trace_item_id = vm.trace_item_id.clone();
-                render_provenance_strip(&id, vm, move |app: &mut gpui::App| {
-                    agent.update(app, |view, cx| {
-                        view.open_context_trace(&trace_item_id, cx);
-                    });
-                })
-            });
             let actions_projection = self.assistant_actions;
             let actions = assistant_action_row(
                 &id,
@@ -637,6 +627,7 @@ impl ThreadView {
                 .flex()
                 .flex_col()
                 .gap(Tokens::spacing_1())
+                .child(assistant_result_label(&id))
                 .child(streaming_assistant_body(
                     &id,
                     markdown,
@@ -644,7 +635,6 @@ impl ThreadView {
                     show_cursor,
                 ))
                 .when_some(jump_to_latest, |el, button| el.child(button))
-                .when_some(provenance_strip, |el, strip| el.child(strip))
                 .child(actions)
                 .into_any_element();
         }
@@ -654,16 +644,6 @@ impl ThreadView {
         self.sealed_blocks.remove(&id);
 
         let blocks = self.cached_markdown_blocks(&id, &markdown, false);
-        let provenance = assistant_provenance_for_item(item_ix, &self.items);
-        let provenance_strip = provenance.map(|vm| {
-            let agent = self.agent.clone();
-            let trace_item_id = vm.trace_item_id.clone();
-            render_provenance_strip(&id, vm, move |app: &mut gpui::App| {
-                agent.update(app, |view, cx| {
-                    view.open_context_trace(&trace_item_id, cx);
-                });
-            })
-        });
         let actions_projection = self.assistant_actions;
         let actions = assistant_action_row(
             &id,
@@ -682,11 +662,24 @@ impl ThreadView {
             .gap(Tokens::spacing_1())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
+            .child(assistant_result_label(&id))
             .child(markdown_preview_blocks_thread_shared(blocks, false))
-            .when_some(provenance_strip, |el, strip| el.child(strip))
             .child(actions)
             .into_any_element()
     }
+}
+
+fn assistant_result_label(item_id: &str) -> impl IntoElement {
+    div()
+        .id(element_key("assistant-result-label", item_id))
+        .h(Tokens::text_sm_leading_compact())
+        .flex()
+        .items_center()
+        .text_size(Tokens::text_xs())
+        .line_height(Tokens::text_sm_leading_compact())
+        .font_weight(gpui::FontWeight::MEDIUM)
+        .text_color(Tokens::text_tertiary())
+        .child("Result")
 }
 
 fn assistant_action_row(
@@ -828,7 +821,7 @@ fn render_subagent_summary_row(
     on_open: impl Fn(&mut gpui::App) + 'static,
 ) -> impl IntoElement {
     use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
-    use crate::tokens::{activity_action_line, icons};
+    use crate::tokens::{activity_action_line_with_loading, icons};
     use gpui_component::Icon;
 
     let on_open = Rc::new(on_open);
@@ -878,13 +871,13 @@ fn render_subagent_summary_row(
                     .min_w(px(0.0))
                     .child(
                         div().min_w(px(0.0)).overflow_hidden().child(
-                            activity_action_line(
+                            activity_action_line_with_loading(
                                 &title,
                                 detail.as_deref(),
                                 running,
+                                false,
                                 animate,
                                 item_id,
-                                0,
                             )
                             .into_any_element(),
                         ),
@@ -961,135 +954,43 @@ fn render_plan_status_row(
     group_pos: Option<ActivityGroupPos>,
     on_open: impl Fn(&mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    use crate::shared::components::buttons::btn_ghost_label;
-    use crate::shared::components::collapsible_row::activity_group_wrap;
+    use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
+    use crate::tokens::activity_action_line_with_loading;
 
-    let on_open = Rc::new(on_open);
-    let on_open_row = on_open.clone();
-    let on_open_button = on_open.clone();
+    let meta = match source_conversation_id {
+        Some(source) => format!("{counts_summary} · Source: {source}"),
+        None => counts_summary,
+    };
 
     activity_group_wrap(
         div()
             .id(element_key("plan-status-row", item_id))
-            .h(px(crate::features::chat::layout::PLAN_STATUS_H))
-            .w_full()
-            .flex()
-            .items_start()
-            .px(Tokens::spacing_2())
-            .py(Tokens::spacing_2())
-            .gap(Tokens::spacing_2())
-            .cursor_pointer()
-            .text_color(Tokens::text_secondary())
-            .on_click(move |_, _, app| on_open_row(app))
-            .child(
+            .child(timeline_row(
+                element_key("plan-status-header", item_id),
+                activity_action_line_with_loading(
+                    &format!("Plan · {}", state.label()),
+                    (!summary.trim().is_empty()).then_some(summary),
+                    false,
+                    false,
+                    false,
+                    item_id,
+                )
+                .into_any_element(),
                 div()
-                    .flex_1()
+                    .id(element_key("plan-status-meta", item_id))
+                    .max_w(px(220.0))
                     .min_w(px(0.0))
-                    .flex()
-                    .items_start()
-                    .gap(Tokens::spacing_2())
-                    .child(
-                        div()
-                            .min_w(px(0.0))
-                            .overflow_hidden()
-                            .flex()
-                            .flex_col()
-                            .gap(Tokens::spacing_0p5())
-                            .child(
-                                div()
-                                    .text_size(Tokens::text_sm())
-                                    .text_color(Tokens::text_primary())
-                                    .child(format!("Plan · {}", state.label())),
-                            )
-                            .child(
-                                div()
-                                    .text_size(Tokens::text_xs())
-                                    .text_color(Tokens::text_tertiary())
-                                    .truncate()
-                                    .child(summary.to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(Tokens::text_xs())
-                                    .text_color(Tokens::text_faint())
-                                    .truncate()
-                                    .child(match source_conversation_id {
-                                        Some(source) => {
-                                            format!("{counts_summary} · Source: {source}")
-                                        }
-                                        None => counts_summary,
-                                    }),
-                            ),
-                    ),
-            )
-            .child(
-                div().flex_shrink_0().pt(Tokens::spacing_0p5()).child(
-                    btn_ghost_label(element_key("plan-status-open", item_id), "Open plan")
-                        .on_click(move |_, _, app| on_open_button(app)),
-                ),
-            ),
-        group_pos,
-    )
-}
-
-fn render_provenance_strip(
-    item_id: &str,
-    vm: crate::features::chat::manifest::AssistantProvenance,
-    on_open: impl Fn(&mut gpui::App) + 'static,
-) -> impl IntoElement {
-    use crate::shared::components::buttons::btn_ghost_label;
-
-    let reasons = if vm.reasons.is_empty() {
-        None
-    } else {
-        Some(vm.reasons.join(" · "))
-    };
-    div()
-        .id(element_key("assistant-provenance", item_id))
-        .w_full()
-        .pt(Tokens::spacing_0p5())
-        .flex()
-        .flex_col()
-        .gap(Tokens::spacing_0p5())
-        .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap(Tokens::spacing_1())
-                .child(
-                    div()
-                        .text_size(Tokens::text_xs())
-                        .text_color(Tokens::text_faint())
-                        .child("Context used"),
-                )
-                .children(
-                    vm.counts.iter().map(|(kind, count)| {
-                        provenance_chip(format!("{} {}", kind.label(), count))
-                    }),
-                )
-                .child(
-                    btn_ghost_label(element_key("assistant-provenance-open", item_id), "Details")
-                        .on_click(move |_, _, app| on_open(app)),
-                ),
-        )
-        .when_some(reasons, |el, reasons| {
-            el.child(
-                div()
+                    .overflow_hidden()
+                    .truncate()
                     .text_size(Tokens::text_xs())
                     .text_color(Tokens::text_faint())
-                    .line_height(Tokens::text_sm_leading())
-                    .child(reasons),
-            )
-        })
-}
-
-fn provenance_chip(label: String) -> impl IntoElement {
-    div()
-        .px(Tokens::spacing_0p5())
-        .text_size(Tokens::text_xs())
-        .text_color(Tokens::text_faint())
-        .child(label)
+                    .hover(|s| s.text_color(Tokens::text_secondary()))
+                    .child(meta)
+                    .into_any_element(),
+                move |_, _, app: &mut gpui::App| on_open(app),
+            )),
+        group_pos,
+    )
 }
 
 fn status_label(status: &crate::features::shell::state::AgentStatus) -> &'static str {

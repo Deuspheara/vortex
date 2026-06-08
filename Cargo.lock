@@ -229,6 +229,7 @@ dependencies = [
  "project_index",
  "pulldown-cmark",
  "rfd",
+ "serde",
  "serde_json",
  "terminal",
  "tokio",

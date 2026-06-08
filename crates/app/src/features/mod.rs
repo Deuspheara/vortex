@@ -11,3 +11,4 @@ pub mod simulation;
 pub mod terminal;
 pub mod todos;
 pub mod top_bar;
+pub mod workspace_layout;

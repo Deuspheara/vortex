@@ -33,8 +33,6 @@ pub const TOOL_OUTPUT_PREVIEW_BYTES: usize = 16_000;
 pub const REASONING_OUTPUT_PREVIEW_LINES: usize = 40;
 /// Faint preview lines shown under the header while reasoning is streaming.
 pub const REASONING_STREAMING_PREVIEW_LINES: usize = 2;
-pub const PROVENANCE_CHIP_ROW_H: f32 = 24.0;
-pub const PROVENANCE_REASON_LINE_H: f32 = Tokens::ROW_HEIGHT_SM;
 
 /// Position of an activity item within a consecutive run (reasoning / tools / diffs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -188,7 +186,10 @@ impl RowRef {
 
 /// Body height for an assistant row from pre-parsed blocks (no re-parse).
 pub fn assistant_content_height(blocks: &[MarkdownBlock], streaming: bool, has_text: bool) -> f32 {
-    let mut h = layout::assistant_body_pt() + estimate_markdown_height(blocks, false);
+    let mut h = layout::assistant_result_label_h()
+        + layout::assistant_result_label_gap()
+        + layout::assistant_body_pt()
+        + estimate_markdown_height(blocks, false);
     if streaming && has_text {
         h += layout::assistant_streaming_extra();
     }
@@ -199,14 +200,8 @@ pub fn assistant_actions_height() -> f32 {
     f32::from(Tokens::spacing_0p5()) + Tokens::ROW_HEIGHT_SM
 }
 
-pub fn assistant_accessory_height(item_ix: usize, items: &[ThreadItem]) -> f32 {
-    let provenance = assistant_provenance_height(item_ix, items);
-    let gaps = if provenance > 0.0 {
-        f32::from(Tokens::spacing_1()) * 2.0
-    } else {
-        f32::from(Tokens::spacing_1())
-    };
-    provenance + assistant_actions_height() + gaps
+pub fn assistant_accessory_height(_item_ix: usize, _items: &[ThreadItem]) -> f32 {
+    assistant_actions_height() + f32::from(Tokens::spacing_1())
 }
 
 pub fn assistant_row_height_from_blocks(
@@ -218,13 +213,6 @@ pub fn assistant_row_height_from_blocks(
 ) -> f32 {
     assistant_content_height(blocks, streaming, has_text)
         + assistant_accessory_height(item_ix, items)
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssistantProvenance {
-    pub trace_item_id: String,
-    pub counts: Vec<(ContextEntryKind, usize)>,
-    pub reasons: Vec<String>,
 }
 
 pub fn row_height_with_collapsed(
@@ -248,19 +236,33 @@ pub fn row_height_with_collapsed(
                 return HEADER_H + gap;
             };
             let is_initial = first_user_message_ix(items) == Some(item_ix as usize);
-            let collapsed = is_initial && !expanded && user_message_truncatable(text);
+            let truncatable = is_initial && user_message_truncatable(text);
+            let collapsed = truncatable && !expanded;
             let lines = if collapsed {
                 USER_MESSAGE_PREVIEW_LINES
             } else {
                 text.lines().count().max(text.len().div_ceil(55)).max(1)
             };
-            let see_more = if collapsed { USER_SEE_MORE_H } else { 0.0 };
             let attachments_h = if attachments.is_empty() {
                 0.0
             } else {
-                Tokens::ATTACHMENT_PREVIEW_SIZE + Tokens::ATTACHMENT_PREVIEW_GAP
+                f32::from(Tokens::spacing_1()) + Tokens::ATTACHMENT_PREVIEW_SIZE
             };
-            layout::user_bubble_py() + lines as f32 * LINE_LEADING + see_more + attachments_h + gap
+            let label_h = f32::from(Tokens::text_sm_leading_compact());
+            let stack_gap = f32::from(Tokens::spacing_1());
+            let top_inset = f32::from(Tokens::spacing_1());
+            let see_more = if truncatable {
+                stack_gap + USER_SEE_MORE_H
+            } else {
+                0.0
+            };
+            top_inset
+                + label_h
+                + stack_gap
+                + lines as f32 * LINE_LEADING
+                + see_more
+                + attachments_h
+                + gap
         }
         RowRef::ReasoningHeader { .. }
         | RowRef::SubagentHeader { .. }
@@ -776,11 +778,11 @@ pub fn context_trace_counts_summary(entries: &[ContextTraceEntry]) -> String {
     if parts.is_empty() {
         "No context recorded".to_string()
     } else {
-        parts.join(", ")
+        parts.join(" · ")
     }
 }
 
-/// Single expanded line for one context entry: `label · detail — reason`.
+/// Single expanded line for one context entry: `label · detail · reason`.
 pub fn context_trace_entry_line(entry: &ContextTraceEntry) -> String {
     let mut head = entry.label.clone();
     if let Some(detail) = entry.detail.as_deref().filter(|d| !d.is_empty()) {
@@ -790,70 +792,8 @@ pub fn context_trace_entry_line(entry: &ContextTraceEntry) -> String {
     if entry.reason.is_empty() {
         head
     } else {
-        format!("{head} — {}", entry.reason)
+        format!("{head} · {}", entry.reason)
     }
-}
-
-pub fn assistant_provenance_for_item(
-    item_ix: usize,
-    items: &[ThreadItem],
-) -> Option<AssistantProvenance> {
-    for prev in items[..item_ix].iter().rev() {
-        match prev {
-            ThreadItem::ContextTrace { id, entries, .. } => {
-                if entries.is_empty() {
-                    return None;
-                }
-                let mut counts = Vec::new();
-                for kind in [
-                    ContextEntryKind::RepoMap,
-                    ContextEntryKind::FileSlice,
-                    ContextEntryKind::Symbol,
-                    ContextEntryKind::Search,
-                    ContextEntryKind::Command,
-                    ContextEntryKind::Rule,
-                ] {
-                    let count = entries.iter().filter(|entry| entry.kind == kind).count();
-                    if count > 0 {
-                        counts.push((kind, count));
-                    }
-                }
-                let mut reasons = Vec::new();
-                let mut seen = HashSet::new();
-                for entry in entries {
-                    let reason = entry.reason.trim();
-                    if reason.is_empty() || !seen.insert(reason.to_string()) {
-                        continue;
-                    }
-                    reasons.push(reason.to_string());
-                    if reasons.len() == 3 {
-                        break;
-                    }
-                }
-                return Some(AssistantProvenance {
-                    trace_item_id: id.clone(),
-                    counts,
-                    reasons,
-                });
-            }
-            ThreadItem::AssistantMessage { .. } | ThreadItem::UserMessage { .. } => return None,
-            _ => {}
-        }
-    }
-    None
-}
-
-pub fn assistant_provenance_height(item_ix: usize, items: &[ThreadItem]) -> f32 {
-    let Some(vm) = assistant_provenance_for_item(item_ix, items) else {
-        return 0.0;
-    };
-    let header_rows = (vm.counts.len() + 2).div_ceil(4).max(1) as f32;
-    let mut height = f32::from(Tokens::spacing_0p5()) + header_rows * PROVENANCE_CHIP_ROW_H;
-    if !vm.reasons.is_empty() {
-        let reason_lines = vm.reasons.join(" · ").chars().count().div_ceil(84).max(1) as f32;
-        height += f32::from(Tokens::spacing_0p5()) + reason_lines * PROVENANCE_REASON_LINE_H;
-    }
-    height
 }
 
 fn subagent_body_height(item_ix: usize, summary: &str, items: &[ThreadItem]) -> f32 {
@@ -898,6 +838,9 @@ fn reasoning_refs(
     expanded: bool,
     status: &AgentStatus,
 ) -> Vec<RowRef> {
+    if summary.trim().is_empty() && !matches!(status, AgentStatus::Thinking) {
+        return Vec::new();
+    }
     let mut rows = vec![RowRef::ReasoningHeader { item_ix }];
     if expanded {
         if !summary.trim().is_empty() {
@@ -1178,41 +1121,6 @@ mod tests {
     }
 
     #[test]
-    fn assistant_provenance_uses_nearest_context_trace() {
-        let items = vec![
-            ThreadItem::ContextTrace {
-                id: "context-1".into(),
-                entries: vec![
-                    ContextTraceEntry {
-                        kind: ContextEntryKind::FileSlice,
-                        label: "src/main.rs".into(),
-                        detail: None,
-                        reason: "check startup flow".into(),
-                    },
-                    ContextTraceEntry {
-                        kind: ContextEntryKind::Search,
-                        label: "rg startup".into(),
-                        detail: None,
-                        reason: "find call sites".into(),
-                    },
-                ],
-                expanded: false,
-            },
-            ThreadItem::AssistantMessage {
-                id: "assistant-1".into(),
-                markdown: "Done.".into(),
-                streaming: false,
-                depth: 0,
-                parent_call_id: None,
-            },
-        ];
-        let vm = assistant_provenance_for_item(1, &items).expect("assistant provenance");
-        assert_eq!(vm.trace_item_id, "context-1");
-        assert_eq!(vm.counts.len(), 2);
-        assert_eq!(vm.reasons.len(), 2);
-    }
-
-    #[test]
     fn choice_request_height_accounts_for_prompt_options_and_custom_hint() {
         let item = ThreadItem::ChoiceRequest {
             id: "choice-1".into(),
@@ -1284,7 +1192,7 @@ document.querySelector("#year").textContent = year;
     }
 
     #[test]
-    fn plan_status_uses_multiline_row_height() {
+    fn plan_status_uses_compact_activity_row_height() {
         let item = ThreadItem::PlanStatus {
             id: "plan-1".into(),
             state: PlanExecutionState::NotStarted,
@@ -1300,7 +1208,7 @@ document.querySelector("#year").textContent = year;
         let items = vec![item];
         assert_eq!(
             row_height(RowRef::PlanStatus { item_ix: 0 }, None, &items),
-            PLAN_STATUS_H
+            Tokens::TOOL_ROW_HEIGHT
         );
     }
 

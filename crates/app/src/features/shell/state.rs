@@ -459,8 +459,12 @@ pub struct PlanArtifact {
 pub enum PlanExecutionState {
     #[default]
     NotStarted,
+    Starting,
     Implementing,
+    WaitingApproval,
     Completed,
+    Failed,
+    Cancelled,
     Stale,
 }
 
@@ -468,10 +472,28 @@ impl PlanExecutionState {
     pub fn label(self) -> &'static str {
         match self {
             Self::NotStarted => "Not started",
+            Self::Starting => "Starting",
             Self::Implementing => "Implementing",
+            Self::WaitingApproval => "Waiting approval",
             Self::Completed => "Completed",
+            Self::Failed => "Failed",
+            Self::Cancelled => "Cancelled",
             Self::Stale => "Stale",
         }
+    }
+
+    pub fn is_active(self) -> bool {
+        matches!(
+            self,
+            Self::Starting | Self::Implementing | Self::WaitingApproval
+        )
+    }
+
+    pub fn can_start(self) -> bool {
+        matches!(
+            self,
+            Self::NotStarted | Self::Stale | Self::Failed | Self::Cancelled
+        )
     }
 }
 
@@ -497,6 +519,26 @@ impl PlanProgressCounts {
             "{} pending · {} active · {} done · {} cancelled",
             self.pending, self.in_progress, self.completed, self.cancelled
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PlanExecutionState;
+
+    #[test]
+    fn plan_execution_state_helpers_classify_lifecycle() {
+        assert!(PlanExecutionState::Starting.is_active());
+        assert!(PlanExecutionState::Implementing.is_active());
+        assert!(PlanExecutionState::WaitingApproval.is_active());
+        assert!(!PlanExecutionState::Failed.is_active());
+
+        assert!(PlanExecutionState::NotStarted.can_start());
+        assert!(PlanExecutionState::Stale.can_start());
+        assert!(PlanExecutionState::Failed.can_start());
+        assert!(PlanExecutionState::Cancelled.can_start());
+        assert!(!PlanExecutionState::Starting.can_start());
+        assert!(!PlanExecutionState::Completed.can_start());
     }
 }
 

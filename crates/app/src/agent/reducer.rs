@@ -411,7 +411,7 @@ impl AgentWindow {
             self.reducer_state
                 .tool_dedupe_keys
                 .insert(dedupe_key, id.clone());
-            self.status.agent_status = Some(AgentStatus::RunningTool);
+            self.sync_agent_status(AgentStatus::RunningTool);
             let tool_expanded = self.thread_row_expanded(
                 TimelineRowKind::ToolCall,
                 AgentStatus::RunningTool,
@@ -441,7 +441,7 @@ impl AgentWindow {
             self.reducer_state
                 .tool_items
                 .insert(call_id.to_string(), id.clone());
-            self.status.agent_status = Some(AgentStatus::RunningTool);
+            self.sync_agent_status(AgentStatus::RunningTool);
             let tool_expanded = self.thread_row_expanded(
                 TimelineRowKind::ToolCall,
                 AgentStatus::RunningTool,
@@ -504,7 +504,7 @@ impl AgentWindow {
                     ))
                 );
                 self.reducer_state.tool_dedupe_keys.clear();
-                self.status.agent_status = Some(AgentStatus::Thinking);
+                self.sync_agent_status(AgentStatus::Thinking);
                 if depth == 0 {
                     self.running_conversations.insert(conv_id.clone());
                     let existing_reason_id = self
@@ -952,6 +952,8 @@ impl AgentWindow {
                         self.sync_agent_status(AgentStatus::RunningTool);
                     }
                 } else {
+                    self.mark_plan_execution_waiting_approval(&conv_id);
+                    self.sync_plan_status_for_conversation(&conv_id, cx);
                     self.sync_agent_status(AgentStatus::WaitingApproval);
                 }
                 self.request_thread_scroll_to_bottom = true;
@@ -1213,6 +1215,8 @@ impl AgentWindow {
                     self.sync_agent_status(AgentStatus::Thinking);
                 }
                 if let Some(conv_id) = conv_id.clone() {
+                    self.mark_plan_execution_implementing(&conv_id);
+                    self.sync_plan_status_for_conversation(&conv_id, cx);
                     self.sync_thread_view(conv_id, cx);
                 }
             }
@@ -1229,6 +1233,8 @@ impl AgentWindow {
                 };
                 self.pending_approval_id = Some(approval_id.0.clone());
                 self.sync_thread_approval_state(cx);
+                self.mark_plan_execution_waiting_approval(&conv_id);
+                self.sync_plan_status_for_conversation(&conv_id, cx);
                 self.sync_agent_status(AgentStatus::WaitingApproval);
                 let title = command_preview.clone().unwrap_or(reason.clone());
                 let mapped_risk = map_risk(risk);
@@ -1341,10 +1347,12 @@ impl AgentWindow {
                         cx,
                     );
                     self.running_conversations.remove(&conv_id);
+                    self.mark_plan_execution_failed(&conv_id);
+                    self.sync_plan_status_for_conversation(&conv_id, cx);
                 }
                 self.reducer_state.stream_runs.clear();
                 self.reducer_state.tool_items.clear();
-                self.status.agent_status = Some(AgentStatus::Idle);
+                self.reset_agent_status_to_idle();
                 self.active_run_id = None;
             }
             AgentEvent::UsageUpdated {
@@ -1432,6 +1440,10 @@ impl AgentWindow {
                     self.finalize_inflight_thread_items(&conv_id, tool_status, reasoning_status);
                     self.complete_reasoning(&run_id, &conv_id, cx);
                     self.running_conversations.remove(&conv_id);
+                    if run_depth == 0 {
+                        self.finish_plan_execution_for_run_status(&conv_id, &status);
+                        self.sync_plan_status_for_conversation(&conv_id, cx);
+                    }
                 }
                 self.reducer_state.run_conversations.remove(&run_id);
                 self.reducer_state.run_depths.remove(&run_id);
@@ -1451,7 +1463,7 @@ impl AgentWindow {
                 if run_depth == 0 {
                     self.active_run_id = None;
                 }
-                self.status.agent_status = Some(match status {
+                self.sync_agent_status(match status {
                     RunStatus::Completed => AgentStatus::Completed,
                     RunStatus::Cancelled => AgentStatus::Idle,
                     RunStatus::Failed => AgentStatus::Failed,
@@ -1490,6 +1502,10 @@ impl AgentWindow {
                         cx,
                     );
                     self.running_conversations.remove(&conv_id);
+                    if run_depth == 0 {
+                        self.mark_plan_execution_failed(&conv_id);
+                        self.sync_plan_status_for_conversation(&conv_id, cx);
+                    }
                 }
                 self.reducer_state.run_conversations.remove(&run_id);
                 self.reducer_state.run_depths.remove(&run_id);
@@ -1504,7 +1520,7 @@ impl AgentWindow {
                 self.diff_panel.pending_approval = None;
                 self.pending_thread_approval = None;
                 self.sync_thread_approval_state(cx);
-                self.status.agent_status = Some(AgentStatus::Failed);
+                self.sync_agent_status(AgentStatus::Failed);
                 if run_depth == 0 {
                     self.active_run_id = None;
                 }

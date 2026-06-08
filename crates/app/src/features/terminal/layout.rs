@@ -4,6 +4,7 @@ use gpui::{Entity, IntoElement, div, prelude::*, px};
 use std::rc::Rc;
 
 use crate::features::terminal::components::terminal_view::TerminalView;
+use crate::features::workspace_layout::state::WorkspaceItemId;
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::shared::components::tab_bar::{TabBarProps, TabItem, tab_bar};
 use crate::tokens::Tokens;
@@ -14,6 +15,12 @@ pub struct TerminalTabVm {
     pub id: u64,
     pub label: String,
     pub selected: bool,
+}
+
+impl TerminalTabVm {
+    pub fn workspace_item_id(&self) -> WorkspaceItemId {
+        WorkspaceItemId::terminal_session(self.id)
+    }
 }
 
 pub struct TerminalPanelProps {

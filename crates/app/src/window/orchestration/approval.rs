@@ -30,7 +30,7 @@ impl AgentWindow {
                     cx,
                 );
             }
-            self.status.agent_status = Some(AgentStatus::Idle);
+            self.reset_agent_status_to_idle();
             cx.notify();
         }
     }
@@ -59,7 +59,7 @@ impl AgentWindow {
                     cx,
                 );
             }
-            self.status.agent_status = Some(AgentStatus::Idle);
+            self.reset_agent_status_to_idle();
             cx.notify();
         }
     }
@@ -70,6 +70,10 @@ impl AgentWindow {
         };
         self.diff_panel.pending_approval = None;
         self.sync_thread_approval_state(cx);
+        if let Some(conv_id) = self.selected_conversation_id.clone() {
+            self.mark_plan_execution_implementing(&conv_id);
+            self.sync_plan_status_for_conversation(&conv_id, cx);
+        }
         if let Err(err) = self
             .agent_bridge
             .send(agent_protocol::AgentCommand::ApprovePatch {
@@ -102,6 +106,10 @@ impl AgentWindow {
         self.diff_panel.pending_approval = None;
         self.pending_thread_approval = None;
         self.sync_thread_approval_state(cx);
+        if let Some(conv_id) = self.selected_conversation_id.clone() {
+            self.mark_plan_execution_implementing(&conv_id);
+            self.sync_plan_status_for_conversation(&conv_id, cx);
+        }
         let _ = self
             .agent_bridge
             .send(agent_protocol::AgentCommand::RejectPatch {

@@ -16,6 +16,7 @@ use crate::features::composer::layout::{self as composer, ComposerProps};
 
 use crate::features::inspector::layout::{self as artifact_inspector, DockedInspectorProps};
 use crate::features::settings::layout::{self as settings_ui, SettingsProps};
+use crate::features::settings::state::SettingsSection;
 use crate::features::shell::sidebar_helpers::{self as sidebar};
 use crate::features::shell::state::{DockPlacement, InspectorTabId};
 use crate::features::terminal::layout::TerminalPanelProps;
@@ -42,7 +43,9 @@ struct ViewState {
     active_theme: String,
     theme_list: Vec<SharedString>,
     selected_provider: String,
+    selected_model: String,
     selected_subagent_model: Option<String>,
+    selected_settings_section: SettingsSection,
     model_items: Arc<[String]>,
     model_search_keys: Arc<[Arc<str>]>,
     sidebar_view: Entity<crate::features::shell::layout::SidebarView>,
@@ -125,7 +128,9 @@ impl AgentWindow {
             active_theme,
             theme_list,
             selected_provider: self.selected_provider.clone(),
+            selected_model: self.selected_model.clone(),
             selected_subagent_model: self.selected_subagent_model.clone(),
+            selected_settings_section: self.selected_settings_section,
             model_items,
             model_search_keys,
             sidebar_view: self
@@ -253,6 +258,19 @@ fn to_boxed(f: Rc<dyn Fn(&mut gpui::App)>) -> Box<dyn Fn(&mut gpui::App) + 'stat
 
 // Root layout
 fn root(agent: &AgentWindow, vs: ViewState, cbs: Cbs) -> impl IntoElement {
+    if vs.screen == AppScreen::Settings {
+        return div()
+            .id("agent-window")
+            .size_full()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .bg(Tokens::app_bg())
+            .text_color(Tokens::text_primary())
+            .child(settings_column(&vs, &cbs))
+            .into_any_element();
+    }
+
     div()
         .id("agent-window")
         .size_full()
@@ -270,6 +288,7 @@ fn root(agent: &AgentWindow, vs: ViewState, cbs: Cbs) -> impl IntoElement {
                 .overflow_hidden()
                 .child(body(agent, &vs, &cbs)),
         )
+        .into_any_element()
 }
 
 // ── Top bar ───────────────────────────────────────────────────────────────
@@ -283,14 +302,8 @@ fn top_bar(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
         inspector_open: vs.conversation_workspace.inspector.open,
         terminal_panel_open: vs.conversation_workspace.terminal.open,
         show_panel_controls: vs.screen == AppScreen::Chat,
-        active_theme: vs.active_theme.clone(),
-        themes: vs.theme_list.clone(),
-        selected_provider: vs.selected_provider.clone(),
-        dark_mode: vs.dark_mode,
-        workspace_readiness: vs.conversation_workspace.readiness.clone(),
         workspace_readiness_label: (!vs.conversation_workspace.readiness.is_ready())
             .then(|| vs.conversation_workspace.readiness.summary_label()),
-        entity: vs.entity.clone(),
         on_toggle_sidebar: Some(to_boxed(cbs.toggle_sidebar.clone())),
         on_toggle_inspector: Some(to_boxed(cbs.toggle_inspector.clone())),
         on_toggle_terminal: Some(to_boxed(cbs.toggle_terminal.clone())),
@@ -552,6 +565,9 @@ fn settings_column(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
             themes: vs.theme_list.clone(),
             safety_mode: vs.safety_mode.clone(),
             transcript_mode: vs.transcript_mode,
+            selected_section: vs.selected_settings_section,
+            selected_provider: vs.selected_provider.clone(),
+            selected_model: vs.selected_model.clone(),
             selected_subagent_model: vs.selected_subagent_model.clone(),
             model_items: vs.model_items.clone(),
             model_search_keys: vs.model_search_keys.clone(),

@@ -14,17 +14,21 @@ mod types;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use agent_protocol::{AgentCommand, AgentMode, RunId};
+use agent_protocol::{AgentCommand, AgentMode, RunId, RunStatus};
 use gpui::{Context, Entity, Focusable, Window, prelude::*};
 use gpui_component::input::{InputEvent, InputState, Paste};
 
-pub(crate) use types::{ModelPickerCache, SubagentTranscript, TerminalTabGroup};
+pub(crate) use types::{
+    ConversationRunState, ModelPickerCache, SubagentTranscript, TerminalTabGroup,
+};
 
 use crate::agent::{
     AgentBridge, ReducerState, format_session_age, proto_project_id, proto_session_id,
     ui_conversation_id, ui_project_id,
 };
 use crate::features::composer::state::PendingImageAttachment;
+use crate::features::settings::state::SettingsSection;
+use crate::features::workspace_layout::state::WorkspaceLayoutState;
 
 use crate::features::shell::components::tree_row::project_expand_key;
 use crate::features::shell::layout::SidebarView;
@@ -76,6 +80,8 @@ pub struct AgentWindow {
     pub agents: Vec<Agent>,
     pub selected_project_id: Option<ProjectId>,
     pub selected_conversation_id: Option<ConversationId>,
+    pub selected_settings_section: SettingsSection,
+    pub workspace_layout: WorkspaceLayoutState,
     pub sidebar_collapsed: bool,
     pub terminal_panel_open: bool,
     pub right_dock_width: f32,
@@ -224,7 +230,7 @@ fn plan_status_summary(markdown: &str, todos: &[TodoEntry]) -> String {
         .unwrap_or_else(|| "Approved plan ready".to_string())
 }
 
-fn ui_timestamp_now() -> String {
+pub(crate) fn ui_timestamp_now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()
 }
 
@@ -399,6 +405,8 @@ impl AgentWindow {
             agents: Vec::new(),
             selected_project_id: None,
             selected_conversation_id: None,
+            selected_settings_section: SettingsSection::default(),
+            workspace_layout: WorkspaceLayoutState::default(),
             sidebar_collapsed: false,
             terminal_panel_open: false,
             right_dock_width: Tokens::INSPECTOR_WIDTH_REVIEW,
@@ -953,7 +961,7 @@ impl AgentWindow {
     }
 
     pub fn set_agent_status(&mut self, status: AgentStatus, cx: &mut Context<Self>) {
-        self.status.agent_status = Some(status);
+        self.sync_agent_status(status);
         cx.notify();
     }
 
@@ -982,15 +990,23 @@ impl AgentWindow {
             .unwrap_or_default()
     }
 
-    fn refresh_session_run_state(&mut self) {
-        let blocked = self.provider_blocked.is_some();
-        self.session_run_state = SessionRunState::from_agent_status(
-            self.status
-                .agent_status
-                .as_ref()
-                .unwrap_or(&AgentStatus::Idle),
-            blocked,
-        );
+    pub(crate) fn refresh_session_run_state(&mut self) {
+        self.session_run_state = self
+            .selected_conversation_id
+            .as_ref()
+            .map(|cid| {
+                self.conversation_run_state(cid)
+                    .session_run_state(self.status.agent_status.as_ref())
+            })
+            .unwrap_or_else(|| {
+                SessionRunState::from_agent_status(
+                    self.status
+                        .agent_status
+                        .as_ref()
+                        .unwrap_or(&AgentStatus::Idle),
+                    self.provider_blocked.is_some(),
+                )
+            });
     }
 
     /// Whether the thread should treat the run as actively streaming (debounced tail updates).
@@ -1214,6 +1230,9 @@ impl AgentWindow {
         run_prompt: String,
         cx: &mut Context<Self>,
     ) {
+        if self.conversation_run_state(&conv_id).has_active_work() {
+            return;
+        }
         if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == conv_id) {
             let id = format!("user-msg-{}", conv.thread_items.len());
             conv.thread_items.push(ThreadItem::UserMessage {
@@ -1227,7 +1246,12 @@ impl AgentWindow {
         if let Err(err) = self.start_agent_run(&run_prompt, Vec::new(), cx) {
             tracing::error!("failed to start plan implementation: {err}");
             self.running_conversations.remove(&conv_id);
-            self.status.agent_status = Some(AgentStatus::Idle);
+            self.mark_plan_execution_failed(&conv_id);
+            self.reset_agent_status_to_idle();
+            self.sync_plan_status_for_conversation(&conv_id, cx);
+        } else {
+            self.mark_plan_execution_implementing(&conv_id);
+            self.sync_plan_status_for_conversation(&conv_id, cx);
         }
     }
 
@@ -1293,30 +1317,7 @@ impl AgentWindow {
     fn selected_conversation_has_active_work(&self) -> bool {
         self.selected_conversation_id
             .as_ref()
-            .is_some_and(|cid| self.running_conversations.contains(cid))
-            || matches!(
-                self.status.agent_status,
-                Some(AgentStatus::Thinking) | Some(AgentStatus::RunningTool)
-            )
-            || self.pending_approval_id.is_some()
-            || self.pending_thread_approval.is_some()
-            || self.diff_panel.pending_patch_id.is_some()
-            || self.selected_conversation_id.as_ref().is_some_and(|cid| {
-                self.conversations
-                    .iter()
-                    .find(|c| c.id == *cid)
-                    .is_some_and(|conv| {
-                        conv.thread_items.iter().any(|item| {
-                            matches!(
-                                item,
-                                ThreadItem::ChoiceRequest {
-                                    resolved: false,
-                                    ..
-                                }
-                            )
-                        })
-                    })
-            })
+            .is_some_and(|cid| self.conversation_run_state(cid).has_active_work())
     }
 
     fn start_plan_execution(
@@ -1326,11 +1327,87 @@ impl AgentWindow {
     ) {
         if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == *conv_id) {
             if let Some(plan) = &mut conv.plan_artifact {
-                plan.execution_state = PlanExecutionState::Implementing;
+                plan.execution_state = PlanExecutionState::Starting;
                 plan.source_conversation_id = source_conversation_id;
                 plan.started_at = Some(ui_timestamp_now());
                 plan.completed_at = None;
             }
+        }
+    }
+
+    pub(crate) fn set_plan_execution_state(
+        &mut self,
+        conv_id: &ConversationId,
+        state: PlanExecutionState,
+        completed_at: Option<String>,
+    ) {
+        let source_conversation_id = self
+            .conversations
+            .iter()
+            .find(|c| c.id == *conv_id)
+            .and_then(|conv| conv.plan_artifact.as_ref())
+            .and_then(|plan| plan.source_conversation_id.clone())
+            .filter(|source_id| source_id != conv_id);
+        self.apply_plan_execution_state(conv_id, state, completed_at.clone());
+        if let Some(source_id) = source_conversation_id {
+            self.apply_plan_execution_state(&source_id, state, completed_at);
+        }
+    }
+
+    fn apply_plan_execution_state(
+        &mut self,
+        conv_id: &ConversationId,
+        state: PlanExecutionState,
+        completed_at: Option<String>,
+    ) {
+        if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == *conv_id) {
+            if let Some(plan) = &mut conv.plan_artifact {
+                plan.execution_state = state;
+                if state.is_active() {
+                    plan.completed_at = None;
+                } else if matches!(
+                    state,
+                    PlanExecutionState::Completed
+                        | PlanExecutionState::Failed
+                        | PlanExecutionState::Cancelled
+                ) {
+                    plan.completed_at = Some(completed_at.unwrap_or_else(ui_timestamp_now));
+                } else {
+                    plan.completed_at = completed_at;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn mark_plan_execution_implementing(&mut self, conv_id: &ConversationId) {
+        self.set_plan_execution_state(conv_id, PlanExecutionState::Implementing, None);
+    }
+
+    pub(crate) fn mark_plan_execution_waiting_approval(&mut self, conv_id: &ConversationId) {
+        self.set_plan_execution_state(conv_id, PlanExecutionState::WaitingApproval, None);
+    }
+
+    pub(crate) fn mark_plan_execution_failed(&mut self, conv_id: &ConversationId) {
+        self.set_plan_execution_state(conv_id, PlanExecutionState::Failed, None);
+    }
+
+    pub(crate) fn mark_plan_execution_cancelled(&mut self, conv_id: &ConversationId) {
+        self.set_plan_execution_state(conv_id, PlanExecutionState::Cancelled, None);
+    }
+
+    pub(crate) fn finish_plan_execution_for_run_status(
+        &mut self,
+        conv_id: &ConversationId,
+        status: &RunStatus,
+    ) {
+        match status {
+            RunStatus::Completed => {
+                self.set_plan_execution_state(conv_id, PlanExecutionState::Completed, None);
+            }
+            RunStatus::Cancelled => self.mark_plan_execution_cancelled(conv_id),
+            RunStatus::Failed => self.mark_plan_execution_failed(conv_id),
+            RunStatus::PausedForApproval => self.mark_plan_execution_waiting_approval(conv_id),
+            RunStatus::Running => self.mark_plan_execution_implementing(conv_id),
         }
     }
 
@@ -1354,9 +1431,7 @@ impl AgentWindow {
         if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == *conv_id) {
             if let Some(plan) = &mut conv.plan_artifact {
                 let counts = plan_progress_counts(&conv.active_todos);
-                if matches!(plan.execution_state, PlanExecutionState::Implementing)
-                    && counts.is_done()
-                {
+                if plan.execution_state.is_active() && counts.is_done() {
                     plan.execution_state = PlanExecutionState::Completed;
                     if plan.completed_at.is_none() {
                         plan.completed_at = Some(ui_timestamp_now());
@@ -1437,8 +1512,10 @@ impl AgentWindow {
         if let Some(conv_id) = self.selected_conversation_id.clone() {
             self.mark_waiting_tools_running(&conv_id);
             self.resolve_approval_item(&conv_id);
+            self.mark_plan_execution_implementing(&conv_id);
+            self.sync_plan_status_for_conversation(&conv_id, cx);
         }
-        self.status.agent_status = Some(AgentStatus::RunningTool);
+        self.sync_agent_status(AgentStatus::RunningTool);
         self.sync_thread_approval_state(cx);
     }
 

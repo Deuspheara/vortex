@@ -37,37 +37,25 @@ pub fn panel_control_cluster(props: PanelControlClusterProps) -> impl IntoElemen
         .id("panel-control-cluster")
         .flex()
         .items_center()
-        .rounded(Tokens::radius_sm())
-        .border_1()
-        .border_color(Tokens::border_subtle())
-        .bg(Tokens::surface())
+        .gap(Tokens::spacing_0p5())
         .child(panel_toggle(
             "toggle-sidebar",
             sidebar_icon,
             !props.sidebar_collapsed,
             props.on_toggle_sidebar,
         ))
-        .child(panel_divider())
         .child(panel_toggle(
             "toggle-inspector",
             right_icon,
             props.inspector_open,
             props.on_toggle_inspector,
         ))
-        .child(panel_divider())
         .child(panel_toggle(
             "toggle-terminal",
             bottom_icon,
             props.terminal_open,
             props.on_toggle_terminal,
         ))
-}
-
-fn panel_divider() -> impl IntoElement {
-    div()
-        .w(px(1.0))
-        .h(px(Tokens::ROW_HEIGHT_SM))
-        .bg(Tokens::divider())
 }
 
 fn panel_toggle(

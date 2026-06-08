@@ -8,6 +8,7 @@ use super::super::AgentWindow;
 use super::super::types::{TerminalTab, TerminalTabGroup};
 use crate::features::terminal::components::terminal_view::TerminalView;
 use crate::features::terminal::layout::TerminalTabVm;
+use crate::features::workspace_layout::state::{BOTTOM_PANE_ID, WorkspaceItemId, WorkspaceTab};
 use crate::tokens::Tokens;
 
 impl AgentWindow {
@@ -100,6 +101,15 @@ impl AgentWindow {
             }
 
             group.active_tab_id = tab.id;
+            self.workspace_layout.ensure_tab_in_pane(
+                BOTTOM_PANE_ID,
+                WorkspaceTab::new(
+                    WorkspaceItemId::terminal_session(tab.id),
+                    tab.label.clone(),
+                    true,
+                ),
+                None,
+            );
             group.tabs.push(tab);
             self.attach_active_terminal_tab(&project_id, cx);
         }
@@ -117,6 +127,8 @@ impl AgentWindow {
             return;
         }
         group.tabs.retain(|tab| tab.id != tab_id);
+        self.workspace_layout
+            .remove_item(&WorkspaceItemId::terminal_session(tab_id));
         if group.active_tab_id == tab_id {
             group.active_tab_id = group.tabs.last().map(|tab| tab.id).unwrap_or(0);
         }
@@ -133,6 +145,8 @@ impl AgentWindow {
         };
         if group.tabs.iter().any(|tab| tab.id == tab_id) {
             group.active_tab_id = tab_id;
+            self.workspace_layout
+                .select_item(&WorkspaceItemId::terminal_session(tab_id));
             self.attach_active_terminal_tab(&project_id, cx);
             cx.notify();
         }
@@ -163,6 +177,10 @@ impl AgentWindow {
         let tab = group.tabs.remove(from_ix);
         let insert_ix = if from_ix < to_ix { to_ix - 1 } else { to_ix };
         group.tabs.insert(insert_ix, tab);
+        self.workspace_layout.reorder_item(
+            &WorkspaceItemId::terminal_session(dragged_id),
+            &WorkspaceItemId::terminal_session(target_id),
+        );
         cx.notify();
     }
 

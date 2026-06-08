@@ -203,19 +203,19 @@ impl Tokens {
     }
 
     pub fn tool_path_text() -> Hsla {
-        gpui::rgb(0x72767d).into()
+        Self::text_tertiary()
     }
     pub fn tool_name_text() -> Hsla {
-        gpui::rgb(0xb4b6ba).into()
+        Self::text_secondary()
     }
     pub fn timeline_border() -> Hsla {
         Self::divider()
     }
     pub fn sidebar_hover_bg() -> Hsla {
-        Self::surface_hover().blend(Self::accent().opacity(0.06))
+        Self::surface_hover().blend(Self::accent().opacity(0.025))
     }
     pub fn sidebar_selected_bg() -> Hsla {
-        Self::sidebar_hover_bg().blend(Self::accent().opacity(0.08))
+        Self::surface_active().blend(Self::accent().opacity(0.045))
     }
     pub fn sidebar_time_fade_gradient(selected: bool) -> Background {
         let bg = if selected {
@@ -246,10 +246,10 @@ impl Tokens {
         Self::text_tertiary()
     }
     pub fn approval_border() -> Hsla {
-        gpui::rgb(0x26282c).into()
+        Self::border_strong()
     }
     pub fn activity_detail_border() -> Hsla {
-        Self::border_subtle().opacity(0.9)
+        Self::border_strong().opacity(0.82)
     }
     pub fn activity_detail_text() -> Hsla {
         Self::text_secondary()

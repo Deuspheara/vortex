@@ -182,9 +182,20 @@ pub fn activity_action_line(
     action: &str,
     detail: Option<&str>,
     running: bool,
-    _animate: bool,
+    animate: bool,
     key: &str,
     _index: usize,
+) -> impl IntoElement {
+    activity_action_line_with_loading(action, detail, running, running, animate, key)
+}
+
+pub fn activity_action_line_with_loading(
+    action: &str,
+    detail: Option<&str>,
+    running: bool,
+    show_loading: bool,
+    animate: bool,
+    key: &str,
 ) -> impl IntoElement {
     let action_owned = action.to_string();
     let detail_owned = detail.map(str::to_string);
@@ -197,31 +208,17 @@ pub fn activity_action_line(
 
     div()
         .id(element_key("activity-line", key))
+        .w_full()
+        .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_SM))
         .flex()
         .items_center()
         .gap(Tokens::spacing_2())
-        .when(running, |el| {
-            el.child(
-                div()
-                    .flex_shrink_0()
-                    .size(px(14.0))
-                    .rounded(Tokens::radius_full())
-                    .border_1()
-                    .border_color(Tokens::accent().opacity(0.36))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .size(px(6.0))
-                            .rounded(Tokens::radius_full())
-                            .bg(Tokens::accent()),
-                    ),
-            )
+        .when(show_loading, |el| {
+            el.child(ascii_loading_dots(key, animate))
         })
         .child(
-            div().min_w(px(0.0)).overflow_hidden().child(
+            div().flex_1().min_w(px(0.0)).overflow_hidden().child(
                 div()
                     .id(element_key("activity-action-text", key))
                     .min_w(px(0.0))
@@ -236,24 +233,71 @@ pub fn activity_action_line(
                     .font_weight(action_weight)
                     .text_color(action_color)
                     .hover(|s| s.text_color(Tokens::text_primary()))
-                    .child(div().opacity(0.72).child(verb))
+                    .child(activity_action_verb(verb, show_loading, animate, key))
                     .when_some(remainder, |el, rest| {
-                        el.child(div().opacity(if running { 0.72 } else { 0.68 }).child(rest))
+                        el.child(div().opacity(if running { 0.78 } else { 0.74 }).child(rest))
                     }),
             ),
         )
         .when_some(detail_owned.as_ref(), |el, d| {
             el.child(
                 div()
+                    .flex_1()
+                    .min_w(px(0.0))
                     .text_size(Tokens::text_sm())
                     .line_height(Tokens::text_sm_leading_compact())
                     .font_family(Tokens::ui_font_family())
                     .text_color(Tokens::text_faint())
-                    .opacity(0.62)
+                    .opacity(0.78)
                     .truncate()
                     .child(d.clone()),
             )
         })
+}
+
+fn activity_action_verb(verb: String, show_loading: bool, animate: bool, key: &str) -> AnyElement {
+    let label = div().child(verb);
+    if !show_loading || !animate {
+        return label.opacity(0.86).into_any_element();
+    }
+
+    label
+        .with_animation(
+            element_key("activity-action-verb-pulse", key),
+            Animation::new(Duration::from_millis(1100)).repeat(),
+            |el, delta| {
+                let wave = (delta * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+                el.opacity(0.64 + 0.30 * wave)
+            },
+        )
+        .into_any_element()
+}
+
+fn ascii_loading_dots(key: &str, animate: bool) -> AnyElement {
+    let indicator = div()
+        .id(element_key("activity-ascii-loader", key))
+        .w(px(24.0))
+        .flex_shrink_0()
+        .font_family("monospace")
+        .text_size(Tokens::text_sm())
+        .line_height(Tokens::text_sm_leading_compact())
+        .text_color(Tokens::text_tertiary())
+        .child("...");
+
+    if !animate {
+        return indicator.opacity(0.74).into_any_element();
+    }
+
+    indicator
+        .with_animation(
+            element_key("activity-ascii-loader-pulse", key),
+            Animation::new(Duration::from_millis(900)).repeat(),
+            |el, delta| {
+                let wave = (delta * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+                el.opacity(0.42 + 0.48 * wave)
+            },
+        )
+        .into_any_element()
 }
 
 fn action_verb_and_remainder(action: &str) -> (String, Option<String>) {

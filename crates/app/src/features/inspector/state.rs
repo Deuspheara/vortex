@@ -5,6 +5,7 @@
 //! panel a stable extension point for browser/search/simulator views later.
 
 use crate::features::inspector::artifact::ArtifactId;
+use crate::features::workspace_layout::state::WorkspaceItemId;
 use crate::tokens::Tokens;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -62,6 +63,12 @@ pub struct InspectorTab {
     pub kind: InspectorTabKind,
     pub placement: DockPlacement,
     pub closeable: bool,
+}
+
+impl InspectorTab {
+    pub fn workspace_item_id(&self) -> WorkspaceItemId {
+        WorkspaceItemId::inspector_tab(self.id)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -3,6 +3,7 @@
 use gpui::{Context, Window};
 
 use super::super::AgentWindow;
+use crate::features::settings::state::SettingsSection;
 use crate::features::shell::state::InspectorView;
 use crate::tokens::theme::{apply_theme, set_appearance_mode};
 use gpui_component::ThemeMode;
@@ -30,6 +31,12 @@ impl AgentWindow {
 
     pub fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.screen = crate::window::AppScreen::Settings;
+        self.selected_settings_section = SettingsSection::default();
+        cx.notify();
+    }
+
+    pub fn set_settings_section(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+        self.selected_settings_section = section;
         cx.notify();
     }
 

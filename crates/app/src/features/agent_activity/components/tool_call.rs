@@ -5,7 +5,8 @@ use std::sync::Arc;
 use gpui::{App, IntoElement, div, prelude::*};
 
 use crate::features::agent_activity::components::{
-    activity_header_row, activity_output_line_row, activity_truncated_row_with_trailing,
+    ActivityRowVisual, activity_header_row_with_visual, activity_output_line_row,
+    activity_truncated_row_with_trailing,
 };
 use crate::shared::components::buttons::btn_copy_icon_arc;
 
@@ -68,15 +69,18 @@ pub fn render_tool_header_row(
         show_command_detail(command, &label)
     };
 
-    activity_header_row(
-        "tool-row",
-        "tool-header",
-        item_id,
+    activity_header_row_with_visual(
+        ActivityRowVisual {
+            row_key: "tool-row",
+            header_key: "tool-header",
+            item_id,
+            running,
+            show_loading: running,
+            animate,
+            group_pos,
+        },
         label,
         detail,
-        running,
-        animate,
-        group_pos,
         change_counts_badge(item_id, change_counts).into_any_element(),
         on_toggle,
     )

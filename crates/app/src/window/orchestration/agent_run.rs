@@ -2,7 +2,7 @@
 
 use gpui::{Context, Window};
 
-use super::super::AgentWindow;
+use super::super::{AgentWindow, ConversationRunState};
 use crate::agent::ReducerState;
 use crate::features::composer::state::PendingImageSource;
 use crate::features::shell::state::{
@@ -19,7 +19,7 @@ impl AgentWindow {
             return false;
         }
         self.simulations_running.insert(conversation_id);
-        self.status.agent_status = Some(AgentStatus::Thinking);
+        self.sync_agent_status(AgentStatus::Thinking);
         cx.notify();
         true
     }
@@ -55,6 +55,11 @@ impl AgentWindow {
                 return;
             }
         };
+
+        self.reconcile_stale_run_state();
+        if self.conversation_run_state(&conv_id).has_active_work() {
+            return;
+        }
 
         if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == conv_id) {
             let id = format!("user-msg-{}", conv.thread_items.len());
@@ -101,7 +106,7 @@ impl AgentWindow {
             if let Some(cid) = &self.selected_conversation_id {
                 self.running_conversations.remove(cid);
             }
-            self.status.agent_status = Some(AgentStatus::Idle);
+            self.reset_agent_status_to_idle();
             let error_id = format!("error-{}", uuid::Uuid::new_v4());
             self.push_thread_item(
                 conv_id.clone(),
@@ -146,7 +151,7 @@ impl AgentWindow {
         }
 
         self.reducer_state = ReducerState::default();
-        self.status.agent_status = Some(AgentStatus::Thinking);
+        self.sync_agent_status(AgentStatus::Thinking);
 
         if let Some(cid) = self.selected_conversation_id.clone() {
             self.push_thinking_indicator(cid, cx);
@@ -207,11 +212,13 @@ impl AgentWindow {
         self.diff_panel.pending_patch_id = None;
         if let Some(cid) = self.selected_conversation_id.clone() {
             self.running_conversations.remove(&cid);
+            self.mark_plan_execution_cancelled(&cid);
             self.cancel_in_progress_todos(&cid);
             self.resolve_pending_choices(&cid);
+            self.sync_plan_status_for_conversation(&cid, cx);
             self.sync_thread_view(cid, cx);
         }
-        self.status.agent_status = Some(AgentStatus::Idle);
+        self.reset_agent_status_to_idle();
         self.sync_thread_approval_state(cx);
         cx.notify();
     }
@@ -271,7 +278,7 @@ impl AgentWindow {
         if let Err(err) = self.start_agent_run(&prompt, attachments, cx) {
             tracing::error!("failed to retry run: {err}");
             self.running_conversations.remove(&conv_id);
-            self.status.agent_status = Some(AgentStatus::Idle);
+            self.reset_agent_status_to_idle();
             self.push_thread_item(
                 conv_id.clone(),
                 ThreadItem::RunError {
@@ -285,6 +292,30 @@ impl AgentWindow {
             self.sync_thread_view(conv_id, cx);
         }
         cx.notify();
+    }
+
+    pub(crate) fn conversation_run_state(
+        &self,
+        conversation_id: &ConversationId,
+    ) -> ConversationRunState {
+        let running = self.running_conversations.contains(conversation_id)
+            || self.simulations_running.contains(conversation_id);
+        let pending_patch = self.selected_conversation_id.as_ref() == Some(conversation_id)
+            && self.diff_panel.pending_patch_id.is_some();
+        let thread_items = self
+            .conversations
+            .iter()
+            .find(|conv| conv.id == *conversation_id)
+            .map(|conv| conv.thread_items.as_slice())
+            .unwrap_or(&[]);
+        let selected = self.selected_conversation_id.as_ref() == Some(conversation_id);
+        ConversationRunState::from_thread_items(
+            thread_items,
+            running,
+            pending_patch,
+            self.provider_blocked.is_some(),
+            selected && matches!(self.status.agent_status, Some(AgentStatus::Failed)),
+        )
     }
 }
 
@@ -326,5 +357,61 @@ fn message_attachment_to_context_attachment(
                 attachment.label.clone(),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::shell::state::{ApprovalRisk, ChoiceMeta, ChoiceOption};
+
+    #[test]
+    fn conversation_run_state_blocks_unresolved_thread_work() {
+        let items = vec![
+            ThreadItem::ApprovalRequest {
+                id: "approval".into(),
+                title: "Run command".into(),
+                risk: ApprovalRisk::Medium,
+                resolved: false,
+            },
+            ThreadItem::ChoiceRequest {
+                id: "choice".into(),
+                prompt: "Pick".into(),
+                options: vec![ChoiceOption {
+                    id: "a".into(),
+                    label: "A".into(),
+                    description: None,
+                    recommended: true,
+                }],
+                meta: ChoiceMeta {
+                    summary: None,
+                    recommended_option_id: None,
+                    allow_custom: false,
+                    blocking_reason: None,
+                },
+                selected: None,
+                resolved: false,
+            },
+        ];
+
+        let state = ConversationRunState::from_thread_items(&items, false, false, false, false);
+
+        assert!(state.waiting_approval);
+        assert!(state.pending_choice);
+        assert!(state.has_active_work());
+    }
+
+    #[test]
+    fn conversation_run_state_ignores_resolved_thread_work() {
+        let items = vec![ThreadItem::ApprovalRequest {
+            id: "approval".into(),
+            title: "Run command".into(),
+            risk: ApprovalRisk::Low,
+            resolved: true,
+        }];
+
+        let state = ConversationRunState::from_thread_items(&items, false, false, false, false);
+
+        assert!(!state.has_active_work());
     }
 }
