@@ -1,7 +1,7 @@
 //! Reusable tab bar component — used by terminal bottom panel and diff panel file tabs.
 //!
-//! Flat tabs at rest; the selected tab gets a stronger text treatment plus an
-//! underline. Unselected tabs stay quiet and only pick up a hover wash.
+//! Flat tabs at rest; the selected tab gets the same background-led treatment
+//! as hover, but held persistently with stronger contrast.
 
 use std::rc::Rc;
 
@@ -150,21 +150,16 @@ fn render_tab(
         .h(px(Tokens::ROW_HEIGHT_SM))
         .px(Tokens::spacing_2())
         .max_w(px(180.0))
-        .border_b_1()
-        .border_color(if is_selected {
-            Tokens::accent().opacity(0.92)
-        } else {
-            Tokens::surface_hover().alpha(0.0)
-        })
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
         .flex_shrink_0()
         .cursor_pointer()
+        .rounded(Tokens::radius_xs())
+        .when(is_selected, |el| el.bg(Tokens::surface_active()))
         .when(is_selected, |el| el.text_color(Tokens::text_primary()))
         .when(!is_selected, |el| {
-            el.rounded(Tokens::radius_xs())
-                .hover(|s| s.bg(Tokens::surface_hover().opacity(0.6)))
+            el.hover(|s| s.bg(Tokens::surface_hover().opacity(0.6)))
         })
         .when_some(on_select, |el, cb| {
             el.on_click(move |_, _, app: &mut gpui::App| cb(tab_id, app))
