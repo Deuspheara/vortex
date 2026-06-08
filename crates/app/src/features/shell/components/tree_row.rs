@@ -14,7 +14,10 @@ use crate::features::shell::state::{
 };
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::tokens::icons;
-use crate::tokens::motion::Motion;
+use crate::tokens::motion::{
+    Motion, sidebar_accent_in, sidebar_glow_pulse, sidebar_text_cascade_in,
+    sidebar_text_fade_in,
+};
 use crate::tokens::{Tokens, element_key};
 
 const SESSION_META_WIDTH: f32 = 36.0;
@@ -47,6 +50,46 @@ fn session_meta_opacity(indent_level: u32, is_menu_open: bool) -> f32 {
     }
 }
 
+fn sidebar_row_beam(active: bool, key: &str) -> impl IntoElement {
+    let beam = div()
+        .absolute()
+        .top(px(6.0))
+        .bottom(px(6.0))
+        .left_0()
+        .w(px(2.0))
+        .rounded(Tokens::radius_full())
+        .bg(Tokens::sidebar_accent_beam_gradient());
+
+    if active {
+        sidebar_accent_in(beam, element_key("sidebar-row-beam", key)).into_any_element()
+    } else {
+        div().into_any_element()
+    }
+}
+
+fn sidebar_row_wash(active: bool, key: &str, phase: f32) -> impl IntoElement {
+    let wash = div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .right_0()
+        .bottom_0()
+        .bg(Tokens::sidebar_row_wash_gradient());
+
+    if active {
+        sidebar_glow_pulse(
+            wash,
+            element_key("sidebar-row-wash", key),
+            0.3,
+            0.22,
+            phase,
+        )
+        .into_any_element()
+    } else {
+        div().into_any_element()
+    }
+}
+
 /// Drag payload for reordering / moving sidebar sessions.
 #[derive(Clone)]
 pub struct DragSession {
@@ -61,6 +104,7 @@ pub struct SessionRowViewModel {
     pub updated_at: String,
     pub selected: bool,
     pub indent_level: u32,
+    pub cascade_index: usize,
     pub row_id: ElementId,
     pub wrap_id: ElementId,
     pub title_id: ElementId,
@@ -70,7 +114,12 @@ pub struct SessionRowViewModel {
 }
 
 impl SessionRowViewModel {
-    pub fn new(session: &SidebarSession, selected: bool, indent_level: u32) -> Self {
+    pub fn new(
+        session: &SidebarSession,
+        selected: bool,
+        indent_level: u32,
+        cascade_index: usize,
+    ) -> Self {
         let id = &session.id.0;
         Self {
             conv_id: session.id.clone(),
@@ -78,6 +127,7 @@ impl SessionRowViewModel {
             updated_at: session.updated_at.clone(),
             selected,
             indent_level,
+            cascade_index,
             row_id: ElementId::from(SharedString::from(format!("session-{id}"))),
             wrap_id: ElementId::from(SharedString::from(format!("session-wrap-{id}"))),
             title_id: element_key("session-title", id),
@@ -94,6 +144,7 @@ pub struct ProjectRowViewModel {
     pub name: String,
     pub count: usize,
     pub expanded: bool,
+    pub cascade_index: usize,
     pub row_id: ElementId,
     pub toggle_id: ElementId,
     pub name_id: ElementId,
@@ -104,13 +155,14 @@ pub struct ProjectRowViewModel {
 }
 
 impl ProjectRowViewModel {
-    pub fn new(project: &Project, expanded: bool) -> Self {
+    pub fn new(project: &Project, expanded: bool, cascade_index: usize) -> Self {
         let id = &project.id.0;
         Self {
             project_id: project.id.clone(),
             name: project.name.clone(),
             count: project.conversations.len(),
             expanded,
+            cascade_index,
             row_id: ElementId::from(SharedString::from(format!("project-{id}"))),
             toggle_id: element_key("project-toggle", id),
             name_id: element_key("project-name", id),
@@ -352,16 +404,18 @@ pub fn session_row(
     let hover_group = group_name.clone();
     let title_opacity = session_title_opacity(row.indent_level, selected);
     let meta_opacity = session_meta_opacity(row.indent_level, is_menu_open);
+    let cascade_index = row.cascade_index;
 
     let row_body = div()
         .id(row.row_id.clone())
+        .relative()
         .w_full()
         .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
         .pl(Tokens::tree_indent(row.indent_level + 1))
         .pr(Tokens::spacing_2())
         .overflow_hidden()
-        .rounded(Tokens::radius_md())
+        .rounded(Tokens::radius_xs())
         .flex()
         .items_center()
         .group(group_name.clone())
@@ -414,6 +468,8 @@ pub fn session_row(
                 view.clear_drop_target(cx);
             });
         })
+        .child(sidebar_row_wash(selected, &row.menu_key, 0.0))
+        .child(sidebar_row_beam(selected, &row.menu_key))
         .child(
             div()
                 .flex_1()
@@ -422,24 +478,28 @@ pub fn session_row(
                 .flex()
                 .items_center()
                 .child(
-                    div()
-                        .id(row.title_id.clone())
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .max_w_full()
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .whitespace_nowrap()
-                        .text_size(Tokens::text_sm())
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(sidebar_row_label_color(selected))
-                        .opacity(title_opacity)
-                        .when(!selected, |el| {
-                            el.group_hover(hover_group, |s| {
-                                s.text_color(Tokens::sidebar_text_hover())
+                    sidebar_text_cascade_in(
+                        div()
+                            .id(row.title_id.clone())
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .max_w_full()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .text_size(Tokens::text_sm())
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sidebar_row_label_color(selected))
+                            .opacity(title_opacity)
+                            .when(!selected, |el| {
+                                el.group_hover(hover_group, |s| {
+                                    s.text_color(Tokens::sidebar_text_hover())
+                                })
                             })
-                        })
-                        .child(title),
+                            .child(title),
+                        element_key("session-title-cascade", &row.conv_id.0),
+                        cascade_index,
+                    ),
                 ),
         )
         .child(
@@ -459,20 +519,24 @@ pub fn session_row(
                         .items_center()
                         .justify_end()
                         .child(
-                            div()
-                                .w_full()
-                                .min_w(px(0.0))
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_size(Tokens::text_xs())
-                                .text_color(Tokens::text_primary())
-                                .text_align(TextAlign::Right)
-                                .opacity(meta_opacity)
-                                .when(!is_menu_open, |el| {
-                                    el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                                })
-                                .child(updated_at),
+                            sidebar_text_cascade_in(
+                                div()
+                                    .w_full()
+                                    .min_w(px(0.0))
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .text_size(Tokens::text_xs())
+                                    .text_color(Tokens::text_primary())
+                                    .text_align(TextAlign::Right)
+                                    .opacity(meta_opacity)
+                                    .when(!is_menu_open, |el| {
+                                        el.group_hover(group_name.clone(), |s| s.opacity(0.0))
+                                    })
+                                    .child(updated_at),
+                                element_key("session-meta-cascade", &row.conv_id.0),
+                                cascade_index.saturating_add(1),
+                            ),
                         ),
                 )
                 .child(
@@ -535,22 +599,32 @@ pub fn project_row(
     let sidebar_for_right = sidebar.clone();
     let group_name = row.group_name.clone();
     let hover_group = group_name.clone();
+    let cascade_index = row.cascade_index;
 
     div()
         .id(row.row_id.clone())
+        .relative()
         .w_full()
         .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
         .pl(Tokens::spacing_1())
         .pr(Tokens::spacing_2())
         .overflow_hidden()
-        .rounded(Tokens::radius_sm())
+        .rounded(Tokens::radius_xs())
         .flex()
         .items_center()
         .gap(Tokens::spacing_1p5())
         .group(group_name.clone())
         .cursor_pointer()
-        .hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.72)))
+        .when(row.expanded, |el| {
+            el.bg(Tokens::sidebar_hover_bg().opacity(0.52))
+        })
+        .when(!row.expanded, |el| {
+            el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.72)))
+        })
+        .when(row.expanded, |el| {
+            el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.82)))
+        })
         .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
             sidebar_for_right.update(app, |view, cx| {
                 view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
@@ -601,19 +675,23 @@ pub fn project_row(
                         .opacity(0.66),
                 )
                 .child(
-                    div()
-                        .id(row.name_id.clone())
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(Tokens::text_sm())
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(Tokens::text_primary())
-                        .opacity(0.72)
-                        .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
-                        .child(name),
+                    sidebar_text_fade_in(
+                        div()
+                            .id(row.name_id.clone())
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_size(Tokens::text_sm())
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(Tokens::text_primary())
+                            .opacity(0.72)
+                            .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
+                            .child(name),
+                        element_key("project-name-cascade", &row.project_id.0),
+                        cascade_index,
+                    ),
                 ),
         )
         .child(
@@ -633,21 +711,25 @@ pub fn project_row(
                         .items_center()
                         .justify_end()
                         .child(
-                            div()
-                                .w_full()
-                                .min_w(px(0.0))
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_size(Tokens::text_xs())
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(Tokens::sidebar_text_muted())
-                                .text_align(TextAlign::Right)
-                                .opacity(if is_menu_open { 0.0 } else { 0.62 })
-                                .when(!is_menu_open, |el| {
-                                    el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                                })
-                                .child(count.to_string()),
+                    sidebar_text_fade_in(
+                                div()
+                                    .w_full()
+                                    .min_w(px(0.0))
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .text_size(Tokens::text_xs())
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(Tokens::sidebar_text_muted())
+                                    .text_align(TextAlign::Right)
+                                    .opacity(if is_menu_open { 0.0 } else { 0.62 })
+                                    .when(!is_menu_open, |el| {
+                                        el.group_hover(group_name.clone(), |s| s.opacity(0.0))
+                                    })
+                                    .child(count.to_string()),
+                                element_key("project-meta-cascade", &row.project_id.0),
+                                cascade_index.saturating_add(1),
+                            ),
                         ),
                 )
                 .child(

@@ -11,6 +11,9 @@ use crate::shared::components::buttons::btn_ghost_icon;
 use crate::shared::components::flat_list_row::flat_list_row;
 use crate::tokens::Tokens;
 use crate::tokens::icons;
+use crate::tokens::motion::{
+    element_key, sidebar_accent_in, sidebar_atmosphere, sidebar_glow_pulse,
+};
 use crate::ui::agent_window::AgentWindow;
 
 /// Embeds the sidebar view entity in the agent window.
@@ -23,6 +26,7 @@ pub(crate) fn render_app_nav(
     selected: AppNavItem,
 ) -> impl IntoElement {
     div()
+        .relative()
         .px(Tokens::spacing_2())
         .pt(Tokens::spacing_2())
         .pb(Tokens::spacing_2())
@@ -31,6 +35,43 @@ pub(crate) fn render_app_nav(
         .gap(Tokens::spacing_0p5())
         .border_b_1()
         .border_color(Tokens::sidebar_border())
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .h(px(128.0))
+                .overflow_hidden()
+                .child(sidebar_atmosphere(
+                    div()
+                        .absolute()
+                        .top(px(-24.0))
+                        .left(px(-22.0))
+                        .w(px(172.0))
+                        .h(px(116.0))
+                        .rounded(Tokens::radius_full())
+                        .bg(Tokens::sidebar_nav_glow_gradient()),
+                    element_key("sidebar-nav-glow", "primary"),
+                    0.38,
+                    0.12,
+                    0.0,
+                ))
+                .child(sidebar_atmosphere(
+                    div()
+                        .absolute()
+                        .top(px(18.0))
+                        .right(px(-30.0))
+                        .w(px(132.0))
+                        .h(px(84.0))
+                        .rounded(Tokens::radius_full())
+                        .bg(Tokens::sidebar_nav_wash_gradient()),
+                    element_key("sidebar-nav-glow", "secondary"),
+                    0.24,
+                    0.1,
+                    1.8,
+                )),
+        )
         .child(app_nav_row(
             "sidebar-new-chat",
             icons::PENCIL,
@@ -185,29 +226,88 @@ fn app_nav_row(
     label: &'static str,
     selected: bool,
     on_click: impl Fn(&mut gpui::App) + 'static,
-) -> impl IntoElement {
-    flat_list_row(
-        id,
-        Tokens::ROW_HEIGHT_MD,
-        Tokens::sidebar_padding(),
-        Tokens::sidebar_padding(),
-        selected,
-        true,
-        Some(on_click),
-        div()
-            .flex()
-            .items_center()
-            .gap(Tokens::spacing_2())
-            .child(
-                Icon::new(icon)
-                    .size(px(14.0))
-                    .text_color(Tokens::sidebar_text()),
+) -> gpui::AnyElement {
+    let content = div()
+        .id(id)
+        .relative()
+        .w_full()
+        .min_w(px(0.0))
+        .h(px(Tokens::ROW_HEIGHT_MD))
+        .pl(Tokens::sidebar_padding())
+        .pr(Tokens::sidebar_padding())
+        .overflow_hidden()
+        .rounded(Tokens::radius_xs())
+        .flex()
+        .items_center()
+        .gap(Tokens::spacing_2())
+        .cursor_pointer()
+        .when(selected, |el| {
+            el.bg(Tokens::sidebar_selected_bg().opacity(0.9))
+                .child(
+                    sidebar_glow_pulse(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .right_0()
+                            .bottom_0()
+                            .bg(Tokens::sidebar_row_wash_gradient()),
+                        element_key("sidebar-nav-wash", id),
+                        0.42,
+                        0.2,
+                        0.4,
+                    ),
+                )
+                .child(
+                sidebar_accent_in(
+                    div()
+                        .absolute()
+                        .top(px(6.0))
+                        .bottom(px(6.0))
+                        .left_0()
+                        .w(px(2.0))
+                        .rounded(Tokens::radius_full())
+                        .bg(Tokens::sidebar_accent_beam_gradient()),
+                    element_key("sidebar-nav-accent", id),
+                ),
             )
-            .child(
-                div()
-                    .text_size(Tokens::text_sm())
-                    .text_color(Tokens::sidebar_text())
-                    .child(label),
-            ),
-    )
+        })
+        .when(!selected, |el| el.hover(|s| s.bg(Tokens::sidebar_hover_bg())))
+        .on_click(move |_, _, app: &mut gpui::App| on_click(app))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .child(
+                    Icon::new(icon)
+                        .size(px(14.0))
+                        .text_color(if selected {
+                            Tokens::sidebar_text_hover()
+                        } else {
+                            Tokens::sidebar_text()
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(Tokens::text_sm())
+                        .font_weight(if selected {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        .text_color(if selected {
+                            Tokens::sidebar_text_hover()
+                        } else {
+                            Tokens::sidebar_text()
+                        })
+                        .child(label),
+                ),
+        );
+
+    if selected {
+        sidebar_accent_in(content, element_key("sidebar-nav-row", id)).into_any_element()
+    } else {
+        content.into_any_element()
+    }
 }

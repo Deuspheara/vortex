@@ -18,6 +18,10 @@ fn sidebar_expand_ease(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
+fn sidebar_loop_ease(t: f32) -> f32 {
+    t
+}
+
 /// Compact loading indicator — kept under the old name for existing call sites.
 pub fn braille_spinner(key: &str, animate: bool) -> AnyElement {
     let base = || {
@@ -66,8 +70,34 @@ impl Motion {
         Animation::new(Duration::from_millis(160)).with_easing(sidebar_snappy_ease)
     }
 
+    pub fn sidebar_row_stagger(index: usize) -> Animation {
+        let delay_ms = (index as u64).min(8) * 24;
+        Animation::new(Duration::from_millis(170 + delay_ms)).with_easing(sidebar_snappy_ease)
+    }
+
     pub fn sidebar_expand() -> Animation {
         Animation::new(Duration::from_millis(220)).with_easing(sidebar_expand_ease)
+    }
+
+    pub fn sidebar_expand_stagger(index: usize) -> Animation {
+        let delay_ms = (index as u64).min(6) * 26;
+        Animation::new(Duration::from_millis(210 + delay_ms)).with_easing(sidebar_expand_ease)
+    }
+
+    pub fn sidebar_emphasis() -> Animation {
+        Animation::new(Duration::from_millis(260)).with_easing(sidebar_snappy_ease)
+    }
+
+    pub fn sidebar_toggle() -> Animation {
+        Animation::new(Duration::from_millis(190)).with_easing(ease_in_out)
+    }
+
+    pub fn sidebar_drift() -> Animation {
+        Animation::new(Duration::from_millis(8_200)).with_easing(sidebar_loop_ease)
+    }
+
+    pub fn sidebar_pulse() -> Animation {
+        Animation::new(Duration::from_millis(2_800)).with_easing(sidebar_loop_ease)
     }
 
     #[allow(dead_code)]
@@ -140,12 +170,96 @@ pub fn sidebar_row_in(content: impl IntoElement, id: impl Into<ElementId>) -> im
         })
 }
 
+/// Sidebar row entrance with a capped per-row delay for visible list rhythm.
+pub fn sidebar_row_stagger_in(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    index: usize,
+) -> impl IntoElement {
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_row_stagger(index), |el, delta| {
+            el.opacity(delta).mt(px(4.0 * (1.0 - delta)))
+        })
+}
+
+/// Sidebar row fade-only entrance for rows whose internal layout should stay pinned.
+pub fn sidebar_row_fade_stagger_in(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    index: usize,
+) -> impl IntoElement {
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_row_stagger(index), |el, delta| {
+            el.opacity(delta)
+        })
+}
+
 /// Reveal for nested rows that appear on project expand.
 pub fn sidebar_expand_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
     div().overflow_hidden().child(content).with_animation(
         id,
         Motion::sidebar_expand(),
         |el, delta| el.opacity(delta).mt(px(5.0 * (1.0 - delta))),
+    )
+}
+
+/// Reveal for nested sidebar rows with a light cascade when folders expand.
+pub fn sidebar_expand_stagger_in(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    index: usize,
+) -> impl IntoElement {
+    div().overflow_hidden().child(content).with_animation(
+        id,
+        Motion::sidebar_expand_stagger(index),
+        |el, delta| el.opacity(delta).mt(px(5.0 * (1.0 - delta))),
+    )
+}
+
+/// Slow ambient drift for sidebar chrome accents.
+pub fn sidebar_atmosphere(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    base_opacity: f32,
+    amplitude: f32,
+    phase: f32,
+) -> impl IntoElement {
+    div().child(content).with_animation(
+        id,
+        Motion::sidebar_drift().repeat(),
+        move |el, delta| {
+            let wave = ((delta * std::f32::consts::TAU) + phase).sin();
+            el.opacity(base_opacity + amplitude * (wave + 1.0) * 0.5)
+        },
+    )
+}
+
+/// Short accent pickup for selected sidebar rows.
+pub fn sidebar_accent_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
+    div().child(content).with_animation(
+        id,
+        Motion::sidebar_emphasis(),
+        |el, delta| el.opacity(delta),
+    )
+}
+
+/// Continuous pulse for sidebar glow layers without shifting layout.
+pub fn sidebar_glow_pulse(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    base_opacity: f32,
+    amplitude: f32,
+    phase: f32,
+) -> impl IntoElement {
+    div().child(content).with_animation(
+        id,
+        Motion::sidebar_pulse().repeat(),
+        move |el, delta| {
+            let wave = ((delta * std::f32::consts::TAU) + phase).sin();
+            el.opacity(base_opacity + amplitude * (wave + 1.0) * 0.5)
+        },
     )
 }
 
@@ -271,6 +385,47 @@ fn activity_action_verb(verb: String, show_loading: bool, animate: bool, key: &s
             },
         )
         .into_any_element()
+}
+
+/// Text-only sidebar reveal so labels cascade in without making rows feel floaty.
+pub fn sidebar_text_cascade_in(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    index: usize,
+) -> impl IntoElement {
+    let delay_ms = (index as u64).min(10) * 18;
+    div().child(content).with_animation(
+        id,
+        Animation::new(Duration::from_millis(160 + delay_ms)).with_easing(ease_out_quint()),
+        |el, delta| el.opacity(delta).ml(px(7.0 * (1.0 - delta))),
+    )
+}
+
+/// Text-only fade for sidebar content that should not shift horizontal layout.
+pub fn sidebar_text_fade_in(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+    index: usize,
+) -> impl IntoElement {
+    let delay_ms = (index as u64).min(10) * 18;
+    div().child(content).with_animation(
+        id,
+        Animation::new(Duration::from_millis(160 + delay_ms)).with_easing(ease_out_quint()),
+        |el, delta| el.opacity(delta),
+    )
+}
+
+/// Small ease-in-out pickup for icon buttons whose state flips on click.
+pub fn sidebar_toggle_in(
+    content: impl IntoElement,
+    id: impl Into<ElementId>,
+) -> impl IntoElement {
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_toggle(), |el, delta| {
+            el.opacity(0.82 + 0.18 * delta)
+                .mt(px(2.0 * (1.0 - delta)))
+        })
 }
 
 fn ascii_loading_dots(key: &str, animate: bool) -> AnyElement {

@@ -77,6 +77,48 @@ impl Tokens {
         )
         .color_space(ColorSpace::Oklab)
     }
+
+    /// Soft accent bloom used behind the sidebar nav cluster.
+    pub fn sidebar_nav_glow_gradient() -> Background {
+        let accent = Self::accent();
+        linear_gradient(
+            140.,
+            linear_color_stop(accent.opacity(0.16), 0.0),
+            linear_color_stop(Self::sidebar_bg().alpha(0.0), 1.0),
+        )
+        .color_space(ColorSpace::Oklab)
+    }
+
+    /// Cooler secondary wash to keep the sidebar atmosphere dimensional, not flat.
+    pub fn sidebar_nav_wash_gradient() -> Background {
+        let bright = Self::text_bright();
+        linear_gradient(
+            210.,
+            linear_color_stop(bright.opacity(0.06), 0.0),
+            linear_color_stop(Self::sidebar_bg().alpha(0.0), 1.0),
+        )
+        .color_space(ColorSpace::Oklab)
+    }
+
+    /// Full-row accent wash for selected or expanded sidebar items.
+    pub fn sidebar_row_wash_gradient() -> Background {
+        linear_gradient(
+            90.,
+            linear_color_stop(Self::accent().opacity(0.12), 0.0),
+            linear_color_stop(Self::accent_hover().opacity(0.0), 1.0),
+        )
+        .color_space(ColorSpace::Oklab)
+    }
+
+    /// Narrow beam for selected or expanded sidebar rows.
+    pub fn sidebar_accent_beam_gradient() -> Background {
+        linear_gradient(
+            180.,
+            linear_color_stop(Self::accent_hover().opacity(0.98), 0.0),
+            linear_color_stop(Self::accent().opacity(0.22), 1.0),
+        )
+        .color_space(ColorSpace::Oklab)
+    }
 }
 
 impl Tokens {

@@ -6,6 +6,8 @@ use gpui_component::IconName;
 use crate::shared::components::buttons::btn_ghost_icon;
 use crate::tokens::Tokens;
 use crate::tokens::icons;
+use crate::tokens::element_key;
+use crate::tokens::motion::sidebar_toggle_in;
 
 pub struct PanelControlClusterProps {
     pub sidebar_collapsed: bool,
@@ -72,9 +74,12 @@ fn panel_toggle(
         button = button.bg(Tokens::surface_active());
     }
 
-    if let Some(cb) = on_click {
+    let key = element_key(id, if active { "active" } else { "inactive" });
+    let button = if let Some(cb) = on_click {
         button.on_click(move |_, _, app: &mut gpui::App| cb(app))
     } else {
         button
-    }
+    };
+
+    sidebar_toggle_in(button, key)
 }
