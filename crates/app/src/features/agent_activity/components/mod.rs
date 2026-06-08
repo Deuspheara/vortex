@@ -24,31 +24,6 @@ pub struct ActivityRowVisual<'a> {
     pub group_pos: Option<ActivityGroupPos>,
 }
 
-/// Collapsible activity header (tool, reasoning).
-pub fn activity_header_row(
-    row_key: &'static str,
-    header_key: &'static str,
-    item_id: &str,
-    label: String,
-    detail: Option<String>,
-    running: bool,
-    animate: bool,
-    group_pos: Option<ActivityGroupPos>,
-    trailing: AnyElement,
-    on_toggle: impl Fn(&mut App) + 'static,
-) -> impl IntoElement {
-    let visual = ActivityRowVisual {
-        row_key,
-        header_key,
-        item_id,
-        running,
-        show_loading: running,
-        animate,
-        group_pos,
-    };
-    activity_header_row_with_visual(visual, label, detail, trailing, on_toggle)
-}
-
 pub fn activity_header_row_with_visual(
     visual: ActivityRowVisual<'_>,
     label: String,

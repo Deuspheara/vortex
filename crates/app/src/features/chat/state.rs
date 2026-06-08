@@ -296,15 +296,6 @@ fn tool_kind_from_name(name: &str) -> TimelineEventKind {
     }
 }
 
-pub fn phase_label(phase: ActivityPhase) -> &'static str {
-    match phase {
-        ActivityPhase::Explore => "Planning",
-        ActivityPhase::Edit => "Implementation",
-        ActivityPhase::Run => "Validation",
-        ActivityPhase::Review => "Review",
-    }
-}
-
 pub fn should_emit_thread_item(
     item: &ThreadItem,
     mode: TranscriptMode,

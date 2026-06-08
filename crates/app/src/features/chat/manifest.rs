@@ -8,16 +8,13 @@ use std::sync::Arc;
 
 use gpui::{Pixels, Size, px, size};
 
-use crate::features::agent_activity::state::ActivityPhase;
 use crate::features::chat::layout::{
     self, APPROVAL_H, DIFF_FILE_H, HEADER_H, LINE_H, PLAN_STATUS_H, REASONING_BODY_MAX_H,
     RUN_ERROR_TITLE_H, SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
 };
-use crate::features::chat::state::phase_label;
 use crate::features::shell::state::{
-    AgentStatus, ChoiceMeta, ChoiceOption, ContextEntryKind, ContextTraceEntry, DiffFileSummary,
-    ThreadItem, USER_MESSAGE_PREVIEW_LINES, first_user_message_ix, project_timeline,
-    should_emit_thread_item, user_message_truncatable,
+    AgentStatus, ChoiceMeta, ChoiceOption, DiffFileSummary, ThreadItem, USER_MESSAGE_PREVIEW_LINES,
+    first_user_message_ix, project_timeline, should_emit_thread_item, user_message_truncatable,
 };
 use crate::shared::components::markdown_preview::{
     LINE_LEADING, MarkdownBlock, estimate_markdown_height, parse_markdown_blocks_shared_streaming,
@@ -64,7 +61,7 @@ pub fn row_top_gap(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) 
 }
 
 fn top_gap(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) -> f32 {
-    if matches!(row, RowRef::EndSpacer | RowRef::TimelineSection { .. }) {
+    if matches!(row, RowRef::EndSpacer) {
         return 0.0;
     }
     let item_ix = row.item_ix().expect("content row") as usize;
@@ -118,7 +115,6 @@ fn prev_row_is_assistant(prev: RowRef, items: &[ThreadItem]) -> bool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowRef {
-    TimelineSection { phase: u8 },
     UserMessage { item_ix: u32 },
     SubagentHeader { item_ix: u32 },
     SubagentBody { item_ix: u32 },
@@ -135,15 +131,13 @@ pub enum RowRef {
     RunError { item_ix: u32 },
     ChoiceRequest { item_ix: u32 },
     PlanStatus { item_ix: u32 },
-    ContextTraceHeader { item_ix: u32 },
-    ContextTraceEntryLine { item_ix: u32, entry_ix: u16 },
     EndSpacer,
 }
 
 impl RowRef {
     pub fn item_ix(&self) -> Option<u32> {
         match self {
-            RowRef::TimelineSection { .. } | RowRef::EndSpacer => None,
+            RowRef::EndSpacer => None,
             RowRef::UserMessage { item_ix }
             | RowRef::SubagentHeader { item_ix }
             | RowRef::SubagentBody { item_ix }
@@ -159,17 +153,14 @@ impl RowRef {
             | RowRef::Approval { item_ix }
             | RowRef::RunError { item_ix }
             | RowRef::ChoiceRequest { item_ix }
-            | RowRef::PlanStatus { item_ix }
-            | RowRef::ContextTraceHeader { item_ix }
-            | RowRef::ContextTraceEntryLine { item_ix, .. } => Some(*item_ix),
+            | RowRef::PlanStatus { item_ix } => Some(*item_ix),
         }
     }
 
     pub fn is_header(&self) -> bool {
         matches!(
             self,
-            RowRef::TimelineSection { .. }
-                | RowRef::UserMessage { .. }
+            RowRef::UserMessage { .. }
                 | RowRef::SubagentHeader { .. }
                 | RowRef::ReasoningHeader { .. }
                 | RowRef::ToolHeader { .. }
@@ -179,17 +170,13 @@ impl RowRef {
                 | RowRef::RunError { .. }
                 | RowRef::ChoiceRequest { .. }
                 | RowRef::PlanStatus { .. }
-                | RowRef::ContextTraceHeader { .. }
         )
     }
 }
 
 /// Body height for an assistant row from pre-parsed blocks (no re-parse).
 pub fn assistant_content_height(blocks: &[MarkdownBlock], streaming: bool, has_text: bool) -> f32 {
-    let mut h = layout::assistant_result_label_h()
-        + layout::assistant_result_label_gap()
-        + layout::assistant_body_pt()
-        + estimate_markdown_height(blocks, false);
+    let mut h = layout::assistant_body_pt() + estimate_markdown_height(blocks, false);
     if streaming && has_text {
         h += layout::assistant_streaming_extra();
     }
@@ -197,7 +184,7 @@ pub fn assistant_content_height(blocks: &[MarkdownBlock], streaming: bool, has_t
 }
 
 pub fn assistant_actions_height() -> f32 {
-    f32::from(Tokens::spacing_0p5()) + Tokens::ROW_HEIGHT_SM
+    Tokens::ROW_HEIGHT_SM
 }
 
 pub fn assistant_accessory_height(_item_ix: usize, _items: &[ThreadItem]) -> f32 {
@@ -224,7 +211,6 @@ pub fn row_height_with_collapsed(
     let gap = top_gap(row, prev_row, items);
     match row {
         RowRef::EndSpacer => Tokens::THREAD_END_SCROLL_PADDING,
-        RowRef::TimelineSection { .. } => SECTION_HEADER_H + gap,
         RowRef::UserMessage { item_ix } => {
             let Some(ThreadItem::UserMessage {
                 text,
@@ -267,8 +253,7 @@ pub fn row_height_with_collapsed(
         RowRef::ReasoningHeader { .. }
         | RowRef::SubagentHeader { .. }
         | RowRef::ToolHeader { .. }
-        | RowRef::DiffHeader { .. }
-        | RowRef::ContextTraceHeader { .. } => HEADER_H + gap,
+        | RowRef::DiffHeader { .. } => HEADER_H + gap,
         RowRef::PlanStatus { .. } => PLAN_STATUS_H + gap,
         RowRef::SubagentBody { item_ix } => {
             let Some(ThreadItem::SubagentRun { summary, .. }) = items.get(item_ix as usize) else {
@@ -276,7 +261,6 @@ pub fn row_height_with_collapsed(
             };
             subagent_body_height(item_ix as usize, summary, items)
         }
-        RowRef::ContextTraceEntryLine { .. } => LINE_H,
         RowRef::ReasoningBody { item_ix } => {
             let Some(ThreadItem::ReasoningStep { summary, .. }) = items.get(item_ix as usize)
             else {
@@ -502,7 +486,6 @@ pub fn build_manifest_with_collapsed_and_transcript(
 ) -> Vec<RowRef> {
     let timeline = project_timeline(items, mode);
     let mut manifest = Vec::new();
-    let mut last_phase: Option<ActivityPhase> = None;
 
     for event in &timeline {
         let item_ix = event.item_ix as usize;
@@ -513,14 +496,6 @@ pub fn build_manifest_with_collapsed_and_transcript(
             items,
         ) {
             continue;
-        }
-        if last_phase != Some(event.phase) {
-            if mode != TranscriptMode::Summary {
-                manifest.push(RowRef::TimelineSection {
-                    phase: phase_to_u8(event.phase),
-                });
-            }
-            last_phase = Some(event.phase);
         }
         manifest.extend(row_refs_for_item_with_mode(
             event.item_ix,
@@ -533,30 +508,9 @@ pub fn build_manifest_with_collapsed_and_transcript(
     manifest
 }
 
-fn phase_to_u8(phase: ActivityPhase) -> u8 {
-    match phase {
-        ActivityPhase::Explore => 0,
-        ActivityPhase::Edit => 1,
-        ActivityPhase::Run => 2,
-        ActivityPhase::Review => 3,
-    }
-}
-
-pub fn phase_from_u8(v: u8) -> ActivityPhase {
-    match v {
-        1 => ActivityPhase::Edit,
-        2 => ActivityPhase::Run,
-        3 => ActivityPhase::Review,
-        _ => ActivityPhase::Explore,
-    }
-}
-
 #[allow(dead_code)]
-pub fn section_label_for_row(row: RowRef) -> Option<&'static str> {
-    match row {
-        RowRef::TimelineSection { phase } => Some(phase_label(phase_from_u8(phase))),
-        _ => None,
-    }
+pub fn section_label_for_row(_row: RowRef) -> Option<&'static str> {
+    None
 }
 
 pub fn row_sizes_for_manifest(manifest: &[RowRef], items: &[ThreadItem]) -> Vec<Size<Pixels>> {
@@ -695,9 +649,7 @@ pub fn row_refs_for_item_with_mode(
         ThreadItem::RunError { .. } => vec![RowRef::RunError { item_ix }],
         ThreadItem::ChoiceRequest { .. } => vec![RowRef::ChoiceRequest { item_ix }],
         ThreadItem::PlanStatus { .. } => vec![RowRef::PlanStatus { item_ix }],
-        ThreadItem::ContextTrace {
-            entries, expanded, ..
-        } => context_trace_refs(item_ix, entries, *expanded),
+        ThreadItem::ContextTrace { .. } => vec![],
         ThreadItem::TodoList { .. } => vec![],
     }
 }
@@ -708,92 +660,6 @@ fn subagent_refs(item_ix: u32, expanded: bool) -> Vec<RowRef> {
         rows.push(RowRef::SubagentBody { item_ix });
     }
     rows
-}
-
-fn context_trace_refs(item_ix: u32, entries: &[ContextTraceEntry], expanded: bool) -> Vec<RowRef> {
-    let mut rows = vec![RowRef::ContextTraceHeader { item_ix }];
-    if expanded {
-        for (entry_ix, _) in entries.iter().enumerate() {
-            rows.push(RowRef::ContextTraceEntryLine {
-                item_ix,
-                entry_ix: entry_ix as u16,
-            });
-        }
-    }
-    rows
-}
-
-/// Collapsed summary line, e.g. "4 files opened, 2 symbols inspected, 1 rule applied".
-pub fn context_trace_counts_summary(entries: &[ContextTraceEntry]) -> String {
-    let mut repo_map = 0usize;
-    let mut files = 0usize;
-    let mut symbols = 0usize;
-    let mut searches = 0usize;
-    let mut commands = 0usize;
-    let mut rules = 0usize;
-    for entry in entries {
-        match entry.kind {
-            ContextEntryKind::RepoMap => repo_map += 1,
-            ContextEntryKind::FileSlice => files += 1,
-            ContextEntryKind::Symbol => symbols += 1,
-            ContextEntryKind::Search => searches += 1,
-            ContextEntryKind::Command => commands += 1,
-            ContextEntryKind::Rule => rules += 1,
-        }
-    }
-    let mut parts: Vec<String> = Vec::new();
-    if repo_map > 0 {
-        parts.push(format!(
-            "{repo_map} repo {}",
-            plural(repo_map, "map", "maps")
-        ));
-    }
-    if files > 0 {
-        parts.push(format!("{files} {} opened", plural(files, "file", "files")));
-    }
-    if symbols > 0 {
-        parts.push(format!(
-            "{symbols} {} inspected",
-            plural(symbols, "symbol", "symbols")
-        ));
-    }
-    if searches > 0 {
-        parts.push(format!(
-            "{searches} {} run",
-            plural(searches, "search", "searches")
-        ));
-    }
-    if commands > 0 {
-        parts.push(format!(
-            "{commands} {} run",
-            plural(commands, "command", "commands")
-        ));
-    }
-    if rules > 0 {
-        parts.push(format!(
-            "{rules} {} applied",
-            plural(rules, "rule", "rules")
-        ));
-    }
-    if parts.is_empty() {
-        "No context recorded".to_string()
-    } else {
-        parts.join(" · ")
-    }
-}
-
-/// Single expanded line for one context entry: `label · detail · reason`.
-pub fn context_trace_entry_line(entry: &ContextTraceEntry) -> String {
-    let mut head = entry.label.clone();
-    if let Some(detail) = entry.detail.as_deref().filter(|d| !d.is_empty()) {
-        head.push_str(" · ");
-        head.push_str(detail);
-    }
-    if entry.reason.is_empty() {
-        head
-    } else {
-        format!("{head} · {}", entry.reason)
-    }
 }
 
 fn subagent_body_height(item_ix: usize, summary: &str, items: &[ThreadItem]) -> f32 {
@@ -813,10 +679,6 @@ fn subagent_body_height(item_ix: usize, summary: &str, items: &[ThreadItem]) -> 
         + summary_lines * f32::from(Tokens::text_sm_leading_compact())
         + f32::from(Tokens::spacing_1())
         + meta_lines * f32::from(Tokens::text_sm_leading_compact())
-}
-
-fn plural(n: usize, one: &'static str, many: &'static str) -> &'static str {
-    if n == 1 { one } else { many }
 }
 
 fn reasoning_refs_with_mode(

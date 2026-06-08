@@ -59,15 +59,6 @@ impl ThreadView {
                 .into_any_element();
         }
 
-        if let RowRef::TimelineSection { phase } = row_ref {
-            return div()
-                .id(element_key("timeline-section-row", &format!("{phase}")))
-                .w_full()
-                .when(top_gap > 0.0, |el| el.pt(px(top_gap)))
-                .child(timeline_section_header(phase_from_u8(phase)))
-                .into_any_element();
-        }
-
         let item_ix = row_ref.item_ix().expect("content row") as usize;
         let item = self.items.get(item_ix);
         let depth = item.and_then(item_depth).unwrap_or(0);
@@ -75,7 +66,6 @@ impl ThreadView {
         let group_pos = activity_group_pos(item_ix, &self.items);
 
         let content = match row_ref {
-            RowRef::TimelineSection { .. } => div().into_any_element(),
             RowRef::UserMessage { .. } => {
                 let Some(ThreadItem::UserMessage {
                     text,
@@ -282,6 +272,7 @@ impl ThreadView {
                 let agent_select = agent.clone();
                 render_tool_header_row(
                     id,
+                    tool_name,
                     &display_label,
                     preview,
                     *expanded,
@@ -495,53 +486,6 @@ impl ThreadView {
                 )
                 .into_any_element()
             }
-            RowRef::ContextTraceHeader { .. } => {
-                let Some(ThreadItem::ContextTrace {
-                    id,
-                    entries,
-                    expanded,
-                }) = item
-                else {
-                    return div().into_any_element();
-                };
-                let summary = context_trace_counts_summary(entries);
-                let toggle_id = id.clone();
-                let agent_toggle = agent.clone();
-                activity_header_row(
-                    "context-trace-row",
-                    "context-trace-header",
-                    id,
-                    "Context".to_string(),
-                    Some(summary),
-                    false,
-                    animate && *expanded,
-                    group_pos,
-                    div().into_any_element(),
-                    move |app: &mut gpui::App| {
-                        agent_toggle.update(app, |view, cx| {
-                            view.toggle_thread_item(&toggle_id, cx);
-                        });
-                    },
-                )
-                .into_any_element()
-            }
-            RowRef::ContextTraceEntryLine { entry_ix, .. } => {
-                let Some(ThreadItem::ContextTrace { id, entries, .. }) = item else {
-                    return div().into_any_element();
-                };
-                let Some(entry) = entries.get(entry_ix as usize) else {
-                    return div().into_any_element();
-                };
-                activity_group_wrap(
-                    activity_output_line_row(
-                        &format!("{id}-ctx-{entry_ix}"),
-                        &context_trace_entry_line(entry),
-                        false,
-                    ),
-                    group_pos,
-                )
-                .into_any_element()
-            }
             RowRef::EndSpacer => unreachable!("handled above"),
         };
 
@@ -626,8 +570,7 @@ impl ThreadView {
                 .w_full()
                 .flex()
                 .flex_col()
-                .gap(Tokens::spacing_1())
-                .child(assistant_result_label(&id))
+                .gap(Tokens::spacing_0p5())
                 .child(streaming_assistant_body(
                     &id,
                     markdown,
@@ -659,27 +602,13 @@ impl ThreadView {
             .w_full()
             .flex()
             .flex_col()
-            .gap(Tokens::spacing_1())
+            .gap(Tokens::spacing_0p5())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
-            .child(assistant_result_label(&id))
             .child(markdown_preview_blocks_thread_shared(blocks, false))
             .child(actions)
             .into_any_element()
     }
-}
-
-fn assistant_result_label(item_id: &str) -> impl IntoElement {
-    div()
-        .id(element_key("assistant-result-label", item_id))
-        .h(Tokens::text_sm_leading_compact())
-        .flex()
-        .items_center()
-        .text_size(Tokens::text_xs())
-        .line_height(Tokens::text_sm_leading_compact())
-        .font_weight(gpui::FontWeight::MEDIUM)
-        .text_color(Tokens::text_tertiary())
-        .child("Result")
 }
 
 fn assistant_action_row(
@@ -697,12 +626,12 @@ fn assistant_action_row(
     div()
         .id(element_key("assistant-actions", item_id))
         .w_full()
-        .pt(Tokens::spacing_0p5())
+        .h(px(Tokens::ROW_HEIGHT_SM))
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
-        .opacity(if streaming { 0.44 } else { 0.24 })
-        .hover(|s| s.opacity(0.64))
+        .opacity(if streaming { 0.40 } else { 0.20 })
+        .hover(|s| s.opacity(0.58))
         .child({
             let copy_thread = thread.clone();
             let copy_item_id = item_id.to_string();
@@ -1007,7 +936,6 @@ fn status_label(status: &crate::features::shell::state::AgentStatus) -> &'static
 pub(crate) fn stable_row_id(row_ref: RowRef, item: Option<&ThreadItem>) -> String {
     let item_id = item.map(ThreadItem::id).unwrap_or("end");
     match row_ref {
-        RowRef::TimelineSection { phase } => format!("timeline-section-{phase}"),
         RowRef::UserMessage { .. } => format!("user-{item_id}"),
         RowRef::SubagentHeader { .. } => format!("subagent-{item_id}"),
         RowRef::SubagentBody { .. } => format!("subagent-body-{item_id}"),
@@ -1026,10 +954,6 @@ pub(crate) fn stable_row_id(row_ref: RowRef, item: Option<&ThreadItem>) -> Strin
         RowRef::RunError { .. } => format!("run-error-{item_id}"),
         RowRef::ChoiceRequest { .. } => format!("choice-{item_id}"),
         RowRef::PlanStatus { .. } => format!("plan-status-{item_id}"),
-        RowRef::ContextTraceHeader { .. } => format!("context-trace-header-{item_id}"),
-        RowRef::ContextTraceEntryLine { entry_ix, .. } => {
-            format!("context-trace-entry-{item_id}-{entry_ix}")
-        }
         RowRef::EndSpacer => "thread-end-spacer".to_string(),
     }
 }

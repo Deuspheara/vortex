@@ -10,12 +10,12 @@ fn px(v: gpui::Pixels) -> f32 {
 
 /// Space before a new conversational turn — compact but readable.
 pub fn turn_gap() -> f32 {
-    px(Tokens::spacing_2())
+    px(Tokens::spacing_1p5())
 }
 
 /// Space before the first row in an agent activity band.
 pub fn activity_band_gap() -> f32 {
-    px(Tokens::spacing_1p5())
+    px(Tokens::spacing_1())
 }
 
 /// Tight stack between consecutive activity headers — `Tokens::spacing_0p5()`.
@@ -25,7 +25,7 @@ pub fn activity_inner_gap() -> f32 {
 
 /// Space between assistant prose and the following tool/reasoning band.
 pub fn post_assistant_activity_gap() -> f32 {
-    px(Tokens::spacing_1p5())
+    px(Tokens::spacing_1())
 }
 
 /// Vertical padding inside user message bubble (both sides) — `Tokens::spacing_4()`.
@@ -78,19 +78,9 @@ pub const DIFF_FILE_H: f32 = Tokens::ROW_HEIGHT_SM;
 /// Approval row height — `Tokens::ROW_HEIGHT_SM`.
 pub const APPROVAL_H: f32 = Tokens::ROW_HEIGHT_SM;
 
-/// Top padding on assistant markdown body — `Tokens::spacing_1()`.
+/// Top padding on assistant markdown body.
 pub fn assistant_body_pt() -> f32 {
-    px(Tokens::spacing_1())
-}
-
-/// Compact "Result" label height above assistant prose.
-pub fn assistant_result_label_h() -> f32 {
-    px(Tokens::text_sm_leading_compact())
-}
-
-/// Gap between the result label and assistant prose.
-pub fn assistant_result_label_gap() -> f32 {
-    px(Tokens::spacing_1())
+    0.0
 }
 
 /// Extra height for streaming cursor under assistant body — `Tokens::spacing_2()`.

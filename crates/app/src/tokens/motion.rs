@@ -226,23 +226,21 @@ pub fn sidebar_atmosphere(
     amplitude: f32,
     phase: f32,
 ) -> impl IntoElement {
-    div().child(content).with_animation(
-        id,
-        Motion::sidebar_drift().repeat(),
-        move |el, delta| {
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_drift().repeat(), move |el, delta| {
             let wave = ((delta * std::f32::consts::TAU) + phase).sin();
             el.opacity(base_opacity + amplitude * (wave + 1.0) * 0.5)
-        },
-    )
+        })
 }
 
 /// Short accent pickup for selected sidebar rows.
 pub fn sidebar_accent_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
-    div().child(content).with_animation(
-        id,
-        Motion::sidebar_emphasis(),
-        |el, delta| el.opacity(delta),
-    )
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_emphasis(), |el, delta| {
+            el.opacity(delta)
+        })
 }
 
 /// Continuous pulse for sidebar glow layers without shifting layout.
@@ -253,14 +251,12 @@ pub fn sidebar_glow_pulse(
     amplitude: f32,
     phase: f32,
 ) -> impl IntoElement {
-    div().child(content).with_animation(
-        id,
-        Motion::sidebar_pulse().repeat(),
-        move |el, delta| {
+    div()
+        .child(content)
+        .with_animation(id, Motion::sidebar_pulse().repeat(), move |el, delta| {
             let wave = ((delta * std::f32::consts::TAU) + phase).sin();
             el.opacity(base_opacity + amplitude * (wave + 1.0) * 0.5)
-        },
-    )
+        })
 }
 
 /// Slide + fade for panels (diff, drawer).
@@ -314,10 +310,18 @@ pub fn activity_action_line_with_loading(
     let action_owned = action.to_string();
     let detail_owned = detail.map(str::to_string);
     let (verb, remainder) = action_verb_and_remainder(&action_owned);
-    let (action_color, action_weight) = if running {
-        (Tokens::text_primary(), FontWeight::MEDIUM)
+    let (action_color, action_weight, remainder_color) = if running {
+        (
+            Tokens::text_bright(),
+            FontWeight::MEDIUM,
+            Tokens::text_secondary(),
+        )
     } else {
-        (Tokens::text_secondary(), FontWeight::MEDIUM)
+        (
+            Tokens::text_primary(),
+            FontWeight::MEDIUM,
+            Tokens::text_tertiary(),
+        )
     };
 
     div()
@@ -349,7 +353,12 @@ pub fn activity_action_line_with_loading(
                     .hover(|s| s.text_color(Tokens::text_primary()))
                     .child(activity_action_verb(verb, show_loading, animate, key))
                     .when_some(remainder, |el, rest| {
-                        el.child(div().opacity(if running { 0.78 } else { 0.74 }).child(rest))
+                        el.child(
+                            div()
+                                .text_color(remainder_color)
+                                .opacity(if running { 0.82 } else { 0.76 })
+                                .child(rest),
+                        )
                     }),
             ),
         )
@@ -372,7 +381,7 @@ pub fn activity_action_line_with_loading(
 fn activity_action_verb(verb: String, show_loading: bool, animate: bool, key: &str) -> AnyElement {
     let label = div().child(verb);
     if !show_loading || !animate {
-        return label.opacity(0.86).into_any_element();
+        return label.opacity(0.96).into_any_element();
     }
 
     label
@@ -381,7 +390,7 @@ fn activity_action_verb(verb: String, show_loading: bool, animate: bool, key: &s
             Animation::new(Duration::from_millis(1100)).repeat(),
             |el, delta| {
                 let wave = (delta * std::f32::consts::TAU).sin() * 0.5 + 0.5;
-                el.opacity(0.64 + 0.30 * wave)
+                el.opacity(0.78 + 0.20 * wave)
             },
         )
         .into_any_element()
@@ -416,15 +425,11 @@ pub fn sidebar_text_fade_in(
 }
 
 /// Small ease-in-out pickup for icon buttons whose state flips on click.
-pub fn sidebar_toggle_in(
-    content: impl IntoElement,
-    id: impl Into<ElementId>,
-) -> impl IntoElement {
+pub fn sidebar_toggle_in(content: impl IntoElement, id: impl Into<ElementId>) -> impl IntoElement {
     div()
         .child(content)
         .with_animation(id, Motion::sidebar_toggle(), |el, delta| {
-            el.opacity(0.82 + 0.18 * delta)
-                .mt(px(2.0 * (1.0 - delta)))
+            el.opacity(0.82 + 0.18 * delta).mt(px(2.0 * (1.0 - delta)))
         })
 }
 

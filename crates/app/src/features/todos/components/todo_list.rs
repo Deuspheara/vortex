@@ -27,69 +27,101 @@ pub fn todo_strip(
 ) -> impl IntoElement {
     let total = items.len();
     let (current_ix, current_label) = current_todo_focus(items);
-    let summary = format!("{current_ix}/{total} todos · {current_label}");
     let toggle = on_toggle_strip;
 
     div()
         .id("todo-strip")
         .w_full()
         .flex_shrink_0()
-        .px(Tokens::spacing_3())
-        .py(Tokens::spacing_1())
-        .border_b_1()
-        .border_color(Tokens::border_subtle())
-        .flex()
-        .flex_col()
-        .gap(Tokens::spacing_1())
+        .px(Tokens::thread_padding_x())
+        .pt(Tokens::spacing_2())
+        .pb(Tokens::spacing_1())
         .child(
             div()
-                .id("todo-strip-summary")
-                .h(px(Tokens::ROW_HEIGHT_MD))
+                .id("todo-strip-panel")
+                .w_full()
+                .max_w(px(Tokens::THREAD_MAX_WIDTH))
+                .px(Tokens::spacing_2())
+                .py(Tokens::spacing_1())
+                .rounded(Tokens::radius_sm())
+                .border_1()
+                .border_color(Tokens::border_subtle())
                 .flex()
-                .items_center()
-                .gap(Tokens::spacing_2())
-                .child(Icon::new(icons::CHECKLIST).size(Tokens::text_sm()))
+                .flex_col()
+                .gap(Tokens::spacing_0p5())
                 .child(
                     div()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .text_size(Tokens::text_sm())
-                        .text_color(Tokens::text_secondary())
-                        .overflow_hidden()
-                        .child(summary),
-                )
-                .child(
-                    div()
-                        .id("todo-strip-toggle")
-                        .flex_shrink_0()
-                        .size(px(Tokens::ROW_HEIGHT_SM))
-                        .rounded(Tokens::radius_xs())
+                        .id("todo-strip-summary")
+                        .h(px(Tokens::ROW_HEIGHT_SM))
                         .flex()
                         .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(|s| s.bg(Tokens::surface_hover()))
-                        .on_click(move |_, _, app: &mut gpui::App| toggle(app))
+                        .gap(Tokens::spacing_2())
                         .child(
-                            Icon::new(if expanded {
-                                icons::CHEVRON_DOWN
-                            } else {
-                                icons::CHEVRON_RIGHT
-                            })
-                            .size(Tokens::text_sm())
-                            .text_color(Tokens::text_tertiary()),
+                            Icon::new(icons::CHECKLIST)
+                                .size(Tokens::text_sm())
+                                .text_color(Tokens::text_tertiary()),
+                        )
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_size(Tokens::text_sm())
+                                .line_height(Tokens::text_sm_leading_compact())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(Tokens::text_bright())
+                                .child(format!("{current_ix}/{total} todos")),
+                        )
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_size(Tokens::text_sm())
+                                .line_height(Tokens::text_sm_leading_compact())
+                                .text_color(Tokens::text_faint())
+                                .child("·"),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.0))
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_size(Tokens::text_sm())
+                                .line_height(Tokens::text_sm_leading_compact())
+                                .text_color(Tokens::text_secondary())
+                                .child(current_label),
+                        )
+                        .child(
+                            div()
+                                .id("todo-strip-toggle")
+                                .flex_shrink_0()
+                                .size(px(Tokens::ROW_HEIGHT_SM))
+                                .rounded(Tokens::radius_xs())
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .hover(|s| s.bg(Tokens::surface_hover()))
+                                .on_click(move |_, _, app: &mut gpui::App| toggle(app))
+                                .child(
+                                    Icon::new(if expanded {
+                                        icons::CHEVRON_DOWN
+                                    } else {
+                                        icons::CHEVRON_RIGHT
+                                    })
+                                    .size(Tokens::text_sm())
+                                    .text_color(Tokens::text_tertiary()),
+                                ),
                         ),
-                ),
+                )
+                .when(expanded, |el| {
+                    el.children(
+                        items
+                            .iter()
+                            .enumerate()
+                            .map(|(index, item)| todo_row(item, index))
+                            .collect::<Vec<_>>(),
+                    )
+                }),
         )
-        .when(expanded, |el| {
-            el.children(
-                items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| todo_row(item, index))
-                    .collect::<Vec<_>>(),
-            )
-        })
 }
 
 fn current_todo_focus(items: &[TodoEntry]) -> (usize, String) {
