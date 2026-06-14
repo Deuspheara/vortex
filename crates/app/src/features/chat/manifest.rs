@@ -273,7 +273,7 @@ pub fn row_height_with_collapsed(
                 + estimate_assistant_height(summary).min(REASONING_BODY_MAX_H)
                 + gap
         }
-        RowRef::ToolDetailLine { .. } => LINE_H,
+        RowRef::ToolDetailLine { .. } => Tokens::ROW_HEIGHT_SM,
         RowRef::ReasoningPreviewLine { item_ix, line_ix }
         | RowRef::ToolOutputLine { item_ix, line_ix } => {
             line_height_for(items, item_ix, line_ix as usize)
@@ -746,16 +746,24 @@ fn tool_refs_with_mode(
     mode: TranscriptMode,
 ) -> Vec<RowRef> {
     let mut rows = vec![RowRef::ToolHeader { item_ix }];
-    if !expanded || !mode.shows_tool_output_rows() {
+    if !expanded {
         return rows;
     }
-    for line_ix in 0..tool_call_detail_row_count(tool_name, command, status) {
-        rows.push(RowRef::ToolDetailLine {
-            item_ix,
-            line_ix: line_ix as u16,
-        });
+
+    if output.is_some() {
+        tool_output_rows(item_ix, output, status, &mut rows);
+        return rows;
     }
-    tool_output_rows(item_ix, output, status, &mut rows);
+
+    if mode.shows_tool_output_rows() {
+        for line_ix in 0..tool_call_detail_row_count(tool_name, command, status) {
+            rows.push(RowRef::ToolDetailLine {
+                item_ix,
+                line_ix: line_ix as u16,
+            });
+        }
+    }
+
     rows
 }
 
@@ -1123,6 +1131,38 @@ document.querySelector("#year").textContent = year;
         assert_eq!(
             row_height(RowRef::ToolOutputTruncated { item_ix: 0 }, None, &[item]),
             TRUNCATED_H
+        );
+    }
+
+    #[test]
+    fn expanded_tool_in_normal_mode_shows_output_not_summary_detail() {
+        let item = ThreadItem::ToolCall {
+            id: "tool-1".into(),
+            tool_name: "search_project".into(),
+            command: Some("in **/*.kt @ android_todo".into()),
+            output: Some("app/src/MainActivity.kt\napp/src/TodoRepository.kt".into()),
+            expanded: true,
+            status: AgentStatus::Completed,
+            depth: 0,
+            parent_call_id: None,
+        };
+
+        let refs = row_refs_for_item_with_mode(
+            0,
+            &item,
+            TranscriptMode::Normal,
+            std::slice::from_ref(&item),
+        );
+
+        assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
+        assert!(refs.contains(&RowRef::ToolOutputLine {
+            item_ix: 0,
+            line_ix: 0
+        }));
+        assert!(
+            !refs
+                .iter()
+                .any(|row| matches!(row, RowRef::ToolDetailLine { .. }))
         );
     }
 }

@@ -683,12 +683,23 @@ pub fn render_tool_detail_line_row(
         .id(element_key("tool-detail-line", item_id))
         .w_full()
         .h(px(Tokens::ROW_HEIGHT_SM))
-        .pl(Tokens::spacing_6())
-        .pr(Tokens::spacing_1())
+        .pl(Tokens::spacing_7())
+        .pr(Tokens::spacing_2())
         .flex()
         .items_center()
         .gap(Tokens::spacing_2())
-        .child(render_tool_detail_content(item_id, detail, on_open_file))
+        .child(
+            div()
+                .w_full()
+                .min_w(px(0.0))
+                .h(px(Tokens::ROW_HEIGHT_SM - 4.0))
+                .px(Tokens::spacing_2())
+                .flex()
+                .items_center()
+                .rounded(Tokens::radius_xs())
+                .bg(Tokens::surface_hover().opacity(0.28))
+                .child(render_tool_detail_content(item_id, detail, on_open_file)),
+        )
 }
 
 fn render_tool_detail_content(
@@ -774,9 +785,11 @@ fn render_tool_detail_content(
 fn detail_label(label: String) -> impl IntoElement {
     div()
         .flex_shrink_0()
-        .text_size(Tokens::text_sm())
+        .min_w(px(64.0))
+        .text_size(Tokens::text_xs())
         .line_height(Tokens::text_sm_leading_compact())
         .font_family(Tokens::ui_font_family())
+        .font_weight(FontWeight::MEDIUM)
         .text_color(Tokens::text_faint())
         .child(label)
 }

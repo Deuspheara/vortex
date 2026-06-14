@@ -1,29 +1,41 @@
 # Vortex
 
-Vortex is an experimental desktop agent UI built in Rust with GPUI and
-`gpui-component`. It is designed around transparent local agent workflows:
-project indexing, event-sourced sessions, approval-gated tool execution, and a
-visible timeline of model and tool activity.
+Vortex is a native desktop workspace for transparent local agent workflows. It
+combines project indexing, event-sourced sessions, approval-gated tools,
+patch-first edits, and an inspectable activity timeline in one Rust/GPUI app.
+
+<p align="center">
+  <img src="screenshot/thread.png" alt="Vortex desktop UI showing a running agent thread, plan, tool activity, and diff review" width="100%">
+</p>
 
 > Status: early-stage developer preview. The code is suitable to publish and
-> inspect, but the app is not yet a hardened end-user product. Treat
-> production readiness as an explicit checklist, not as the default state of
-> this branch.
+> inspect, but the app is not yet a hardened end-user product. Treat production
+> readiness as an explicit checklist, not as the default state of this branch.
 
-## What Vortex does
+## Highlights
 
-- Runs as a native desktop app on macOS.
-- Uses OpenRouter for real model calls when `OPENROUTER_API_KEY` is set.
-- Falls back to a mock provider when no API key is configured, so the UI can be
-  explored without credentials.
-- Stores local sessions in SQLite under `~/.config/vortex/`.
-- Indexes local projects for search and context assembly.
-- Routes tool execution through approval, sandbox, and patch-first policies.
-- Runs virtual bash through a Rust-native fake shell over the workspace.
-- Can route browser snapshot and screenshot tools through a user-configured MCP
-  stdio server.
+- Native macOS desktop UI built with Rust, GPUI, and `gpui-component`.
+- Threaded agent sessions with project context, plans, tool activity, and
+  generated changes kept visible.
+- Patch-first editing flow so writes are represented as previewable diffs before
+  they are applied.
+- Approval and sandbox policies for risky tools and real process execution.
+- Event-sourced local sessions stored outside the repository in SQLite.
+- OpenRouter-backed model calls when `OPENROUTER_API_KEY` is set, with a mock
+  provider fallback for local UI exploration.
 
-## Safety model
+## Product Shape
+
+Vortex is designed to feel like an IDE sidebar plus a document thread, not a
+chat box bolted onto a file tree. The main surface keeps the agent's reasoning,
+tool calls, shell output, patch previews, and final response in a continuous
+timeline so users can inspect what happened and why.
+
+The runtime architecture keeps provider events, tool execution, patch
+application, and UI rendering separated. That separation makes the app easier to
+audit, replay, and harden as the product moves toward release.
+
+## Safety Model
 
 Vortex is built to keep agent activity inspectable:
 

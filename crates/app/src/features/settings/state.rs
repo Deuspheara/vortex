@@ -32,6 +32,18 @@ impl SettingsSection {
             Self::About => "About",
         }
     }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Start => "Project readiness and setup checks.",
+            Self::Models => "Provider and model defaults for new agent runs.",
+            Self::Safety => "Approval behavior and command guardrails.",
+            Self::Appearance => "Theme, contrast, and light or dark mode.",
+            Self::Transcript => "How much detail appears in the thread.",
+            Self::Project => "Workspace folder and local project actions.",
+            Self::About => "App and community theme details.",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

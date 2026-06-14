@@ -5,8 +5,8 @@ use gpui_component::IconName;
 
 use crate::shared::components::buttons::btn_ghost_icon;
 use crate::tokens::Tokens;
-use crate::tokens::icons;
 use crate::tokens::element_key;
+use crate::tokens::icons;
 use crate::tokens::motion::sidebar_toggle_in;
 
 pub struct PanelControlClusterProps {

@@ -243,23 +243,20 @@ fn app_nav_row(
         .cursor_pointer()
         .when(selected, |el| {
             el.bg(Tokens::sidebar_selected_bg().opacity(0.9))
-                .child(
-                    sidebar_glow_pulse(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom_0()
-                            .bg(Tokens::sidebar_row_wash_gradient()),
-                        element_key("sidebar-nav-wash", id),
-                        0.42,
-                        0.2,
-                        0.4,
-                    ),
-                )
-                .child(
-                sidebar_accent_in(
+                .child(sidebar_glow_pulse(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .bg(Tokens::sidebar_row_wash_gradient()),
+                    element_key("sidebar-nav-wash", id),
+                    0.42,
+                    0.2,
+                    0.4,
+                ))
+                .child(sidebar_accent_in(
                     div()
                         .absolute()
                         .top(px(6.0))
@@ -269,25 +266,22 @@ fn app_nav_row(
                         .rounded(Tokens::radius_full())
                         .bg(Tokens::sidebar_accent_beam_gradient()),
                     element_key("sidebar-nav-accent", id),
-                ),
-            )
+                ))
         })
-        .when(!selected, |el| el.hover(|s| s.bg(Tokens::sidebar_hover_bg())))
+        .when(!selected, |el| {
+            el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
+        })
         .on_click(move |_, _, app: &mut gpui::App| on_click(app))
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap(Tokens::spacing_2())
-                .child(
-                    Icon::new(icon)
-                        .size(px(14.0))
-                        .text_color(if selected {
-                            Tokens::sidebar_text_hover()
-                        } else {
-                            Tokens::sidebar_text()
-                        }),
-                )
+                .child(Icon::new(icon).size(px(14.0)).text_color(if selected {
+                    Tokens::sidebar_text_hover()
+                } else {
+                    Tokens::sidebar_text()
+                }))
                 .child(
                     div()
                         .text_size(Tokens::text_sm())

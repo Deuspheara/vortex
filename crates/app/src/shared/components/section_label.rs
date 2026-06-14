@@ -64,25 +64,15 @@ pub fn sidebar_section_label_with_action(
         )
 }
 
-/// Settings panel section label (accent bar + title).
+/// Settings panel section label.
 pub fn settings_section_label(title: &str) -> impl IntoElement {
     let title = title.to_string();
     div()
+        .h(px(Tokens::ROW_HEIGHT_SM))
         .flex()
         .items_center()
-        .gap(Tokens::spacing_2())
-        .child(
-            div()
-                .w(px(3.0))
-                .h(px(14.0))
-                .rounded(Tokens::radius_full())
-                .bg(Tokens::accent()),
-        )
-        .child(
-            div()
-                .text_size(Tokens::text_xs())
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(Tokens::accent())
-                .child(title),
-        )
+        .text_size(Tokens::text_sm())
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(Tokens::text_primary())
+        .child(title)
 }

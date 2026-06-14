@@ -138,14 +138,14 @@ impl VortexPalette {
             border_strong: gpui::rgb(0x3a3d42).into(),
             border_focus: gpui::rgb(0x7aa2ff).into(),
             sidebar_border: gpui::rgb(0x202225).into(),
-            text_primary: gpui::rgb(0xe6e6e6).into(),
-            text_secondary: gpui::rgb(0xb3b7bc).into(),
-            text_tertiary: gpui::rgb(0x888d95).into(),
-            text_faint: gpui::rgb(0x696f77).into(),
+            text_primary: gpui::rgb(0xe6edf3).into(),
+            text_secondary: gpui::rgb(0xb7c0cc).into(),
+            text_tertiary: gpui::rgb(0x9aa4b2).into(),
+            text_faint: gpui::rgb(0x9aa4b2).into(),
             text_bright: gpui::rgb(0xffffff).into(),
-            sidebar_text: gpui::rgb(0x9ca1a8).into(),
-            sidebar_text_hover: gpui::rgb(0xd6d7d9).into(),
-            sidebar_text_muted: gpui::rgb(0x767c84).into(),
+            sidebar_text: gpui::rgb(0xb7c0cc).into(),
+            sidebar_text_hover: gpui::rgb(0xe6edf3).into(),
+            sidebar_text_muted: gpui::rgb(0x9aa4b2).into(),
             accent: gpui::rgb(0x7aa2ff).into(),
             accent_hover: gpui::rgb(0x92b4ff).into(),
             accent_dim: gpui::rgb(0x5a7fd9).into(),
@@ -228,7 +228,8 @@ impl VortexPalette {
 }
 
 fn caption_color(muted: Hsla, bg: Hsla) -> Hsla {
-    bg.blend(muted.opacity(0.84))
+    let _ = bg;
+    muted
 }
 
 static ACTIVE_PALETTE: OnceLock<RwLock<VortexPalette>> = OnceLock::new();

@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::time::Duration;
 
 #[test]
 fn pty_reads_shell_bytes() {
@@ -15,34 +14,23 @@ fn pty_reads_shell_bytes() {
         })
         .expect("openpty");
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-    let mut cmd = CommandBuilder::new(&shell);
-    cmd.arg("-i");
+    let mut cmd = CommandBuilder::new("/bin/sh");
+    cmd.arg("-lc");
+    cmd.arg("printf vortex-pty-ready");
     cmd.cwd(std::env::temp_dir());
     cmd.env("TERM", "xterm-256color");
 
-    let _child = pair.slave.spawn_command(cmd).expect("spawn shell");
+    let mut child = pair.slave.spawn_command(cmd).expect("spawn shell");
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().expect("reader");
-    let mut buf = [0u8; 4096];
-    let mut total = 0usize;
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
-    while std::time::Instant::now() < deadline {
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                total += n;
-                eprintln!("pty bytes: {:?}", String::from_utf8_lossy(&buf[..n]));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            Err(e) => panic!("read error: {e}"),
-        }
-    }
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output).expect("read pty output");
+    child.wait().expect("wait for shell");
+
+    let output = String::from_utf8_lossy(&output);
     assert!(
-        total > 0,
-        "expected bytes from interactive shell, got {total}"
+        output.contains("vortex-pty-ready"),
+        "expected bytes from shell, got {output:?}"
     );
 }

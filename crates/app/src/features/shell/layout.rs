@@ -395,19 +395,16 @@ impl SidebarView {
                 }
 
                 let visible_count = project_sessions.len();
-                rows.extend(
-                    project_sessions
-                        .into_iter()
-                        .enumerate()
-                        .map(|(session_ix, session)| SidebarRow::Session {
-                            row: SessionRowViewModel::new(
-                                session,
-                                selected == Some(&session.id),
-                                1,
-                                session_ix,
-                            ),
-                        }),
-                );
+                rows.extend(project_sessions.into_iter().enumerate().map(
+                    |(session_ix, session)| SidebarRow::Session {
+                        row: SessionRowViewModel::new(
+                            session,
+                            selected == Some(&session.id),
+                            1,
+                            session_ix,
+                        ),
+                    },
+                ));
 
                 let remaining = project.conversations.len().saturating_sub(visible_count);
                 if expanded && !search_active && remaining > 0 {
