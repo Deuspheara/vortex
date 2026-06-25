@@ -190,6 +190,7 @@ pub struct PageCacheRecap {
 pub struct ContextInspectorRecap {
     pub project_status: Option<ProjectIndexStatus>,
     pub context_trace: Vec<ContextTraceSummary>,
+    pub context_entries: Vec<ContextTraceEntry>,
     pub read_cache: ReadCacheRecap,
     pub page_cache: PageCacheRecap,
 }

@@ -288,6 +288,9 @@ impl Tokens {
     pub fn activity_detail_border() -> Hsla {
         Self::border_strong().opacity(0.82)
     }
+    pub fn activity_verb_text() -> Hsla {
+        Self::text_primary()
+    }
     pub fn activity_detail_text() -> Hsla {
         Self::text_secondary()
     }

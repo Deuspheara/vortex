@@ -13,6 +13,9 @@ use gpui_component::VirtualListScrollHandle;
 use gpui_component::v_virtual_list;
 
 use crate::features::agent_activity::components::approval::thread_approval_row;
+use crate::features::agent_activity::components::context_trace::{
+    render_context_trace_header_row, render_context_trace_line_row,
+};
 use crate::features::agent_activity::components::diff::{
     render_diff_file_line_row, render_diff_header_row,
 };

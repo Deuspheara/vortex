@@ -15,6 +15,136 @@ pub struct WorkspaceReadinessCardProps {
     pub on_open_context: Option<Rc<dyn Fn(&mut gpui::App)>>,
 }
 
+pub fn workspace_readiness_status(props: WorkspaceReadinessCardProps) -> impl IntoElement {
+    let overall_state = props.readiness.overall_state();
+    let badge = readiness_badge_label(&props.readiness);
+    let action = props.readiness.next_step_label();
+    let progress = format!(
+        "{} / {} ready",
+        props.readiness.ready_count(),
+        props.readiness.total_count()
+    );
+    let settings_action = props.on_open_settings.clone();
+
+    div()
+        .w_full()
+        .border_b_1()
+        .border_color(Tokens::border_subtle())
+        .bg(Tokens::main_bg())
+        .py(Tokens::spacing_2())
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(Tokens::spacing_3())
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .child(
+                    Icon::new(state_icon(overall_state))
+                        .size(px(14.0))
+                        .text_color(icon_color(overall_state)),
+                )
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .flex()
+                        .flex_col()
+                        .gap(Tokens::spacing_0p5())
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(Tokens::spacing_2())
+                                .child(
+                                    div()
+                                        .text_size(Tokens::text_xs())
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(icon_color(overall_state))
+                                        .child(badge),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(Tokens::text_xs())
+                                        .text_color(Tokens::text_tertiary())
+                                        .child(progress),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_size(Tokens::text_sm())
+                                .text_color(Tokens::text_secondary())
+                                .child(action),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .when(!props.readiness.provider_connected, |el| {
+                    el.when_some(settings_action, |el, cb| {
+                        el.child(
+                            btn_outline("workspace-readiness-status-settings", "Connect provider")
+                                .icon(icons::SETTINGS)
+                                .on_click(move |_, _, app: &mut gpui::App| cb(app)),
+                        )
+                    })
+                })
+                .when(
+                    props.readiness.provider_connected && !props.readiness.has_project,
+                    |el| {
+                        el.when_some(props.on_open_project, |el, cb| {
+                            el.child(
+                                btn_outline(
+                                    "workspace-readiness-status-open-project",
+                                    "Open project",
+                                )
+                                .icon(icons::OPEN_IDE)
+                                .on_click(move |_, window, app: &mut gpui::App| cb(window, app)),
+                            )
+                        })
+                    },
+                )
+                .when(
+                    props.readiness.provider_connected
+                        && props.readiness.has_project
+                        && !props.readiness.project_trusted,
+                    |el| {
+                        el.when_some(props.on_trust_project, |el, cb| {
+                            el.child(
+                                btn_outline("workspace-readiness-status-trust", "Trust project")
+                                    .on_click(move |_, _, app: &mut gpui::App| cb(app)),
+                            )
+                        })
+                    },
+                )
+                .when(
+                    props.readiness.provider_connected
+                        && props.readiness.has_project
+                        && props.readiness.project_trusted,
+                    |el| {
+                        el.when_some(props.on_open_context, |el, cb| {
+                            el.child(
+                                btn_ghost_label(
+                                    "workspace-readiness-status-context",
+                                    "Check context",
+                                )
+                                .on_click(move |_, _, app: &mut gpui::App| cb(app)),
+                            )
+                        })
+                    },
+                ),
+        )
+}
+
 pub fn workspace_readiness_card(props: WorkspaceReadinessCardProps) -> impl IntoElement {
     let overall_state = props.readiness.overall_state();
     let badge = readiness_badge_label(&props.readiness);

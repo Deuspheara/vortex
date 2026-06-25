@@ -34,11 +34,12 @@ use crate::features::shell::components::tree_row::project_expand_key;
 use crate::features::shell::layout::SidebarView;
 use crate::features::shell::state::{
     Agent, AgentStatus, ArtifactSelection, ArtifactStore, ChipKind, ContextChip, ContextEntryKind,
-    ContextInspectorRecap, ContextTraceSummary, Conversation, ConversationId, DiffFile,
-    DiffPanelState, DockPlacement, DrawerState, ExpandedItems, InspectorMode, InspectorTabKind,
-    InspectorTabs, InspectorView, PageCacheRecap, PendingThreadApproval, PlanExecutionState,
-    PlanProgressCounts, Project, ProjectId, ProjectIndexStatus, ProviderErrorVm, SessionRunState,
-    TaskViewModel, ThreadItem, TodoEntry, TodoState, build_task_view,
+    ContextInspectorRecap, ContextTraceEntry, ContextTraceSummary, Conversation, ConversationId,
+    DiffFile, DiffPanelState, DockPlacement, DrawerState, ExpandedItems, InspectorMode,
+    InspectorTabKind, InspectorTabs, InspectorView, PageCacheRecap, PendingThreadApproval,
+    PlanExecutionState, PlanProgressCounts, Project, ProjectId, ProjectIndexStatus,
+    ProviderErrorVm, SessionRunState, TaskViewModel, ThreadItem, TodoEntry, TodoState,
+    build_task_view,
 };
 
 use crate::features::chat::thread_view::ThreadView;
@@ -835,6 +836,10 @@ impl AgentWindow {
             .selected_conversation_id
             .as_ref()
             .map_or_else(Vec::new, |conv_id| self.context_trace_summary(conv_id));
+        let context_entries = self
+            .selected_conversation_id
+            .as_ref()
+            .map_or_else(Vec::new, |conv_id| self.context_trace_entries(conv_id));
 
         let read_cache = self
             .selected_conversation_id
@@ -848,6 +853,7 @@ impl AgentWindow {
         ContextInspectorRecap {
             project_status,
             context_trace,
+            context_entries,
             read_cache,
             page_cache: PageCacheRecap {
                 configured: self.agent_bridge.page_index_configured(),
@@ -891,6 +897,22 @@ impl AgentWindow {
         .zip(counts)
         .filter_map(|(kind, count)| (count > 0).then_some(ContextTraceSummary { kind, count }))
         .collect()
+    }
+
+    fn context_trace_entries(&self, conv_id: &ConversationId) -> Vec<ContextTraceEntry> {
+        let Some(conversation) = self.conversations.iter().find(|conv| &conv.id == conv_id) else {
+            return Vec::new();
+        };
+
+        conversation
+            .thread_items
+            .iter()
+            .filter_map(|item| match item {
+                ThreadItem::ContextTrace { entries, .. } => Some(entries),
+                _ => None,
+            })
+            .flat_map(|entries| entries.iter().cloned())
+            .collect()
     }
 
     fn context_chips_for_project(project: &Project) -> Vec<ContextChip> {

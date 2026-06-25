@@ -2,6 +2,7 @@
 
 pub mod activity_step;
 pub mod approval;
+pub mod context_trace;
 pub mod diff;
 pub mod pending_action_bar;
 pub mod reasoning;

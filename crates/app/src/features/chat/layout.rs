@@ -52,6 +52,11 @@ pub fn run_error_inner_gap() -> f32 {
 /// Max expanded reasoning body height.
 pub const REASONING_BODY_MAX_H: f32 = 480.0;
 
+/// Vertical chrome around an expanded activity body (`timeline_body`).
+pub fn activity_body_chrome_h() -> f32 {
+    px(Tokens::spacing_1()) + px(Tokens::spacing_2())
+}
+
 /// Section header row height — `Tokens::ROW_HEIGHT_SM`.
 pub const SECTION_HEADER_H: f32 = Tokens::ROW_HEIGHT_SM;
 

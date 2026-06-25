@@ -29,6 +29,8 @@ impl AgentWindow {
         self.diff_panel.open = mode.is_visible();
         if mode == InspectorMode::Hidden {
             self.diff_panel.suppress_auto_open = true;
+        } else if self.inspector_view == InspectorView::Context {
+            self.refresh_context_inspector_recap();
         }
         cx.notify();
     }
@@ -37,6 +39,9 @@ impl AgentWindow {
         let id = self.inspector_tabs.select_builtin(view);
         self.sync_inspector_tab_in_workspace_layout(id, None);
         self.apply_inspector_tab_by_id(id);
+        if view == InspectorView::Context {
+            self.refresh_context_inspector_recap();
+        }
         self.reveal_dock_for_tab(id, cx);
     }
 
@@ -44,6 +49,9 @@ impl AgentWindow {
         if self.inspector_tabs.select(tab_id).is_some() {
             self.sync_inspector_tab_in_workspace_layout(tab_id, None);
             self.apply_inspector_tab_by_id(tab_id);
+            if self.inspector_view == InspectorView::Context {
+                self.refresh_context_inspector_recap();
+            }
             self.reveal_dock_for_tab(tab_id, cx);
         }
     }

@@ -212,7 +212,7 @@ impl ThreadView {
                             .id(element_key("reasoning-body", id))
                             .w_full()
                             .pr(Tokens::spacing_1())
-                            .max_h(px(520.0))
+                            .max_h(px(crate::features::chat::layout::REASONING_BODY_MAX_H))
                             .overflow_y_scroll()
                             .child(markdown_preview_thread_streaming(summary, streaming)),
                     ),
@@ -438,6 +438,48 @@ impl ThreadView {
                         file.added,
                         file.removed,
                     ),
+                    group_pos,
+                )
+                .into_any_element()
+            }
+            RowRef::ContextTraceHeader { .. } => {
+                let Some(ThreadItem::ContextTrace {
+                    id,
+                    entries,
+                    expanded,
+                }) = item
+                else {
+                    return div().into_any_element();
+                };
+                let toggle_id = id.clone();
+                let agent_toggle = agent.clone();
+                render_context_trace_header_row(
+                    id,
+                    entries,
+                    *expanded,
+                    animate,
+                    group_pos,
+                    move |app: &mut gpui::App| {
+                        agent_toggle.update(app, |view, cx| {
+                            view.select_inspector_view(
+                                crate::features::shell::state::InspectorView::Context,
+                                cx,
+                            );
+                            view.toggle_thread_item(&toggle_id, cx);
+                        });
+                    },
+                )
+                .into_any_element()
+            }
+            RowRef::ContextTraceLine { line_ix, .. } => {
+                let Some(ThreadItem::ContextTrace { id, entries, .. }) = item else {
+                    return div().into_any_element();
+                };
+                let Some(entry) = entries.get(line_ix as usize) else {
+                    return div().into_any_element();
+                };
+                activity_group_wrap(
+                    render_context_trace_line_row(&format!("{id}-context-{line_ix}"), entry),
                     group_pos,
                 )
                 .into_any_element()
@@ -1006,6 +1048,10 @@ pub(crate) fn stable_row_id(row_ref: RowRef, item: Option<&ThreadItem>) -> Strin
         RowRef::ToolOutputTruncated { .. } => format!("tool-truncated-{item_id}"),
         RowRef::DiffHeader { .. } => format!("diff-header-{item_id}"),
         RowRef::DiffFileLine { file_ix, .. } => format!("diff-file-{item_id}-{file_ix}"),
+        RowRef::ContextTraceHeader { .. } => format!("context-trace-header-{item_id}"),
+        RowRef::ContextTraceLine { line_ix, .. } => {
+            format!("context-trace-line-{item_id}-{line_ix}")
+        }
         RowRef::AssistantMessage { .. } => format!("assistant-{item_id}"),
         RowRef::Approval { .. } => format!("approval-{item_id}"),
         RowRef::RunError { .. } => format!("run-error-{item_id}"),

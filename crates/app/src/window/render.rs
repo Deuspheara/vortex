@@ -25,7 +25,7 @@ use crate::features::top_bar::layout::{self as top_bar_ui, TopBarProps};
 use crate::shared::components::context_usage_ring::ContextUsageProps;
 use crate::shared::components::tab_bar::{DraggedTab, dock_tab_drag_placement};
 use crate::shared::components::workspace_readiness::{
-    WorkspaceReadinessCardProps, workspace_readiness_card,
+    WorkspaceReadinessCardProps, workspace_readiness_status,
 };
 use crate::shared::state::TranscriptMode;
 use crate::tokens::Tokens;
@@ -626,7 +626,7 @@ fn render_workspace_readiness_banner(vs: &ViewState, cbs: &Cbs) -> impl IntoElem
         .child(
             div()
                 .max_w(px(Tokens::THREAD_MAX_WIDTH))
-                .child(workspace_readiness_card(WorkspaceReadinessCardProps {
+                .child(workspace_readiness_status(WorkspaceReadinessCardProps {
                     readiness: vs.conversation_workspace.readiness.clone(),
                     on_open_settings: Some(cbs.open_settings.clone()),
                     on_open_project: Some(cbs.open_project.clone()),

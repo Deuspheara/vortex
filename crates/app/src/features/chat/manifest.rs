@@ -128,6 +128,8 @@ pub enum RowRef {
     ToolOutputTruncated { item_ix: u32 },
     DiffHeader { item_ix: u32 },
     DiffFileLine { item_ix: u32, file_ix: u16 },
+    ContextTraceHeader { item_ix: u32 },
+    ContextTraceLine { item_ix: u32, line_ix: u16 },
     AssistantMessage { item_ix: u32 },
     Approval { item_ix: u32 },
     RunError { item_ix: u32 },
@@ -152,6 +154,8 @@ impl RowRef {
             | RowRef::ToolOutputTruncated { item_ix }
             | RowRef::DiffHeader { item_ix }
             | RowRef::DiffFileLine { item_ix, .. }
+            | RowRef::ContextTraceHeader { item_ix }
+            | RowRef::ContextTraceLine { item_ix, .. }
             | RowRef::AssistantMessage { item_ix }
             | RowRef::Approval { item_ix }
             | RowRef::RunError { item_ix }
@@ -168,6 +172,7 @@ impl RowRef {
                 | RowRef::ReasoningHeader { .. }
                 | RowRef::ToolHeader { .. }
                 | RowRef::DiffHeader { .. }
+                | RowRef::ContextTraceHeader { .. }
                 | RowRef::AssistantMessage { .. }
                 | RowRef::Approval { .. }
                 | RowRef::RunError { .. }
@@ -256,7 +261,8 @@ pub fn row_height_with_collapsed(
         RowRef::ReasoningHeader { .. }
         | RowRef::SubagentHeader { .. }
         | RowRef::ToolHeader { .. }
-        | RowRef::DiffHeader { .. } => HEADER_H + gap,
+        | RowRef::DiffHeader { .. }
+        | RowRef::ContextTraceHeader { .. } => HEADER_H + gap,
         RowRef::PlanStatus { .. } => PLAN_STATUS_H + gap,
         RowRef::SubagentBody { item_ix } => {
             let Some(ThreadItem::SubagentRun { summary, .. }) = items.get(item_ix as usize) else {
@@ -271,6 +277,7 @@ pub fn row_height_with_collapsed(
             };
             layout::assistant_body_pt()
                 + estimate_assistant_height(summary).min(REASONING_BODY_MAX_H)
+                + layout::activity_body_chrome_h()
                 + gap
         }
         RowRef::ToolDetailLine { .. } => Tokens::ROW_HEIGHT_SM,
@@ -280,6 +287,7 @@ pub fn row_height_with_collapsed(
         }
         RowRef::ToolOutputTruncated { .. } => TRUNCATED_H,
         RowRef::DiffFileLine { .. } => DIFF_FILE_H,
+        RowRef::ContextTraceLine { .. } => Tokens::ROW_HEIGHT_MD,
         RowRef::AssistantMessage { item_ix } => {
             let Some(ThreadItem::AssistantMessage {
                 markdown,
@@ -663,9 +671,27 @@ pub fn row_refs_for_item_with_mode(
         ThreadItem::RunError { .. } => vec![RowRef::RunError { item_ix }],
         ThreadItem::ChoiceRequest { .. } => vec![RowRef::ChoiceRequest { item_ix }],
         ThreadItem::PlanStatus { .. } => vec![RowRef::PlanStatus { item_ix }],
-        ThreadItem::ContextTrace { .. } => vec![],
+        ThreadItem::ContextTrace {
+            entries, expanded, ..
+        } => context_trace_refs(item_ix, entries.len(), *expanded),
         ThreadItem::TodoList { .. } => vec![],
     }
+}
+
+fn context_trace_refs(item_ix: u32, entry_count: usize, expanded: bool) -> Vec<RowRef> {
+    if entry_count == 0 {
+        return Vec::new();
+    }
+    let mut rows = vec![RowRef::ContextTraceHeader { item_ix }];
+    if expanded {
+        rows.extend((0..entry_count.min(u16::MAX as usize)).map(|line_ix| {
+            RowRef::ContextTraceLine {
+                item_ix,
+                line_ix: line_ix as u16,
+            }
+        }));
+    }
+    rows
 }
 
 fn subagent_refs(item_ix: u32, expanded: bool) -> Vec<RowRef> {

@@ -13,6 +13,7 @@ use crate::features::shell::state::{
     ConversationId, Project, ProjectId, SidebarDropTarget, SidebarSession,
 };
 use crate::shared::components::buttons::btn_icon_sm;
+use crate::shared::components::flat_list_row::flat_list_row;
 use crate::tokens::icons;
 use crate::tokens::motion::{
     Motion, sidebar_accent_in, sidebar_glow_pulse, sidebar_text_cascade_in, sidebar_text_fade_in,
@@ -27,6 +28,24 @@ use gpui::{
     AnimationExt, AppContext, Context, ElementId, Entity, FontWeight, IntoElement, MouseButton,
     Render, SharedString, TextAlign, Window, div, prelude::*, px,
 };
+
+macro_rules! sidebar_tree_row_base {
+    ($id:expr, $height:expr, $pl:expr, $pr:expr) => {
+        div()
+            .id($id)
+            .relative()
+            .w_full()
+            .min_w(px(0.0))
+            .h(px($height))
+            .pl($pl)
+            .pr($pr)
+            .overflow_hidden()
+            .rounded(Tokens::radius_xs())
+            .flex()
+            .items_center()
+            .cursor_pointer()
+    };
+}
 
 fn sidebar_row_label_color(_selected: bool) -> gpui::Hsla {
     Tokens::text_primary()
@@ -399,153 +418,140 @@ pub fn session_row(
     let meta_opacity = session_meta_opacity(row.indent_level, is_menu_open);
     let cascade_index = row.cascade_index;
 
-    let row_body = div()
-        .id(row.row_id.clone())
-        .relative()
-        .w_full()
-        .min_w(px(0.0))
-        .h(px(Tokens::ROW_HEIGHT_MD))
-        .pl(Tokens::tree_indent(row.indent_level + 1))
-        .pr(Tokens::spacing_2())
-        .overflow_hidden()
-        .rounded(Tokens::radius_xs())
-        .flex()
-        .items_center()
-        .group(group_name.clone())
-        .cursor_pointer()
-        .when(selected, |el| el.bg(sidebar_session_selected_bg()))
-        .when(!selected, |el| {
-            el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
-        })
-        .on_click(move |_, _, app: &mut gpui::App| {
-            entity_click.update(app, |view, cx| {
-                view.select_conversation(click_id.clone(), cx);
-            });
-        })
-        .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
-            sidebar_for_right.update(app, |view, cx| {
-                view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
-            });
-        })
-        .on_drag(
-            DragSession {
-                conversation_id: drag_id,
-                title: drag_title,
-            },
-            |drag, _, _, cx| cx.new(|_| drag.clone()),
-        )
-        .drag_over::<DragSession>(move |style, drag, _, app: &mut gpui::App| {
-            if drag.conversation_id != hover_target_id {
-                let sidebar = entity_hover.clone();
-                let target = SidebarDropTarget::BeforeSession(hover_target_id.clone());
-                app.defer(move |app| {
-                    sidebar.update(app, |view, cx| {
-                        view.set_drop_target(Some(target), cx);
-                    });
+    let row_body = sidebar_tree_row_base!(
+        row.row_id.clone(),
+        Tokens::ROW_HEIGHT_MD,
+        Tokens::tree_indent(row.indent_level + 1),
+        Tokens::spacing_2()
+    )
+    .group(group_name.clone())
+    .when(selected, |el| el.bg(sidebar_session_selected_bg()))
+    .when(!selected, |el| {
+        el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
+    })
+    .on_click(move |_, _, app: &mut gpui::App| {
+        entity_click.update(app, |view, cx| {
+            view.select_conversation(click_id.clone(), cx);
+        });
+    })
+    .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
+        sidebar_for_right.update(app, |view, cx| {
+            view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
+        });
+    })
+    .on_drag(
+        DragSession {
+            conversation_id: drag_id,
+            title: drag_title,
+        },
+        |drag, _, _, cx| cx.new(|_| drag.clone()),
+    )
+    .drag_over::<DragSession>(move |style, drag, _, app: &mut gpui::App| {
+        if drag.conversation_id != hover_target_id {
+            let sidebar = entity_hover.clone();
+            let target = SidebarDropTarget::BeforeSession(hover_target_id.clone());
+            app.defer(move |app| {
+                sidebar.update(app, |view, cx| {
+                    view.set_drop_target(Some(target), cx);
                 });
-            }
-            style
-        })
-        .on_drop(move |drag: &DragSession, _, app: &mut gpui::App| {
-            if drag.conversation_id == drop_target_id {
-                return;
-            }
-            entity_drop.update(app, |view, cx| {
-                view.reposition_conversation(
-                    drag.conversation_id.clone(),
-                    drop_target_id.clone(),
-                    cx,
-                );
             });
-            entity_sidebar.update(app, |view, cx| {
-                view.clear_drop_target(cx);
-            });
-        })
-        .child(sidebar_row_wash(selected, &row.menu_key, 0.0))
-        .child(sidebar_row_beam(selected, &row.menu_key))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .overflow_hidden()
-                .flex()
-                .items_center()
-                .child(sidebar_text_cascade_in(
-                    div()
-                        .id(row.title_id.clone())
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .max_w_full()
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .whitespace_nowrap()
-                        .text_size(Tokens::text_sm())
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(sidebar_row_label_color(selected))
-                        .opacity(title_opacity)
-                        .when(!selected, |el| {
-                            el.group_hover(hover_group, |s| {
-                                s.text_color(Tokens::sidebar_text_hover())
+        }
+        style
+    })
+    .on_drop(move |drag: &DragSession, _, app: &mut gpui::App| {
+        if drag.conversation_id == drop_target_id {
+            return;
+        }
+        entity_drop.update(app, |view, cx| {
+            view.reposition_conversation(drag.conversation_id.clone(), drop_target_id.clone(), cx);
+        });
+        entity_sidebar.update(app, |view, cx| {
+            view.clear_drop_target(cx);
+        });
+    })
+    .child(sidebar_row_wash(selected, &row.menu_key, 0.0))
+    .child(sidebar_row_beam(selected, &row.menu_key))
+    .child(
+        div()
+            .flex_1()
+            .min_w(px(0.0))
+            .overflow_hidden()
+            .flex()
+            .items_center()
+            .child(sidebar_text_cascade_in(
+                div()
+                    .id(row.title_id.clone())
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .max_w_full()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .whitespace_nowrap()
+                    .text_size(Tokens::text_sm())
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(sidebar_row_label_color(selected))
+                    .opacity(title_opacity)
+                    .when(!selected, |el| {
+                        el.group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
+                    })
+                    .child(title),
+                element_key("session-title-cascade", &row.conv_id.0),
+                cascade_index,
+            )),
+    )
+    .child(
+        div()
+            .relative()
+            .w(px(SESSION_META_WIDTH))
+            .h_full()
+            .flex_shrink_0()
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .left_0()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .child(sidebar_text_cascade_in(
+                        div()
+                            .w_full()
+                            .min_w(px(0.0))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .text_size(Tokens::text_xs())
+                            .text_color(Tokens::text_primary())
+                            .text_align(TextAlign::Right)
+                            .opacity(meta_opacity)
+                            .when(!is_menu_open, |el| {
+                                el.group_hover(group_name.clone(), |s| s.opacity(0.0))
                             })
-                        })
-                        .child(title),
-                    element_key("session-title-cascade", &row.conv_id.0),
-                    cascade_index,
-                )),
-        )
-        .child(
-            div()
-                .relative()
-                .w(px(SESSION_META_WIDTH))
-                .h_full()
-                .flex_shrink_0()
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .right_0()
-                        .bottom_0()
-                        .left_0()
-                        .flex()
-                        .items_center()
-                        .justify_end()
-                        .child(sidebar_text_cascade_in(
-                            div()
-                                .w_full()
-                                .min_w(px(0.0))
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_size(Tokens::text_xs())
-                                .text_color(Tokens::text_primary())
-                                .text_align(TextAlign::Right)
-                                .opacity(meta_opacity)
-                                .when(!is_menu_open, |el| {
-                                    el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                                })
-                                .child(updated_at),
-                            element_key("session-meta-cascade", &row.conv_id.0),
-                            cascade_index.saturating_add(1),
-                        )),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .right_0()
-                        .bottom_0()
-                        .flex()
-                        .items_center()
-                        .justify_end()
-                        .child(sidebar_overflow_menu(
-                            row.overflow_id.clone(),
-                            group_name.clone(),
-                            menu_items,
-                            is_menu_open,
-                            on_menu_open_change,
-                        )),
-                ),
-        );
+                            .child(updated_at),
+                        element_key("session-meta-cascade", &row.conv_id.0),
+                        cascade_index.saturating_add(1),
+                    )),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .child(sidebar_overflow_menu(
+                        row.overflow_id.clone(),
+                        group_name.clone(),
+                        menu_items,
+                        is_menu_open,
+                        on_menu_open_change,
+                    )),
+            ),
+    );
 
     div()
         .id(row.wrap_id.clone())
@@ -590,163 +596,156 @@ pub fn project_row(
     let hover_group = group_name.clone();
     let cascade_index = row.cascade_index;
 
-    div()
-        .id(row.row_id.clone())
-        .relative()
-        .w_full()
-        .min_w(px(0.0))
-        .h(px(Tokens::ROW_HEIGHT_MD))
-        .pl(Tokens::spacing_1())
-        .pr(Tokens::spacing_2())
-        .overflow_hidden()
-        .rounded(Tokens::radius_xs())
-        .flex()
-        .items_center()
-        .gap(Tokens::spacing_1p5())
-        .group(group_name.clone())
-        .cursor_pointer()
-        .when(row.expanded, |el| {
-            el.bg(Tokens::sidebar_hover_bg().opacity(0.52))
-        })
-        .when(!row.expanded, |el| {
-            el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.72)))
-        })
-        .when(row.expanded, |el| {
-            el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.82)))
-        })
-        .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
-            sidebar_for_right.update(app, |view, cx| {
-                view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
+    sidebar_tree_row_base!(
+        row.row_id.clone(),
+        Tokens::ROW_HEIGHT_MD,
+        Tokens::spacing_1(),
+        Tokens::spacing_2()
+    )
+    .gap(Tokens::spacing_1p5())
+    .group(group_name.clone())
+    .when(row.expanded, |el| {
+        el.bg(Tokens::sidebar_hover_bg().opacity(0.52))
+    })
+    .when(!row.expanded, |el| {
+        el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.72)))
+    })
+    .when(row.expanded, |el| {
+        el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.82)))
+    })
+    .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
+        sidebar_for_right.update(app, |view, cx| {
+            view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
+        });
+    })
+    .drag_over::<DragSession>(move |style, _, _, app: &mut gpui::App| {
+        let sidebar = entity_hover.clone();
+        let target = SidebarDropTarget::AppendToProject(hover_project_id.clone());
+        app.defer(move |app| {
+            sidebar.update(app, |view, cx| {
+                view.set_drop_target(Some(target), cx);
             });
-        })
-        .drag_over::<DragSession>(move |style, _, _, app: &mut gpui::App| {
-            let sidebar = entity_hover.clone();
-            let target = SidebarDropTarget::AppendToProject(hover_project_id.clone());
-            app.defer(move |app| {
-                sidebar.update(app, |view, cx| {
-                    view.set_drop_target(Some(target), cx);
+        });
+        style
+    })
+    .on_drop(move |drag: &DragSession, _, app: &mut gpui::App| {
+        entity_drop.update(app, |view, cx| {
+            view.move_conversation_to_project(
+                drag.conversation_id.clone(),
+                drop_project_id.clone(),
+                cx,
+            );
+        });
+        entity_sidebar.update(app, |view, cx| {
+            view.clear_drop_target(cx);
+        });
+    })
+    .child(
+        div()
+            .id(row.toggle_id.clone())
+            .flex_1()
+            .min_w(px(0.0))
+            .overflow_hidden()
+            .flex()
+            .items_center()
+            .gap(Tokens::spacing_1p5())
+            .cursor_pointer()
+            .on_click(move |_, _, app: &mut gpui::App| {
+                entity_toggle.update(app, |view, cx| {
+                    view.toggle_project(project_id.clone(), cx);
                 });
-            });
-            style
-        })
-        .on_drop(move |drag: &DragSession, _, app: &mut gpui::App| {
-            entity_drop.update(app, |view, cx| {
-                view.move_conversation_to_project(
-                    drag.conversation_id.clone(),
-                    drop_project_id.clone(),
-                    cx,
-                );
-            });
-            entity_sidebar.update(app, |view, cx| {
-                view.clear_drop_target(cx);
-            });
-        })
-        .child(
-            div()
-                .id(row.toggle_id.clone())
-                .flex_1()
-                .min_w(px(0.0))
-                .overflow_hidden()
-                .flex()
-                .items_center()
-                .gap(Tokens::spacing_1p5())
-                .cursor_pointer()
-                .on_click(move |_, _, app: &mut gpui::App| {
-                    entity_toggle.update(app, |view, cx| {
-                        view.toggle_project(project_id.clone(), cx);
-                    });
-                })
-                .child(
-                    Icon::new(icons::FOLDER)
-                        .size(px(14.0))
-                        .flex_shrink_0()
-                        .text_color(Tokens::sidebar_text())
-                        .opacity(0.66),
-                )
-                .child(sidebar_text_fade_in(
-                    div()
-                        .id(row.name_id.clone())
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(Tokens::text_sm())
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(Tokens::text_primary())
-                        .opacity(0.72)
-                        .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
-                        .child(name),
-                    element_key("project-name-cascade", &row.project_id.0),
-                    cascade_index,
-                )),
-        )
-        .child(
-            div()
-                .relative()
-                .w(px(PROJECT_META_WIDTH))
-                .h_full()
-                .flex_shrink_0()
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .right_0()
-                        .bottom_0()
-                        .left_0()
-                        .flex()
-                        .items_center()
-                        .justify_end()
-                        .child(sidebar_text_fade_in(
-                            div()
-                                .w_full()
-                                .min_w(px(0.0))
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_size(Tokens::text_xs())
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(Tokens::sidebar_text_muted())
-                                .text_align(TextAlign::Right)
-                                .opacity(if is_menu_open { 0.0 } else { 0.62 })
-                                .when(!is_menu_open, |el| {
-                                    el.group_hover(group_name.clone(), |s| s.opacity(0.0))
-                                })
-                                .child(count.to_string()),
-                            element_key("project-meta-cascade", &row.project_id.0),
-                            cascade_index.saturating_add(1),
-                        )),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .right_0()
-                        .bottom_0()
-                        .flex()
-                        .items_center()
-                        .justify_end()
-                        .gap(Tokens::spacing_0p5())
-                        .opacity(if is_menu_open { 1.0 } else { 0.0 })
-                        .when(!is_menu_open, |el| {
-                            el.group_hover(group_name.clone(), |s| s.opacity(1.0))
-                        })
-                        .child(btn_icon_sm(row.new_conv_id.clone(), icons::PLUS).on_click(
-                            move |_, _, app: &mut gpui::App| {
-                                entity_new.update(app, |view, cx| {
-                                    view.new_conversation_in_project(new_project_id.clone(), cx);
-                                });
-                            },
-                        ))
-                        .child(sidebar_overflow_menu(
-                            row.overflow_id.clone(),
-                            group_name.clone(),
-                            menu_items,
-                            is_menu_open,
-                            on_menu_open_change,
-                        )),
-                ),
-        )
+            })
+            .child(
+                Icon::new(icons::FOLDER)
+                    .size(px(14.0))
+                    .flex_shrink_0()
+                    .text_color(Tokens::sidebar_text())
+                    .opacity(0.66),
+            )
+            .child(sidebar_text_fade_in(
+                div()
+                    .id(row.name_id.clone())
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_size(Tokens::text_sm())
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(Tokens::text_primary())
+                    .opacity(0.72)
+                    .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
+                    .child(name),
+                element_key("project-name-cascade", &row.project_id.0),
+                cascade_index,
+            )),
+    )
+    .child(
+        div()
+            .relative()
+            .w(px(PROJECT_META_WIDTH))
+            .h_full()
+            .flex_shrink_0()
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .left_0()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .child(sidebar_text_fade_in(
+                        div()
+                            .w_full()
+                            .min_w(px(0.0))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .text_size(Tokens::text_xs())
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(Tokens::sidebar_text_muted())
+                            .text_align(TextAlign::Right)
+                            .opacity(if is_menu_open { 0.0 } else { 0.62 })
+                            .when(!is_menu_open, |el| {
+                                el.group_hover(group_name.clone(), |s| s.opacity(0.0))
+                            })
+                            .child(count.to_string()),
+                        element_key("project-meta-cascade", &row.project_id.0),
+                        cascade_index.saturating_add(1),
+                    )),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .gap(Tokens::spacing_0p5())
+                    .opacity(if is_menu_open { 1.0 } else { 0.0 })
+                    .when(!is_menu_open, |el| {
+                        el.group_hover(group_name.clone(), |s| s.opacity(1.0))
+                    })
+                    .child(btn_icon_sm(row.new_conv_id.clone(), icons::PLUS).on_click(
+                        move |_, _, app: &mut gpui::App| {
+                            entity_new.update(app, |view, cx| {
+                                view.new_conversation_in_project(new_project_id.clone(), cx);
+                            });
+                        },
+                    ))
+                    .child(sidebar_overflow_menu(
+                        row.overflow_id.clone(),
+                        group_name.clone(),
+                        menu_items,
+                        is_menu_open,
+                        on_menu_open_change,
+                    )),
+            ),
+    )
 }
 
 pub fn project_show_more_row(
@@ -754,30 +753,32 @@ pub fn project_show_more_row(
     remaining: usize,
     entity: Entity<AgentWindow>,
 ) -> impl IntoElement {
-    div()
-        .id(element_key("project-show-more", &project_id.0))
-        .w_full()
-        .h(px(Tokens::ROW_HEIGHT_MD))
-        .pl(Tokens::tree_indent(2))
-        .pr(Tokens::spacing_2())
-        .rounded(Tokens::radius_sm())
-        .flex()
-        .items_center()
-        .cursor_pointer()
-        .text_size(Tokens::text_sm())
-        .text_color(Tokens::sidebar_text_muted())
-        .opacity(0.64)
-        .hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.55)))
-        .on_click(move |_, _, app: &mut gpui::App| {
+    flat_list_row(
+        element_key("project-show-more", &project_id.0),
+        Tokens::ROW_HEIGHT_MD,
+        Tokens::tree_indent(2),
+        Tokens::spacing_2(),
+        false,
+        true,
+        Some(move |app: &mut gpui::App| {
             entity.update(app, |view, cx| {
                 view.toggle_project_show_all(project_id.clone(), cx);
             });
-        })
-        .child(if remaining == 1 {
-            "Show 1 more".to_string()
+        }),
+        if remaining == 1 {
+            div()
+                .text_size(Tokens::text_sm())
+                .text_color(Tokens::sidebar_text_muted())
+                .opacity(0.64)
+                .child("Show 1 more".to_string())
         } else {
-            format!("Show {remaining} more")
-        })
+            div()
+                .text_size(Tokens::text_sm())
+                .text_color(Tokens::sidebar_text_muted())
+                .opacity(0.64)
+                .child(format!("Show {remaining} more"))
+        },
+    )
 }
 
 /// Drop zone appended after a project's sessions (insert at end).

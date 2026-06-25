@@ -42,7 +42,30 @@ pub fn activity_group_wrap(
 ) -> impl IntoElement {
     match pos {
         None | Some(ActivityGroupPos::Single) => div().w_full().child(content),
-        Some(_) => div().w_full().child(content),
+        Some(pos) => {
+            let (top, bottom) = match pos {
+                ActivityGroupPos::First => (Tokens::spacing_1(), px(0.0)),
+                ActivityGroupPos::Middle => (px(0.0), px(0.0)),
+                ActivityGroupPos::Last => (px(0.0), Tokens::spacing_1()),
+                ActivityGroupPos::Single => unreachable!("handled above"),
+            };
+
+            div()
+                .relative()
+                .w_full()
+                .pl(Tokens::spacing_2())
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top(top)
+                        .bottom(bottom)
+                        .w(px(2.0))
+                        .rounded(Tokens::radius_full())
+                        .bg(Tokens::activity_detail_border().opacity(0.72)),
+                )
+                .child(content)
+        }
     }
 }
 

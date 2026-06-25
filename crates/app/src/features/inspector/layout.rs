@@ -14,7 +14,7 @@ use crate::features::inspector::state::{
     DockPlacement, InspectorCustomSlot, InspectorTabId, InspectorTabKind, InspectorTabs,
     InspectorView,
 };
-use crate::features::shell::state::ContextInspectorRecap;
+use crate::features::shell::state::{ContextEntryKind, ContextInspectorRecap, ContextTraceEntry};
 use crate::features::terminal::layout::TerminalPanelProps;
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::shared::components::tab_bar::{
@@ -229,6 +229,7 @@ fn render_artifact_view(artifact: &Artifact) -> gpui::AnyElement {
 fn render_context_tab(recap: &ContextInspectorRecap) -> impl IntoElement {
     let project_status = recap.project_status.clone();
     let context_trace = recap.context_trace.clone();
+    let context_entries = recap.context_entries.clone();
     let read_cache = recap.read_cache.clone();
     let page_cache = recap.page_cache.clone();
 
@@ -338,6 +339,20 @@ fn render_context_tab(recap: &ContextInspectorRecap) -> impl IntoElement {
                             .map(|summary| {
                                 inspector_row(summary.kind.label(), summary.count.to_string())
                             })
+                            .collect()
+                    },
+                ))
+                .child(inspector_group(
+                    "Recent evidence",
+                    if context_entries.is_empty() {
+                        vec![inspector_row(
+                            "Evidence",
+                            "No concrete context entries recorded yet".to_string(),
+                        )]
+                    } else {
+                        context_entries
+                            .iter()
+                            .map(render_context_entry_row)
                             .collect()
                     },
                 ))
@@ -536,6 +551,74 @@ fn inspector_row(label: &str, value: String) -> gpui::AnyElement {
                 .child(value),
         )
         .into_any_element()
+}
+
+fn render_context_entry_row(entry: &ContextTraceEntry) -> gpui::AnyElement {
+    div()
+        .w_full()
+        .py(Tokens::spacing_2())
+        .border_b_1()
+        .border_color(Tokens::border_subtle())
+        .flex()
+        .items_start()
+        .gap(Tokens::spacing_2())
+        .child(
+            div()
+                .flex_shrink_0()
+                .px(Tokens::spacing_1())
+                .py(Tokens::spacing_0p5())
+                .rounded(Tokens::radius_xs())
+                .bg(Tokens::surface_active().opacity(0.48))
+                .text_size(Tokens::text_xs())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(Tokens::text_tertiary())
+                .child(context_kind_badge(entry.kind)),
+        )
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(Tokens::spacing_0p5())
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .text_size(Tokens::text_xs())
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(Tokens::text_primary())
+                        .child(entry.label.clone()),
+                )
+                .when_some(entry.detail.clone(), |el, detail| {
+                    el.child(
+                        div()
+                            .text_size(Tokens::text_xs())
+                            .line_height(Tokens::text_sm_leading_compact())
+                            .text_color(Tokens::text_tertiary())
+                            .child(detail),
+                    )
+                })
+                .child(
+                    div()
+                        .text_size(Tokens::text_xs())
+                        .line_height(Tokens::text_sm_leading())
+                        .text_color(Tokens::text_secondary())
+                        .child(entry.reason.clone()),
+                ),
+        )
+        .into_any_element()
+}
+
+fn context_kind_badge(kind: ContextEntryKind) -> &'static str {
+    match kind {
+        ContextEntryKind::RepoMap => "Map",
+        ContextEntryKind::FileSlice => "File",
+        ContextEntryKind::Symbol => "Symbol",
+        ContextEntryKind::Search => "Search",
+        ContextEntryKind::Command => "Command",
+        ContextEntryKind::Rule => "Rule",
+    }
 }
 
 fn format_bytes(bytes: usize) -> String {

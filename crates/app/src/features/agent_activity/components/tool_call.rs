@@ -541,7 +541,7 @@ fn render_tool_summary(
                 .line_height(Tokens::text_sm_leading())
                 .font_family(Tokens::ui_font_family())
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(gpui::rgb(0xffffff))
+                .text_color(Tokens::activity_verb_text())
                 .child(summary.verb),
         )
         .child(primary)
