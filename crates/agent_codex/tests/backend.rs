@@ -530,3 +530,133 @@ async fn usage_context_snapshot_is_persisted_separately_from_processed_tokens() 
         5
     );
 }
+
+#[tokio::test]
+async fn automatic_reviews_are_persisted_without_human_decisions() {
+    let f = Fixture::new();
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    for (prompt, expected) in [
+        ("ai-review-approved", ToolStatus::Completed),
+        ("ai-review-denied", ToolStatus::Denied),
+        ("ai-review-timeout", ToolStatus::Failed),
+    ] {
+        b.send(AgentCommand::StartRun {
+            project_id: ProjectId::new("p"),
+            session_id: SessionId::new("s"),
+            prompt: prompt.into(),
+            model: ModelId::new("test-model"),
+            subagent_model: None,
+            mode: AgentMode::AutoSafe,
+            attachments: vec![],
+        })
+        .unwrap();
+        let events = finished(&rx).await;
+        assert_eq!(events.iter().filter(|e| matches!(e, AgentEvent::ToolCallStarted{name,..} if name=="codex_approval_review")).count(), 1);
+        assert_eq!(
+            events
+                .iter()
+                .filter(
+                    |e| matches!(e, AgentEvent::ToolCallFinished{status,..} if *status==expected)
+                )
+                .count(),
+            1
+        );
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            AgentEvent::ApprovalRequested { .. } | AgentEvent::ApprovalResolved { .. }
+        )));
+    }
+    assert!(!f.dir.path().join("decision.json").exists());
+    let stored = f.store.load_session_events(&SessionId::new("s")).unwrap();
+    assert_eq!(stored.iter().filter(|e| matches!(&e.event, AgentEvent::ToolCallStarted{name,..} if name=="codex_approval_review")).count(), 3);
+}
+
+#[tokio::test]
+#[ignore = "uses the local Codex account and AI reviewer in a disposable directory"]
+async fn live_codex_automatic_review_keeps_restricted_execution() {
+    let mut f = Fixture::new();
+    f.binary = std::env::var_os("VORTEX_CODEX_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("codex"));
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    let models = b.status().models;
+    let model = models
+        .iter()
+        .find(|m| std::env::var("VORTEX_TEST_CODEX_MODEL").is_ok_and(|id| m.id == id))
+        .unwrap_or(&models[0])
+        .id
+        .clone();
+    b.send(AgentCommand::StartRun {
+        project_id: ProjectId::new("p"), session_id: SessionId::new("s"),
+        prompt: "Run a shell command that writes exactly after followed by a newline to vortex-ai-review.txt in the current disposable test directory. The sandbox is read-only; request escalation for this one harmless write so the automatic approval reviewer can inspect it. Do not modify any other files or use network. Report the outcome.".into(),
+        model: ModelId::new(model), subagent_model: None, mode: AgentMode::AutoSafe, attachments: vec![],
+    }).unwrap();
+    let mut reviewed = false;
+    tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            match rx.recv_async().await.unwrap() {
+                AgentEvent::ToolCallStarted { name, .. } if name == "codex_approval_review" => {
+                    reviewed = true
+                }
+                AgentEvent::ApprovalRequested { .. } => {
+                    panic!("unexpected manual approval in automatic reviewer test")
+                }
+                AgentEvent::ToolCallFinished { summary, body, .. } => {
+                    println!("{summary}: {}", body.unwrap_or_default())
+                }
+                AgentEvent::RunFailed { error, .. } => panic!("{}", error.message),
+                AgentEvent::SessionCommandFailed { message, .. } => panic!("{message}"),
+                AgentEvent::RunFinished { status, .. } => {
+                    assert_eq!(status, RunStatus::Completed);
+                    break;
+                }
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert!(reviewed, "No actual automatic approval review was observed");
+    assert_eq!(
+        std::fs::read_to_string(f.dir.path().join("vortex-ai-review.txt")).unwrap(),
+        "after\n"
+    );
+}
+
+#[tokio::test]
+async fn unfinished_automatic_review_is_closed_on_cancellation() {
+    let f = Fixture::new();
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    b.send(AgentCommand::StartRun {
+        project_id: ProjectId::new("p"),
+        session_id: SessionId::new("s"),
+        prompt: "ai-review-wait".into(),
+        model: ModelId::new("test-model"),
+        subagent_model: None,
+        mode: AgentMode::AutoSafe,
+        attachments: vec![],
+    })
+    .unwrap();
+    let events = until(
+        &rx,
+        |e| matches!(e, AgentEvent::ToolCallStarted{name,..} if name=="codex_approval_review"),
+    )
+    .await;
+    let run_id = events
+        .iter()
+        .find_map(|e| {
+            if let AgentEvent::RunStarted { run_id, .. } = e {
+                Some(run_id.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    b.send(AgentCommand::CancelRun { run_id }).unwrap();
+    let events = finished(&rx).await;
+    assert!(events.iter().any(|e| matches!(e,AgentEvent::ToolCallFinished{status:ToolStatus::Cancelled,summary,..} if summary.contains("no approval decision was confirmed"))));
+    assert!(!f.dir.path().join("decision.json").exists());
+}

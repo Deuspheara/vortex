@@ -104,7 +104,7 @@ impl Client {
             incoming,
             reader,
         };
-        if let Err(error) = client.request("initialize", json!({"clientInfo":{"name":"vortex","title":"Vortex","version":env!("CARGO_PKG_VERSION")}})).await {
+        if let Err(error) = client.request("initialize", json!({"clientInfo":{"name":"vortex","title":"Vortex","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await {
             let exit = client.child.try_wait().ok().flatten().map(|s| format!(" ({s})")).unwrap_or_default();
             return Err(format!("Codex at {} could not initialize{exit}: {error}. Check `codex --version` and run `codex app-server` in a terminal to diagnose CLI configuration; update the CLI if needed.", binary.display()));
         }

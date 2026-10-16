@@ -44,9 +44,21 @@ for line in sys.stdin:
   reply(req,{'turn':active})
   notice('turn/started',{'threadId':'thread-1','turn':active})
   text=params['input'][0]['text']
-  if text=='approval':
-   notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd','type':'commandExecution','command':'echo test'}})
-   send({'id':'approval-1','method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd','command':'echo test'}})
+  if text in ('approval','long-approval'):
+   approval_command = ('python3 - <<\'PY\'\n' + ''.join(f'print("approval line {n}")\n' for n in range(120)) + '# COMMAND-END\nPY') if text=='long-approval' else 'echo test'
+   notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd','type':'commandExecution','command':approval_command}})
+   send({'id':'approval-1','method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd','command':approval_command}})
+  elif text.startswith('ai-review-'):
+   assert params['approvalPolicy']=='on-request'
+   assert params['approvalsReviewer']=='auto_review'
+   review={'threadId':'thread-1','turnId':active['id'],'reviewId':active['id']+'-review','action':{'type':'command','command':'echo safe-review-fixture'},'review':{'status':'inProgress'}}
+   notice('item/autoApprovalReview/started',review)
+   if text!='ai-review-wait':
+    status={'ai-review-approved':'approved','ai-review-denied':'denied','ai-review-timeout':'timedOut'}.get(text,'aborted')
+    review['review']={'status':status,'riskLevel':'low','userAuthorization':'high','rationale':'Deterministic approval-review fixture. No command was executed.'}
+    notice('item/autoApprovalReview/completed',review)
+    notice('item/autoApprovalReview/completed',review)
+    finish('AI review '+status+' (fixture only)')
   elif text=='parallel-approval':
    parallel_pending={'parallel-1','parallel-2'}
    for n in (1,2):

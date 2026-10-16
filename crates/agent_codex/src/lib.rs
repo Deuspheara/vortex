@@ -299,7 +299,11 @@ impl Worker {
         Ok(())
     }
     async fn resume(&mut self, client: &Client, thread: &str) -> Result<(), String> {
-        let response=client.request("thread/resume",json!({"threadId":thread,"approvalPolicy":"untrusted","approvalsReviewer":"user","sandbox":"read-only","config":{"web_search":"disabled","sandbox_workspace_write.network_access":false}})).await?;
+        let auto_review = self
+            .runs
+            .values()
+            .any(|p| p.thread_id == thread && p.active && p.auto_review);
+        let response=client.request("thread/resume",json!({"threadId":thread,"approvalPolicy":if auto_review { "on-request" } else { "untrusted" },"approvalsReviewer":if auto_review { "auto_review" } else { "user" },"sandbox":"read-only","config":{"web_search":"disabled","sandbox_workspace_write.network_access":false}})).await?;
         let mut turns = response["thread"]["turns"]
             .as_array()
             .cloned()
@@ -410,6 +414,7 @@ impl Worker {
                     finished_at: None,
                 })?;
                 let mut p = RunProjection::new(run_id.clone(), session_id.clone(), thread.clone());
+                p.auto_review = mode == AgentMode::AutoSafe;
                 // Codex totals are thread-cumulative; retain the previous turn's baseline.
                 for previous in self.runs.values().filter(|p| p.thread_id == thread) {
                     for i in 0..3 {
@@ -596,11 +601,14 @@ impl Worker {
                 } else {
                     ToolStatus::Failed
                 },
-                summary: p
-                    .previews
-                    .get(&item)
-                    .cloned()
-                    .unwrap_or_else(|| "Activity ended with the turn".into()),
+                summary: if item.starts_with("approval-review/") {
+                    "Review interrupted · no approval decision was confirmed".into()
+                } else {
+                    p.previews
+                        .get(&item)
+                        .cloned()
+                        .unwrap_or_else(|| "Activity ended with the turn".into())
+                },
                 body: None,
             });
         }
@@ -734,6 +742,9 @@ impl Worker {
         let p = self.runs.get_mut(&id).unwrap();
         let mut events = Vec::new();
         match method {
+            "item/autoApprovalReview/started" | "item/autoApprovalReview/completed" => {
+                events.extend(p.approval_review(params, method.ends_with("/completed")));
+            }
             "turn/started" => {
                 p.turn_id = Some(string(&params["turn"], "id").into());
             }
@@ -859,23 +870,45 @@ pub fn turn_params(
         AgentMode::SuggestPatch => "Suggest changes for review. Do not apply them.\n",
         _ => "",
     };
-    let approval = if mode.can_apply_patches() {
+    let reviewer = if *mode == AgentMode::AutoSafe {
+        "auto_review"
+    } else {
+        "user"
+    };
+    let approval = if *mode == AgentMode::AutoSafe {
+        "on-request"
+    } else if mode.can_apply_patches() {
         "untrusted"
     } else {
         "never"
     };
-    json!({"threadId":thread,"cwd":cwd,"model":model,"effort":effort,"approvalPolicy":approval,"approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly","networkAccess":false},"input":[{"type":"text","text":format!("{instructions}{prompt}")} ]})
+    json!({"threadId":thread,"cwd":cwd,"model":model,"effort":effort,"approvalPolicy":approval,"approvalsReviewer":reviewer,"sandboxPolicy":{"type":"readOnly","networkAccess":false},"input":[{"type":"text","text":format!("{instructions}{prompt}")} ]})
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
+    fn ai_review_changes_only_the_reviewer_and_interactive_policy() {
+        let params = turn_params("t", "/tmp", "m", None, &AgentMode::AutoSafe, "hello");
+        assert_eq!(params["approvalsReviewer"], "auto_review");
+        assert_eq!(params["approvalPolicy"], "on-request");
+        assert_eq!(
+            params["sandboxPolicy"],
+            json!({"type":"readOnly","networkAccess":false})
+        );
+        let manual = turn_params(
+            "t",
+            "/tmp",
+            "m",
+            None,
+            &AgentMode::ApplyWithApproval,
+            "hello",
+        );
+        assert_eq!(manual["approvalsReviewer"], "user");
+    }
+    #[test]
     fn defaults_never_inherit_full_access() {
-        for mode in [
-            AgentMode::ApplyWithApproval,
-            AgentMode::FullAccessDangerous,
-            AgentMode::AutoSafe,
-        ] {
+        for mode in [AgentMode::ApplyWithApproval, AgentMode::FullAccessDangerous] {
             let p = turn_params("t", "/tmp", "m", None, &mode, "hello");
             assert_eq!(p["sandboxPolicy"]["type"], "readOnly");
             assert_eq!(p["approvalPolicy"], "untrusted");

@@ -15,6 +15,8 @@ pub struct RunProjection {
     pub usage: [u64; 3],
     #[serde(default)]
     pub context_usage: Option<(u64, Option<u64>)>,
+    #[serde(default)]
+    pub auto_review: bool,
     pub texts: HashMap<String, String>,
     pub started: HashSet<String>,
     pub completed: HashSet<String>,
@@ -33,6 +35,7 @@ impl RunProjection {
             active: true,
             usage: [0; 3],
             context_usage: None,
+            auto_review: false,
             texts: HashMap::new(),
             started: HashSet::new(),
             completed: HashSet::new(),
@@ -119,6 +122,59 @@ impl RunProjection {
             }
         })
     }
+    /// Automatic reviews are persisted as explicitly labeled activity, never as
+    /// a human approval response or proof that the reviewed command executed.
+    pub fn approval_review(&mut self, params: &Value, complete: bool) -> Vec<AgentEvent> {
+        let review_id = string(params, "reviewId");
+        if review_id.is_empty() {
+            return vec![];
+        }
+        let key = format!("approval-review/{review_id}");
+        let action = &params["action"];
+        let target = action["command"]
+            .as_str()
+            .unwrap_or_else(|| string(action, "type"));
+        let preview = format!("Reviewing · {target}");
+        let call_id = self.call_id(&key);
+        let mut events = Vec::new();
+        if self.started.insert(key.clone()) {
+            self.previews.insert(key.clone(), preview.clone());
+            events.push(AgentEvent::ToolCallStarted {
+                run_id: self.run_id.clone(),
+                call_id: call_id.clone(),
+                name: "codex_approval_review".into(),
+                args_preview: preview,
+                dedupe_key: None,
+                risk: RiskLevel::High,
+            });
+        }
+        if complete && self.completed.insert(key) {
+            let review = &params["review"];
+            let (label, status) = match string(review, "status") {
+                "approved" => ("Approved", ToolStatus::Completed),
+                "denied" => ("Denied", ToolStatus::Denied),
+                "timedOut" => ("Timed out", ToolStatus::Failed),
+                "aborted" => ("Aborted", ToolStatus::Cancelled),
+                _ => ("Review unavailable", ToolStatus::Failed),
+            };
+            events.push(AgentEvent::ToolCallFinished {
+                run_id: Some(self.run_id.clone()),
+                call_id,
+                status,
+                summary: format!("{label} · {target}"),
+                body: Some(format!(
+                    "{label}\nRisk: {}\nUser authorization: {}\n{}",
+                    string(review, "riskLevel"),
+                    string(review, "userAuthorization"),
+                    review["rationale"]
+                        .as_str()
+                        .unwrap_or("No review rationale was provided.")
+                )),
+            });
+        }
+        events
+    }
+
     pub fn item(&mut self, item: &Value, complete: bool) -> Vec<AgentEvent> {
         let id = string(item, "id");
         let kind = string(item, "type");
@@ -325,6 +381,38 @@ pub fn string<'a>(value: &'a Value, key: &str) -> &'a str {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn automatic_reviews_fail_closed_and_survive_projection_replay() {
+        for (wire_status, expected) in [
+            ("approved", ToolStatus::Completed),
+            ("denied", ToolStatus::Denied),
+            ("timedOut", ToolStatus::Failed),
+            ("aborted", ToolStatus::Cancelled),
+            ("futureStatus", ToolStatus::Failed),
+        ] {
+            let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
+            p.auto_review = true;
+            let mut params = json!({"reviewId":"review-1","action":{"type":"command","command":"echo test"},"review":{"status":"inProgress"}});
+            assert!(
+                matches!(&p.approval_review(&params, false)[0], AgentEvent::ToolCallStarted{name,..} if name == "codex_approval_review")
+            );
+            let mut p: RunProjection =
+                serde_json::from_value(serde_json::to_value(p).unwrap()).unwrap();
+            assert!(p.auto_review);
+            assert!(p.approval_review(&params, false).is_empty());
+            params["review"] = json!({"status":wire_status,"riskLevel":"low","userAuthorization":"medium","rationale":"Fixture review rationale"});
+            let events = p.approval_review(&params, true);
+            assert!(
+                matches!(&events[..], [AgentEvent::ToolCallFinished{status,body:Some(body),..}] if *status == expected && body.contains("Fixture review rationale"))
+            );
+            assert!(p.approval_review(&params, true).is_empty());
+            // Completed-only notification still produces a visible correlated activity pair.
+            let mut fresh = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
+            assert_eq!(fresh.approval_review(&params, true).len(), 2);
+            assert!(fresh.approval_review(&json!({}), true).is_empty());
+        }
+    }
+
     #[test]
     fn snapshot_after_stream_and_restart_only_emits_missing_suffix() {
         let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());

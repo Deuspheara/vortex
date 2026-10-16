@@ -39,6 +39,35 @@ access. Apply mode allows Codex to request approval for a command or file edit.
 Plan mode uses read-only execution with escalation disabled. Vortex does not
 inherit a full-access CLI default or expose a full-access Codex mode.
 
+**AI review** is an opt-in Codex mode in the composer permission menu and Settings
+→ Safety. It selects the installed Codex reviewer's `auto_review` routing with
+`on-request` approvals. Read-only sandboxing, disabled web search, and disabled
+sandbox network access remain explicit. The default stays **Approval required**;
+switching providers resets Codex to that default. Vortex does not implement a
+second model or grant full access. The shared `AutoSafe` mode selects this reviewer
+only for Codex; native Auto safe retains its existing deterministic policy.
+
+Codex reviews eligible requests for elevated execution. Commands already allowed
+inside the sandbox may run without an additional review. Review activity shows
+Reviewing, Approved, Denied, Timed out, or Aborted, with the reported risk,
+authorization, and rationale available in its disclosure. An approved review is
+not evidence that a command ran; execution is displayed separately. Automatic
+reviews persist as activity, never as human `ApprovalResolved` decisions.
+Reviewer failures do not grant permission. An unfinished review after interruption
+or reconnect explicitly has no confirmed decision and is never resubmitted by
+Vortex. Unsupported server interactions still stop the turn without granting access.
+
+AI review consumes additional model usage and is a probabilistic risk assessment,
+not a guarantee that a command is safe. It requires a compatible installed Codex
+version and account support; if Codex rejects the setting, inspect the displayed
+error, update the CLI, or select Approval required. Managed Codex reviewer rules
+continue to apply; Vortex does not override them. See the
+[official automatic review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
+
+Long command requests display their full text in a bounded, scrollable preview
+with a copy action. Decision buttons and Stop run remain outside that scroll area;
+the draft composer is retained while its expanded input is temporarily hidden.
+
 The user's approval response is correlated to the exact server request. Unknown
 server requests are rejected, including unsupported permission and credential
 requests; unsupported interactions stop the affected turn with a visible error.
@@ -81,7 +110,7 @@ completion confirms interruption. Unfinished tool items receive terminal events,
 and a stopped notice survives replay.
 
 The protocol is version-sensitive. Integration was exercised with Codex CLI
-0.157.1; an incompatible CLI produces an actionable error instead of silently
+0.163.0; an incompatible CLI produces an actionable error instead of silently
 falling back to Mock. The first implementation intentionally rejects unsupported
 server interaction types rather than guessing their approval semantics.
 
@@ -143,3 +172,8 @@ for an isolated store. For reproducible native layout checks, add
 `--window-size 1100x800` to the QA launcher. This debug-only size override requires
 an isolated data directory and does not select demo mode. Demo mode keeps its separate marker requirement and never
 starts Codex. See [native verification results](codex-ui-verification.md).
+
+- `cargo test -p agent_codex --test backend live_codex_automatic_review_keeps_restricted_execution -- --ignored --nocapture`:
+  opt-in local-account test that observes a real automatic review and verifies a
+  single harmless file write in a disposable directory. This creates a test chat
+  in Codex history and consumes model usage.
