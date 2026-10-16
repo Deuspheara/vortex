@@ -476,6 +476,11 @@ impl Tokens {
         "JetBrainsMono Nerd Font Mono"
     }
 
+    /// Match the reference thread's 80% foreground reading tone.
+    pub fn thread_body_text() -> Hsla {
+        Self::text_primary().opacity(0.8)
+    }
+
     /// Proportional reading face for chat and activity surfaces.
     pub fn ui_font_family() -> &'static str {
         #[cfg(target_os = "macos")]
@@ -687,7 +692,18 @@ impl Tokens {
     pub const DIFF_TAB_HEIGHT: f32 = 32.0;
     pub const DIFF_PATH_HEIGHT: f32 = 32.0;
     pub const DIFF_LINE_HEIGHT: f32 = 20.0;
-    pub const CODE_HEADER_HEIGHT: f32 = 32.0;
+    pub const CODE_HEADER_HEIGHT: f32 = 30.0;
+    /// Transcript code uses a snug baseline; diffs keep their separate 20 px grid.
+    pub const THREAD_CODE_LINE_HEIGHT: f32 = 18.0;
+    pub const THREAD_CODE_PADDING_X: f32 = 14.0;
+    pub fn thread_heading_line_height(level: u8) -> f32 {
+        match level {
+            1 => 26.0,
+            2 => 24.0,
+            3 => 21.0,
+            _ => 18.0,
+        }
+    }
     pub const THREAD_HEADING_1: f32 = 20.0;
     pub const THREAD_HEADING_2: f32 = 18.0;
     pub const THREAD_HEADING_3: f32 = 16.0;
@@ -761,6 +777,9 @@ impl Tokens {
     /// 12 px — status bar
     pub fn text_status() -> gpui::Pixels {
         px(12.0)
+    }
+    pub fn text_micro() -> gpui::Pixels {
+        px(11.0)
     }
     /// 12 px — role labels, file paths in diff header
     pub fn text_label() -> gpui::Pixels {

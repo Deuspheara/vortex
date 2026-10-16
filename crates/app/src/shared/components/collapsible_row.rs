@@ -23,6 +23,8 @@ pub fn timeline_row(
         .rounded(Tokens::radius_xs())
         .hover(|s| s.bg(Tokens::surface_hover().opacity(0.35)))
         .cursor_pointer()
+        .text_size(Tokens::text_sm())
+        .line_height(Tokens::text_md_leading())
         .text_color(Tokens::text_secondary())
         .on_click(on_click)
         .child(

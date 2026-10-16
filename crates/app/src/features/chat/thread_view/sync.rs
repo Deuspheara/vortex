@@ -17,6 +17,7 @@ impl ThreadView {
         self.pending_mutated_item_patches.clear();
         self.markdown_cache.clear();
         self.measured_rows.clear();
+        self.unwrapped_code_blocks.clear();
         self.tool_output_cache.clear();
         self.item_index.clear();
         self.header_manifest_index.clear();

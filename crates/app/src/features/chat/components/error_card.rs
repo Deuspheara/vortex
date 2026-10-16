@@ -2,7 +2,7 @@
 
 use crate::tokens::{Tokens, element_key, icons};
 use gpui::{ElementId, FontWeight, IntoElement, div, prelude::*, px};
-use gpui_component::button::{Button, ButtonRounded, ButtonVariants};
+use gpui_component::button::{Button, ButtonRounded};
 use gpui_component::{Icon, Sizable, Size};
 
 pub struct ErrorCardProps {

@@ -105,3 +105,7 @@ pub fn chat() -> gpui_component::Icon {
 pub fn circle_alert() -> gpui_component::Icon {
     gpui_component::Icon::default().path("vortex/circle-alert.svg")
 }
+
+pub fn command() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/command.svg")
+}

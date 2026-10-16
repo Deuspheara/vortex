@@ -33,7 +33,7 @@ pub fn btn_ghost(id: impl Into<ElementId>) -> Button {
 }
 
 pub fn btn_ghost_label(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
-    btn_ghost(id).label(label)
+    btn_ghost(id).with_size(Size::Small).label(label)
 }
 
 pub fn btn_ghost_icon(id: impl Into<ElementId>, icon: IconName) -> Button {

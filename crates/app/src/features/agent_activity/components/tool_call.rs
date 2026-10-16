@@ -581,6 +581,10 @@ fn render_tool_summary(
 ) -> impl IntoElement {
     let primary = render_tool_primary(item_id, &summary, on_open_file);
     let file_target = summary.target_path.is_some();
+    let command_row = matches!(
+        tool_name,
+        "codex_command" | "run_real_command" | "bash_virtual"
+    );
     div()
         .id(element_key("tool-summary", item_id))
         .w_full()
@@ -590,15 +594,20 @@ fn render_tool_summary(
         .items_center()
         .gap(Tokens::spacing_1p5())
         .child(super::activity_icon(tool_name))
-        .child(
-            div()
-                .flex_shrink_0()
-                .text_size(Tokens::text_sm())
-                .line_height(Tokens::text_sm_leading())
-                .font_family(Tokens::ui_font_family())
-                .font_weight(FontWeight::NORMAL)
-                .text_color(Tokens::activity_verb_text())
-                .child(summary.verb),
+        .when(
+            !command_row || matches!(summary.verb.as_str(), "Review" | "Stopped"),
+            |el| {
+                el.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(Tokens::text_sm())
+                        .line_height(Tokens::text_md_leading())
+                        .font_family(Tokens::ui_font_family())
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(Tokens::activity_verb_text())
+                        .child(summary.verb),
+                )
+            },
         )
         .child(primary)
         .when_some(
@@ -711,6 +720,20 @@ pub fn render_tool_detail_line_row(
     detail: ToolCallDetailRow,
     on_open_file: Option<OpenToolFileCallback>,
 ) -> impl IntoElement {
+    if let ToolCallDetailRow::Command { command, .. } = &detail {
+        return div()
+            .id(element_key("tool-detail-line", item_id))
+            .w_full()
+            .min_w(px(0.0))
+            .px(Tokens::spacing_0p5())
+            .py(Tokens::spacing_1())
+            .font_family(Tokens::code_font_family())
+            .text_size(Tokens::text_code())
+            .line_height(Tokens::text_sm_leading())
+            .text_color(Tokens::text_secondary())
+            .child(command.clone())
+            .into_any_element();
+    }
     div()
         .id(element_key("tool-detail-line", item_id))
         .w_full()
@@ -729,9 +752,9 @@ pub fn render_tool_detail_line_row(
                 .flex()
                 .items_center()
                 .rounded(Tokens::radius_xs())
-                .bg(Tokens::surface_hover().opacity(0.28))
                 .child(render_tool_detail_content(item_id, detail, on_open_file)),
         )
+        .into_any_element()
 }
 
 fn render_tool_detail_content(
@@ -878,68 +901,44 @@ pub fn render_tool_output_body(
     lines: Arc<[Arc<str>]>,
     full: Arc<str>,
 ) -> impl IntoElement {
-    let height = crate::features::chat::manifest::tool_output_body_height(lines.len());
+    let text = lines
+        .iter()
+        .map(|line| line.as_ref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let group = format!("tool-output-hover-{item_id}");
     div()
         .id(element_key("tool-output", item_id))
         .w_full()
-        .h(px(height))
-        .pl(Tokens::spacing_7())
+        .min_w(px(0.0))
+        .relative()
+        .group(group.clone())
+        .px(Tokens::spacing_0p5())
+        .pb(Tokens::spacing_2())
         .child(
             div()
+                .id(element_key("tool-output-scroll", item_id))
                 .w_full()
-                .h_full()
-                .min_w(px(0.0))
-                .bg(Tokens::code_bg())
-                .rounded(Tokens::radius_md())
-                .border_1()
-                .border_color(Tokens::border_subtle())
-                .flex()
-                .flex_col()
-                .overflow_hidden()
-                .child(
-                    div()
-                        .h(px(Tokens::TOOL_OUTPUT_HEADER_HEIGHT))
-                        .flex_shrink_0()
-                        .px(Tokens::spacing_3())
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .text_size(Tokens::text_label())
-                        .text_color(Tokens::text_tertiary())
-                        .child("Output")
-                        .child(btn_copy_icon_arc(
-                            element_key("copy-tool-output", item_id),
-                            full,
-                            "Copy output",
-                        )),
-                )
-                .child(
-                    div()
-                        .id(element_key("tool-output-scroll", item_id))
-                        .w_full()
-                        .flex_1()
-                        .min_h(px(0.0))
-                        .overflow_scroll()
-                        .p(Tokens::spacing_3())
-                        .flex()
-                        .flex_col()
-                        .items_start()
-                        .children(lines.iter().map(|line| {
-                            div()
-                                .h(px(Tokens::DIFF_LINE_HEIGHT))
-                                .flex_shrink_0()
-                                .whitespace_nowrap()
-                                .font_family(Tokens::code_font_family())
-                                .text_size(Tokens::text_code())
-                                .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                                .text_color(Tokens::text_secondary())
-                                .child(if line.is_empty() {
-                                    " ".to_string()
-                                } else {
-                                    line.to_string()
-                                })
-                        })),
-                ),
+                .max_h(px(Tokens::TOOL_OUTPUT_MAX_HEIGHT) - Tokens::spacing_2())
+                .overflow_y_scroll()
+                .font_family(Tokens::code_font_family())
+                .text_size(Tokens::text_code())
+                .line_height(Tokens::text_sm_leading())
+                .text_color(Tokens::text_secondary())
+                .child(text),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .opacity(0.0)
+                .group_hover(group, |el| el.opacity(1.0))
+                .child(btn_copy_icon_arc(
+                    element_key("copy-tool-output", item_id),
+                    full,
+                    "Copy output",
+                )),
         )
 }
 

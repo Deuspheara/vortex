@@ -9,8 +9,32 @@ use gpui::{
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
 use crate::features::diff_panel::components::code_highlight::highlight_code;
-use crate::shared::components::buttons::btn_copy_icon_arc;
+use crate::shared::components::buttons::{btn_copy_icon_arc, btn_ghost};
 use crate::tokens::{Tokens, element_key};
+
+pub type ToggleCodeWrap = Arc<dyn Fn(usize, &mut gpui::App)>;
+
+/// Local preview controls supplied by the transcript owner; leaf renderers stay stateless.
+#[derive(Clone, Default)]
+pub struct CodePreviewControls {
+    pub unwrapped: std::collections::HashSet<usize>,
+    pub on_toggle: Option<ToggleCodeWrap>,
+}
+
+/// Match Markdown's collapsed margins: compact paragraphs, larger heading lead-in.
+pub fn block_gap(previous: &MarkdownBlock, next: &MarkdownBlock) -> f32 {
+    if matches!(next, MarkdownBlock::Heading(..)) {
+        f32::from(Tokens::spacing_5())
+    } else if matches!(previous, MarkdownBlock::Heading(..)) {
+        if matches!(next, MarkdownBlock::Code { .. }) {
+            f32::from(Tokens::spacing_3())
+        } else {
+            f32::from(Tokens::spacing_2())
+        }
+    } else {
+        f32::from(Tokens::spacing_3())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum MarkdownBlock {
@@ -97,7 +121,7 @@ pub fn estimate_markdown_height(blocks: &[MarkdownBlock], include_header: bool) 
     for (i, block) in blocks.iter().enumerate() {
         height += estimate_block_height(block);
         if i + 1 < blocks.len() {
-            height += 16.0;
+            height += block_gap(block, &blocks[i + 1]);
         }
     }
 
@@ -160,10 +184,13 @@ fn estimate_block_height(block: &MarkdownBlock) -> f32 {
 
 fn code_block_height(body: &str) -> f32 {
     let header = Tokens::CODE_HEADER_HEIGHT;
-    let body_pad = f32::from(Tokens::spacing_3());
+    let body_pad = f32::from(Tokens::spacing_3()) * 2.0;
     let preview = code_preview(body);
     let footer = if preview.truncated { 22.0 } else { 0.0 };
-    header + body_pad + preview.rendered_lines.max(1) as f32 * Tokens::DIFF_LINE_HEIGHT + footer
+    header
+        + body_pad
+        + preview.rendered_lines.max(1) as f32 * Tokens::THREAD_CODE_LINE_HEIGHT
+        + footer
 }
 
 /// Renders markdown with code and tables.
@@ -211,18 +238,25 @@ pub fn markdown_preview_blocks_shared_streaming(
         .min_w(gpui::px(0.0))
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_4())
         .children(blocks.iter().enumerate().map(|(index, block)| {
             let is_tail = streaming && index + 1 == block_count;
             let highlight = syntax_highlight && !is_tail && !is_incomplete_code_block(block);
             let inline = syntax_highlight && !is_tail;
-            render_block(block, highlight, inline, index)
+            div()
+                .w_full()
+                .pt(px(if index == 0 {
+                    0.0
+                } else {
+                    block_gap(&blocks[index - 1], block)
+                }))
+                .child(render_block(block, highlight, inline, index))
         }))
 }
 
 pub fn markdown_preview_blocks_thread_shared(
     blocks: Arc<[MarkdownBlock]>,
     streaming: bool,
+    controls: CodePreviewControls,
 ) -> impl IntoElement {
     let _profile = crate::shared::render_profile::span("markdown_render_blocks");
     let block_count = blocks.len();
@@ -232,16 +266,26 @@ pub fn markdown_preview_blocks_thread_shared(
         .min_w(gpui::px(0.0))
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_4())
         .children(blocks.iter().enumerate().map(|(index, block)| {
             let _is_tail = streaming && index + 1 == block_count;
-            render_block_thread(block, index)
+            div()
+                .w_full()
+                .pt(px(if index == 0 {
+                    0.0
+                } else {
+                    block_gap(&blocks[index - 1], block)
+                }))
+                .child(render_block_thread(block, index, &controls))
         }))
 }
 
-pub fn markdown_preview_thread_streaming(source: &str, streaming: bool) -> impl IntoElement {
+pub fn markdown_preview_thread_streaming(
+    source: &str,
+    streaming: bool,
+    controls: CodePreviewControls,
+) -> impl IntoElement {
     let blocks = parse_markdown_blocks_shared_streaming(source, streaming);
-    markdown_preview_blocks_thread_shared(blocks, streaming)
+    markdown_preview_blocks_thread_shared(blocks, streaming, controls)
 }
 
 fn is_incomplete_code_block(block: &MarkdownBlock) -> bool {
@@ -669,6 +713,15 @@ pub(crate) fn sanitize_highlights(
 }
 
 fn render_inline(text: &str, enabled: bool, base_size: gpui::AbsoluteLength) -> impl IntoElement {
+    render_inline_colored(text, enabled, base_size, Tokens::thread_body_text())
+}
+
+fn render_inline_colored(
+    text: &str,
+    enabled: bool,
+    base_size: gpui::AbsoluteLength,
+    color: gpui::Hsla,
+) -> impl IntoElement {
     if !enabled || text.is_empty() {
         return div()
             .min_w(gpui::px(0.0))
@@ -687,7 +740,7 @@ fn render_inline(text: &str, enabled: bool, base_size: gpui::AbsoluteLength) -> 
     }
 
     let default_style = TextStyle {
-        color: Tokens::text_primary().into(),
+        color,
         font_size: base_size,
         font_family: Tokens::ui_font_family().into(),
         ..Default::default()
@@ -722,7 +775,7 @@ fn render_block(
             .font_family(Tokens::ui_font_family())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
-            .text_color(Tokens::text_primary())
+            .text_color(Tokens::thread_body_text())
             .child(render_inline(
                 &text,
                 inline_enabled,
@@ -742,9 +795,15 @@ fn render_block(
                 .whitespace_normal()
                 .font_family(Tokens::ui_font_family())
                 .text_size(size)
+                .line_height(px(Tokens::thread_heading_line_height(*level)))
                 .font_weight(weight)
                 .text_color(Tokens::text_primary())
-                .child(render_inline(&text, inline_enabled, size.into()))
+                .child(render_inline_colored(
+                    &text,
+                    inline_enabled,
+                    size.into(),
+                    Tokens::text_primary(),
+                ))
                 .into_any_element()
         }
         MarkdownBlock::Rule => div()
@@ -774,16 +833,25 @@ fn render_block(
         MarkdownBlock::OrderedList(items) => {
             render_ordered_list(&items, inline_enabled).into_any_element()
         }
-        MarkdownBlock::Code { lang, body } => {
-            render_code_block(lang.as_deref(), &body, syntax_highlight, index).into_any_element()
-        }
+        MarkdownBlock::Code { lang, body } => render_code_block(
+            lang.as_deref(),
+            &body,
+            syntax_highlight,
+            index,
+            &CodePreviewControls::default(),
+        )
+        .into_any_element(),
         MarkdownBlock::Table { headers, rows } => {
             render_table(&headers, &rows, index).into_any_element()
         }
     }
 }
 
-fn render_block_thread(block: &MarkdownBlock, index: usize) -> gpui::AnyElement {
+fn render_block_thread(
+    block: &MarkdownBlock,
+    index: usize,
+    controls: &CodePreviewControls,
+) -> gpui::AnyElement {
     match block {
         MarkdownBlock::Paragraph(text) => div()
             .w_full()
@@ -792,7 +860,7 @@ fn render_block_thread(block: &MarkdownBlock, index: usize) -> gpui::AnyElement 
             .font_family(Tokens::ui_font_family())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
-            .text_color(Tokens::text_primary())
+            .text_color(Tokens::thread_body_text())
             .child(render_inline(text, true, Tokens::text_md().into()))
             .into_any_element(),
         MarkdownBlock::Heading(level, text) => {
@@ -808,9 +876,15 @@ fn render_block_thread(block: &MarkdownBlock, index: usize) -> gpui::AnyElement 
                 .whitespace_normal()
                 .font_family(Tokens::ui_font_family())
                 .text_size(size)
+                .line_height(px(Tokens::thread_heading_line_height(*level)))
                 .font_weight(weight)
                 .text_color(Tokens::text_primary())
-                .child(render_inline(text, true, size.into()))
+                .child(render_inline_colored(
+                    text,
+                    true,
+                    size.into(),
+                    Tokens::text_primary(),
+                ))
                 .into_any_element()
         }
         MarkdownBlock::Rule => div()
@@ -835,7 +909,7 @@ fn render_block_thread(block: &MarkdownBlock, index: usize) -> gpui::AnyElement 
         MarkdownBlock::List(items) => render_list(items, true).into_any_element(),
         MarkdownBlock::OrderedList(items) => render_ordered_list(items, true).into_any_element(),
         MarkdownBlock::Code { lang, body } => {
-            render_code_block_thread(lang.as_deref(), body, index).into_any_element()
+            render_code_block(lang.as_deref(), body, true, index, controls).into_any_element()
         }
         MarkdownBlock::Table { headers, rows } => {
             render_table_thread(headers, rows, index).into_any_element()
@@ -867,7 +941,7 @@ fn render_list(items: &[ListItem], inline_enabled: bool) -> impl IntoElement {
                         .font_family(Tokens::ui_font_family())
                         .text_size(Tokens::text_md())
                         .line_height(Tokens::text_md_leading())
-                        .text_color(Tokens::text_primary())
+                        .text_color(Tokens::thread_body_text())
                         .child(render_inline(
                             &item.text,
                             inline_enabled,
@@ -901,7 +975,7 @@ fn render_ordered_list(items: &[ListItem], inline_enabled: bool) -> impl IntoEle
                         .font_family(Tokens::ui_font_family())
                         .text_size(Tokens::text_md())
                         .line_height(Tokens::text_md_leading())
-                        .text_color(Tokens::text_primary())
+                        .text_color(Tokens::thread_body_text())
                         .child(render_inline(
                             &item.text,
                             inline_enabled,
@@ -1005,6 +1079,7 @@ pub(crate) fn split_highlights_by_line(
 fn render_code_text_line(
     line: String,
     spans: Vec<(std::ops::Range<usize>, HighlightStyle)>,
+    wrapped: bool,
 ) -> gpui::AnyElement {
     let line = if line.is_empty() {
         " ".to_string()
@@ -1014,8 +1089,10 @@ fn render_code_text_line(
     if spans.is_empty() {
         return div()
             .flex_shrink_0()
-            .h(px(Tokens::DIFF_LINE_HEIGHT))
-            .whitespace_nowrap()
+            .min_h(px(Tokens::THREAD_CODE_LINE_HEIGHT))
+            .line_height(px(Tokens::THREAD_CODE_LINE_HEIGHT))
+            .when(wrapped, |el| el.w_full().whitespace_normal())
+            .when(!wrapped, |el| el.whitespace_nowrap())
             .font_family(Tokens::code_font_family())
             .text_size(Tokens::text_code())
             .text_color(Tokens::code_fg())
@@ -1034,8 +1111,10 @@ fn render_code_text_line(
 
     div()
         .flex_shrink_0()
-        .h(px(Tokens::DIFF_LINE_HEIGHT))
-        .whitespace_nowrap()
+        .min_h(px(Tokens::THREAD_CODE_LINE_HEIGHT))
+        .line_height(px(Tokens::THREAD_CODE_LINE_HEIGHT))
+        .when(wrapped, |el| el.w_full().whitespace_normal())
+        .when(!wrapped, |el| el.whitespace_nowrap())
         .font_family(Tokens::code_font_family())
         .text_size(Tokens::text_code())
         .text_color(Tokens::code_fg())
@@ -1047,6 +1126,7 @@ fn render_code_lines(
     body: &str,
     lang: Option<&str>,
     syntax_highlight: bool,
+    wrapped: bool,
 ) -> Vec<gpui::AnyElement> {
     let lines: Vec<String> = if body.is_empty() {
         vec![String::new()]
@@ -1059,7 +1139,7 @@ fn render_code_lines(
         .into_iter()
         .enumerate()
         .map(|(ix, line)| {
-            render_code_text_line(line, per_line.get(ix).cloned().unwrap_or_default())
+            render_code_text_line(line, per_line.get(ix).cloned().unwrap_or_default(), wrapped)
         })
         .collect()
 }
@@ -1179,15 +1259,18 @@ fn decode_basic_html_entities(input: &str) -> String {
         .replace("&nbsp;", " ")
 }
 
-fn render_code_block(
+pub(super) fn render_code_block(
     lang: Option<&str>,
     body: &str,
     syntax_highlight: bool,
     index: usize,
+    controls: &CodePreviewControls,
 ) -> impl IntoElement {
+    let wrapped = !controls.unwrapped.contains(&index);
+    let on_toggle = controls.on_toggle.clone();
     let preview = code_preview(body);
     let label = lang.unwrap_or("text").to_string();
-    let code_lines = render_code_lines(&preview.body, lang, syntax_highlight);
+    let code_lines = render_code_lines(&preview.body, lang, syntax_highlight, wrapped);
     let full_body = std::sync::Arc::<str>::from(body);
     div()
         .w_full()
@@ -1204,19 +1287,44 @@ fn render_code_block(
             div()
                 .h(px(Tokens::CODE_HEADER_HEIGHT))
                 .flex_shrink_0()
-                .px(Tokens::spacing_3())
+                .pl(Tokens::spacing_3())
+                .pr(Tokens::spacing_1p5())
+                .pt(Tokens::spacing_1p5())
                 .flex()
                 .items_center()
                 .justify_between()
-                .font_family(Tokens::ui_font_family())
-                .text_size(Tokens::text_label())
+                .font_family(Tokens::code_font_family())
+                .text_size(Tokens::text_micro())
                 .text_color(Tokens::text_tertiary())
                 .child(label)
-                .child(btn_copy_icon_arc(
-                    element_key("copy-code", &index.to_string()),
-                    full_body,
-                    "Copy code",
-                )),
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(Tokens::spacing_0p5())
+                        .when_some(on_toggle, |el, callback| {
+                            el.child(
+                                btn_ghost(element_key("wrap-code", &index.to_string()))
+                                    .icon(crate::tokens::icons::wrap_lines())
+                                    .when(wrapped, |button| button.bg(Tokens::surface_active()))
+                                    .size(Tokens::spacing_6())
+                                    .tooltip(if wrapped {
+                                        "Disable line wrap"
+                                    } else {
+                                        "Enable line wrap"
+                                    })
+                                    .on_click(move |_, _, app| callback(index, app)),
+                            )
+                        })
+                        .child(
+                            btn_copy_icon_arc(
+                                element_key("copy-code", &index.to_string()),
+                                full_body,
+                                "Copy code",
+                            )
+                            .size(Tokens::spacing_6()),
+                        ),
+                ),
         )
         .child(
             div()
@@ -1227,11 +1335,10 @@ fn render_code_block(
                 .flex()
                 .flex_col()
                 .items_start()
-                .overflow_x_scroll()
-                .px(Tokens::spacing_3())
-                .pb(Tokens::spacing_3())
-                .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                .whitespace_nowrap()
+                .when(!wrapped, |el| el.overflow_x_scroll())
+                .px(px(Tokens::THREAD_CODE_PADDING_X))
+                .py(Tokens::spacing_3())
+                .line_height(px(Tokens::THREAD_CODE_LINE_HEIGHT))
                 .children(code_lines),
         )
         .when(preview.truncated, |el| {
@@ -1250,10 +1357,6 @@ fn render_code_block(
                     )),
             )
         })
-}
-
-fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> impl IntoElement {
-    render_code_block(lang, body, true, index)
 }
 
 struct CodePreview {
@@ -1354,7 +1457,7 @@ fn render_table(headers: &[String], rows: &[Vec<String>], index: usize) -> impl 
                         .py(Tokens::spacing_1())
                         .text_size(Tokens::text_label())
                         .line_height(Tokens::text_sm_leading_compact())
-                        .text_color(Tokens::text_primary())
+                        .text_color(Tokens::thread_body_text())
                         .child(render_inline(&cell, true, Tokens::text_label().into()))
                         .into_any_element()
                 }))

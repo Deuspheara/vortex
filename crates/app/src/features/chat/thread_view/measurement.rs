@@ -66,9 +66,23 @@ impl ThreadView {
                 message.hash(&mut signature);
                 retryable.hash(&mut signature);
             }
+            (
+                RowRef::ToolOutputBody { .. } | RowRef::ToolDetailLine { .. },
+                ThreadItem::ToolCall {
+                    command,
+                    output,
+                    tool_name,
+                    ..
+                },
+            ) => {
+                command.hash(&mut signature);
+                output.hash(&mut signature);
+                tool_name.hash(&mut signature);
+                format!("{row:?}").hash(&mut signature);
+            }
             _ => return None,
         }
-        Some((item.id().to_string(), signature.finish()))
+        Some((format!("{}:{row:?}", item.id()), signature.finish()))
     }
 
     pub(super) fn cached_measured_height(&self, row: RowRef) -> Option<gpui::Pixels> {

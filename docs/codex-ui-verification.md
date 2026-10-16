@@ -182,8 +182,9 @@ column and a 16 px trailing disclosure slot with 12 px chevrons. Expanded conten
 uses the same 28 px inset. Consecutive work rows have no extra inter-row gap;
 turn boundaries and prose transitions have separate spacing roles.
 
-Command output is one bounded, independently scrolling inset pane with a copy
-header, rather than dozens of virtual-history rows. The full output remains
+Command output remains one bounded, independently scrolling virtual-history row.
+The later whole-thread pass below replaces its inset pane/copy header with flat
+text and a hover copy action. The full output remains
 available for copying and existing preview limits remain enforced. Composer
 picker rows, search, selected backgrounds, and check marks fill their menu width;
 reasoning labels use readable casing without changing backend routing values.
@@ -302,13 +303,54 @@ remeasurement from narrow to full-width lanes, with details and actions remainin
 visible. Runtime logs contained no errors or borrow panics. No live inference was
 needed for these presentation checks.
 
+## Whole-thread typography and spacing comparison
+
+Opened the installed reference application, including populated conversations under
+Settled. Created a separate “Compare Command and Code Rendering” conversation
+without a project, selected Supervised execution, and approved only the requested
+`printf 'alpha\nbeta\n'` command. Expanded its work group, command output, and
+reasoning, and inspected the Rust preview. No project files were inspected or
+changed. Appearance settings confirmed SF Pro, interface base 16 px, Menlo code
+13 px, Comfortable width. The reference application’s thread text uses the 14 px role within that base.
+
+The corresponding native Vortex changes cover the whole transcript:
+
+- 14 px prose/activity text, 20/18/16 px headings with explicit line heights,
+  13 px Menlo code/output, and 11 px code-language labels. Prose uses the reference
+  foreground tone; headings remain stronger. Text buttons use the small type role.
+- Consecutive thinking and command rows keep a 24 px baseline rhythm and the same
+  24 px icon column / 6 px label gap. Collapsed reasoning shows its summary;
+  expanded reasoning uses Thought/Thinking and indented details. Commands show
+  their command text without a redundant Ran/Running prefix.
+- Expanded command/output content is flat and bounded. Removed the Output header,
+  bordered panel, and fixed label columns. Wrapped output participates in actual
+  width measurement, with a 256 px total height cap and independent scrolling.
+- Paragraph/list blocks use 12 px spacing, headings get 20 px lead-in and 8 px
+  follow-on spacing (12 px before code). This replaces the uniform 16 px block gap.
+- Completed and open streaming code fences share one preview renderer: 13 px code
+  on an 18 px line grid, a compact 30 px toolbar, balanced body padding, and copy
+  and wrapping controls. Wrap changes invalidate measured heights. The control
+  index survives the background parse transition; session switches clear local
+  preview preferences. Stable history remains virtualized and streaming retains
+  its hot-tail path.
+
+Native verification for the whole-thread pass used the normal application with
+an isolated store and deterministic app-server peer at 1305×964 and 1100×800.
+Checked a clean conversation with paragraphs, lists, two heading levels, collapsed
+and expanded reasoning/commands, flat output, long wrapped code, both wrap states,
+and following-message placement. Reopened the conversation, toggled the adjacent
+Changes panel to force remeasurement, exercised an open streaming fence and Stop,
+and rejected an approval back to idle. The 247-test workspace run includes a new
+regression for stable code-control identity across background prefix parsing;
+the existing output-height cap regression also passes. Runtime logs were clean.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.
 - `cargo clippy --workspace --all-targets` — passed with repository warnings.
 - `cargo check -p app` — passed with repository warnings.
 - `cargo build -p app` — passed; the normal build was exercised natively.
-- `cargo test --workspace` — 246 passed, 2 opt-in live tests ignored.
+- `cargo test --workspace` — 247 passed, 2 opt-in live tests ignored.
 - `cargo test -p app --features demo_mode fixture_is_isolated_idempotent_and_replayable`
   — passed.
 - `VORTEX_TEST_CODEX_MODEL=gpt-6-astra cargo test -p agent_codex --test backend -- --ignored --nocapture --test-threads=1`

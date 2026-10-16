@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use gpui::{IntoElement, div, prelude::*, px};
+use gpui::{IntoElement, div, prelude::*};
 
 use crate::features::chat::components::message::static_streaming_cursor;
 use crate::shared::components::markdown_preview::{
-    MarkdownBlock, markdown_preview_blocks_shared_streaming,
+    CodePreviewControls, MarkdownBlock, markdown_preview_blocks_thread_shared, render_code_block,
 };
 use crate::tokens::{Tokens, element_key};
 
@@ -125,7 +125,11 @@ fn open_fence_body(tail: &str) -> &str {
 }
 
 /// Cheap live tail — plain text or open monospace code block, no markdown AST.
-pub fn render_live_tail(tail: &str) -> impl IntoElement {
+pub fn render_live_tail(
+    tail: &str,
+    index: usize,
+    controls: &CodePreviewControls,
+) -> impl IntoElement {
     if tail.is_empty() {
         return div().into_any_element();
     }
@@ -136,55 +140,12 @@ pub fn render_live_tail(tail: &str) -> impl IntoElement {
             .font_family(Tokens::ui_font_family())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
-            .text_color(Tokens::text_primary())
+            .text_color(Tokens::thread_body_text())
             .child(tail.to_string())
             .into_any_element(),
         LiveRenderMode::OpenCodeFence { lang } => {
             let body = open_fence_body(tail);
-            let label = lang.as_deref().unwrap_or("text");
-            div()
-                .w_full()
-                .min_w(px(0.0))
-                .rounded(Tokens::radius_md())
-                .border_1()
-                .border_color(Tokens::border_strong())
-                .bg(Tokens::code_bg())
-                .overflow_hidden()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .h(px(Tokens::CODE_HEADER_HEIGHT))
-                        .flex_shrink_0()
-                        .px(Tokens::spacing_3())
-                        .flex()
-                        .items_center()
-                        .font_family(Tokens::ui_font_family())
-                        .text_size(Tokens::text_label())
-                        .text_color(Tokens::text_tertiary())
-                        .child(label.to_string()),
-                )
-                .child(
-                    div()
-                        .id("streaming-code-body")
-                        .w_full()
-                        .min_w(px(0.0))
-                        .overflow_x_scroll()
-                        .px(Tokens::spacing_3())
-                        .pb(Tokens::spacing_3())
-                        .font_family(Tokens::code_font_family())
-                        .text_size(Tokens::text_code())
-                        .text_color(Tokens::code_fg())
-                        .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                        .children(body.lines().map(|line| {
-                            div()
-                                .h(px(Tokens::DIFF_LINE_HEIGHT))
-                                .flex_shrink_0()
-                                .whitespace_nowrap()
-                                .child(line.to_string())
-                        })),
-                )
-                .into_any_element()
+            render_code_block(lang.as_deref(), body, false, index, controls).into_any_element()
         }
     }
 }
@@ -200,39 +161,73 @@ pub(crate) fn streaming_text_parts(source: &str, sealed_end: usize) -> (&str, &s
     split_at_seal_boundary(source)
 }
 
+fn live_block_index(sealed: &SealedBlockCache, pending_prefix: &str) -> usize {
+    sealed.blocks.len()
+        + crate::shared::components::markdown_preview::parse_markdown_blocks_shared_streaming(
+            pending_prefix,
+            false,
+        )
+        .len()
+}
+
 /// Streaming assistant body: sealed markdown blocks + live tail + cursor.
 pub fn streaming_assistant_body(
     id: &str,
     source: &str,
     sealed: &SealedBlockCache,
     show_cursor: bool,
+    controls: CodePreviewControls,
 ) -> impl IntoElement {
     let (pending_prefix, tail) = streaming_text_parts(source, sealed.sealed_end);
     let has_sealed = sealed.sealed_end > 0;
+    let tail_index = live_block_index(sealed, pending_prefix);
 
     div()
         .id(element_key("assistant-stream", id))
         .w_full()
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_2())
+        .gap(Tokens::spacing_3())
         .when(has_sealed, |el| {
-            el.child(markdown_preview_blocks_shared_streaming(
+            el.child(markdown_preview_blocks_thread_shared(
                 Arc::clone(&sealed.blocks),
-                true,
                 false,
+                controls.clone(),
             ))
         })
         .when(!pending_prefix.is_empty(), |el| {
-            el.child(render_live_tail(pending_prefix))
+            el.child(render_live_tail(
+                pending_prefix,
+                sealed.blocks.len(),
+                &controls,
+            ))
         })
-        .when(!tail.is_empty(), |el| el.child(render_live_tail(tail)))
+        .when(!tail.is_empty(), |el| {
+            el.child(render_live_tail(tail, tail_index, &controls))
+        })
         .when(show_cursor, |el| el.child(static_streaming_cursor()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn code_control_index_survives_background_prefix_parsing() {
+        let source = "Introduction.\n\n```rust\nfn main() {}";
+        let (prefix, _) = streaming_text_parts(source, 0);
+        let pending_index = live_block_index(&SealedBlockCache::default(), prefix);
+        let sealed = SealedBlockCache {
+            sealed_end: prefix.len(),
+            blocks:
+                crate::shared::components::markdown_preview::parse_markdown_blocks_shared_streaming(
+                    prefix, false,
+                ),
+            ..Default::default()
+        };
+        assert_eq!(pending_index, 1);
+        assert_eq!(live_block_index(&sealed, ""), pending_index);
+    }
 
     #[test]
     fn first_update_keeps_prose_before_open_code_until_parse_finishes() {

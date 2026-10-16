@@ -271,7 +271,11 @@ impl ThreadView {
                             .pr(Tokens::spacing_1())
                             .max_h(px(crate::features::chat::layout::REASONING_BODY_MAX_H))
                             .overflow_y_scroll()
-                            .child(markdown_preview_thread_streaming(summary, streaming)),
+                            .child(markdown_preview_thread_streaming(
+                                summary,
+                                streaming,
+                                self.code_preview_controls(id, cx),
+                            )),
                     ),
                     group_pos,
                 )
@@ -728,6 +732,7 @@ impl ThreadView {
                     &markdown,
                     &sealed,
                     show_cursor,
+                    self.code_preview_controls(&id, cx),
                 ))
                 .when_some(jump_to_latest, |el, button| el.child(button))
                 .into_any_element();
@@ -760,7 +765,11 @@ impl ThreadView {
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
             .group(hover_group)
-            .child(markdown_preview_blocks_thread_shared(blocks, false))
+            .child(markdown_preview_blocks_thread_shared(
+                blocks,
+                false,
+                self.code_preview_controls(&id, cx),
+            ))
             .when(show_actions, |el| el.child(actions))
             .into_any_element()
     }

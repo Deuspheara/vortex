@@ -29,8 +29,8 @@ pub(crate) fn live_tail_height(tail: &str) -> f32 {
     {
         let lines = tail.lines().count().saturating_sub(1).max(1) as f32;
         return Tokens::CODE_HEADER_HEIGHT
-            + f32::from(Tokens::spacing_3())
-            + lines * Tokens::DIFF_LINE_HEIGHT;
+            + f32::from(Tokens::spacing_3()) * 2.0
+            + lines * Tokens::THREAD_CODE_LINE_HEIGHT;
     }
     let visual_lines = tail
         .lines()
@@ -48,6 +48,32 @@ pub(crate) fn markdown_content_hash(source: &str, streaming: bool) -> u64 {
 }
 
 impl ThreadView {
+    pub(crate) fn code_preview_controls(
+        &self,
+        item_id: &str,
+        cx: &Context<Self>,
+    ) -> crate::shared::components::markdown_preview::CodePreviewControls {
+        let id = item_id.to_string();
+        let view = cx.entity().downgrade();
+        crate::shared::components::markdown_preview::CodePreviewControls {
+            unwrapped: self
+                .unwrapped_code_blocks
+                .iter()
+                .filter_map(|(item, index)| (item == item_id).then_some(*index))
+                .collect(),
+            on_toggle: Some(Arc::new(move |index, app| {
+                let _ = view.update(app, |view, cx| {
+                    let key = (id.clone(), index);
+                    if !view.unwrapped_code_blocks.remove(&key) {
+                        view.unwrapped_code_blocks.insert(key);
+                    }
+                    view.measured_rows.clear();
+                    cx.notify();
+                });
+            })),
+        }
+    }
+
     pub(crate) fn streaming_assistant_height_estimate_cached(
         &self,
         item_id: &str,

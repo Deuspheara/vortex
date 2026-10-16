@@ -351,10 +351,7 @@ pub fn row_height(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) -
 }
 
 pub fn tool_output_body_height(lines: usize) -> f32 {
-    (lines.max(1) as f32 * Tokens::DIFF_LINE_HEIGHT
-        + Tokens::TOOL_OUTPUT_HEADER_HEIGHT
-        + f32::from(Tokens::spacing_3()) * 2.0
-        + 2.0)
+    (lines.max(1) as f32 * f32::from(Tokens::text_sm_leading()) + f32::from(Tokens::spacing_2()))
         .min(Tokens::TOOL_OUTPUT_MAX_HEIGHT)
 }
 

@@ -45,6 +45,11 @@ pub fn render_reasoning_header_row(
     let running = is_running(status);
     let label = if running { "Thinking" } else { "Thought" };
     let preview = reasoning_preview(summary).map(|s| s.replace("**", ""));
+    let heading = if expanded {
+        label.to_string()
+    } else {
+        preview.unwrap_or_else(|| label.into())
+    };
     activity_group_wrap(
         timeline_row(
             element_key("reasoning-header", item_id),
@@ -57,23 +62,16 @@ pub fn render_reasoning_header_row(
                 .child(super::activity_icon("reasoning"))
                 .child(
                     div()
-                        .flex_shrink_0()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .whitespace_nowrap()
+                        .overflow_hidden()
                         .text_size(Tokens::text_sm())
+                        .line_height(Tokens::text_md_leading())
                         .font_family(Tokens::ui_font_family())
                         .text_color(Tokens::text_secondary())
-                        .child(label),
+                        .child(heading),
                 )
-                .when_some(preview, |el, text| {
-                    el.child(
-                        div()
-                            .min_w(px(0.0))
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_size(Tokens::text_sm())
-                            .text_color(Tokens::text_secondary())
-                            .child(text),
-                    )
-                })
                 .into_any_element(),
             crate::shared::components::collapsible_row::disclosure_chevron(expanded)
                 .into_any_element(),

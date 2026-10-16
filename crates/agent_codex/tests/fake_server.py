@@ -52,18 +52,21 @@ for line in sys.stdin:
    for n in (1,2):
     notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd-'+str(n),'type':'commandExecution','command':'echo '+str(n)}})
     send({'id':'parallel-'+str(n),'method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd-'+str(n),'command':'echo '+str(n)}})
-  elif text in ('ui-thinking','ui-style','ui-stream'):
+  elif text in ('ui-thinking','ui-style','ui-stream','ui-thread'):
    # Native transcript QA: protocol events only; no command or file is executed.
    notice('item/reasoning/summaryTextDelta',{'threadId':'thread-1','turnId':active['id'],'itemId':'ui-reasoning','summaryIndex':0,'delta':'**Checking the transcript layout**\nCompare the icon column, typography, command output, and code preview at narrow and wide widths.'})
    if text=='ui-stream':
     notice('item/agentMessage/delta',{'threadId':'thread-1','turnId':active['id'],'itemId':'message-'+active['id'],'delta':'A streaming code preview.\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("STREAM-TAIL-LINE");\n}'})
-   if text=='ui-style':
+   if text in ('ui-style','ui-thread'):
     cmd={'id':'ui-command','type':'commandExecution','command':"printf 'alpha\\nbeta\\n'",'status':'inProgress'}
     notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':cmd})
     notice('item/commandExecution/outputDelta',{'threadId':'thread-1','turnId':active['id'],'itemId':'ui-command','delta':'alpha\nbeta\n'})
     cmd.update(status='completed',exitCode=0,aggregatedOutput='alpha\nbeta\n')
     notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':cmd})
-    finish('The command output stays in the activity log.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n}\n```\n\nTHREAD-STYLE-END')
+    if text=='ui-thread':
+     finish('The command printed `alpha` and `beta`.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n    let description = "A deliberately long code line for checking wrapping, horizontal scrolling, and readable type in a narrow transcript without losing the end of the line: CODE-LINE-END";\n}\n```\n\nA second paragraph keeps the same reading size.\n\n- One compact list item\n- Another item with **bold text**\n\n### Small heading\n\nThread typography check complete.')
+    else:
+     finish('The command output stays in the activity log.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n}\n```\n\nTHREAD-STYLE-END')
   elif text=='ui-usage':
    totals={'inputTokens':0,'outputTokens':0,'cachedInputTokens':0,'totalTokens':0}
    for input_tokens,output_tokens,cached in [(19360,95,5632),(19523,29,19200),(19691,2135,5632),(21850,107,19328),(22045,53,19456)]:
