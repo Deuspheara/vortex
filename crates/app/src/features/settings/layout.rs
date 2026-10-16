@@ -100,7 +100,8 @@ pub fn render_settings(props: SettingsProps) -> impl IntoElement {
                     .border_r_1()
                     .border_color(Tokens::divider())
                     .px(Tokens::spacing_3())
-                    .py(Tokens::spacing_4())
+                    .pt(px(Tokens::TOP_BAR_HEIGHT))
+                    .pb(Tokens::spacing_4())
                     .child(render_header(entity.clone()))
                     .child(
                         div()

@@ -258,13 +258,14 @@ pub fn row_height_with_collapsed(
             };
             let label_h = f32::from(Tokens::text_sm_leading_compact());
             let stack_gap = f32::from(Tokens::spacing_1());
-            let top_inset = f32::from(Tokens::spacing_1());
+            // Match the user bubble's top and bottom padding.
+            let vertical_padding = 2.0 * f32::from(Tokens::spacing_3());
             let see_more = if truncatable {
                 stack_gap + USER_SEE_MORE_H
             } else {
                 0.0
             };
-            top_inset
+            vertical_padding
                 + label_h
                 + stack_gap
                 + lines as f32 * LINE_LEADING

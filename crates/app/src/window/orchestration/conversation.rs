@@ -8,6 +8,23 @@ use crate::features::shell::components::tree_row::project_expand_key;
 use crate::features::shell::state::{Conversation, ConversationId, ProjectId};
 
 impl AgentWindow {
+    pub(crate) fn reset_selected_session_presentation(&mut self) {
+        self.active_run_id = None;
+        self.pending_approval_id = None;
+        self.pending_thread_approval = None;
+        self.diff_panel = Default::default();
+        self.diff_preview_pending = None;
+        self.diff_preview_parse_generation = self.diff_preview_parse_generation.wrapping_add(1);
+        self.artifact_store
+            .update_diff_files("patch-preview", Vec::new());
+        self.composer_error = None;
+        self.provider_blocked = None;
+        self.run_cost_usd = 0.0;
+        self.status = Default::default();
+        self.status.model = self.selected_model.clone();
+        self.reset_agent_status_to_idle();
+    }
+
     pub fn new_conversation_from_nav(&mut self, cx: &mut Context<Self>) {
         if let Some(project_id) = self
             .selected_project_id
@@ -165,6 +182,8 @@ impl AgentWindow {
         }
         self.selected_project_id = Some(pid);
         self.selected_conversation_id = Some(conv.id.clone());
+        self.replay_session_events(&conv.id.0, cx);
+        self.set_inspector_mode(crate::features::inspector::state::InspectorMode::Hidden, cx);
         self.refresh_branch_items_for_project(&conv.project_id);
         let key = project_expand_key(&conv.project_id);
         self.expanded_items.insert(key);

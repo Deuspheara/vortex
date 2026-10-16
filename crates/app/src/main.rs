@@ -41,9 +41,15 @@ fn main() {
 
         // Compute bounds before spawn (cx is &App here)
         #[cfg(all(feature = "demo_mode", debug_assertions))]
-        let bounds = Bounds::centered(None, size(px(1440.), px(1000.)), cx);
+        let preferred_size = size(px(1100.), px(720.));
         #[cfg(not(all(feature = "demo_mode", debug_assertions)))]
-        let bounds = Bounds::centered(None, size(px(1400.), px(900.)), cx);
+        let preferred_size = size(px(1400.), px(900.));
+        // Keep controls reachable on laptop displays, including isolated previews.
+        let window_size = cx.primary_display().map_or(preferred_size, |display| {
+            let available = display.bounds().size;
+            preferred_size.min(&size(available.width * 0.9, available.height * 0.9))
+        });
+        let bounds = Bounds::centered(None, window_size, cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(

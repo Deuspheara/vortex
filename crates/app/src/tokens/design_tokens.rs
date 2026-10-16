@@ -444,9 +444,9 @@ impl Tokens {
     pub const INSPECTOR_WIDTH_COMPACT: f32 = 400.0;
     pub const INSPECTOR_WIDTH_REVIEW: f32 = 560.0;
     pub const DIFF_PANEL_WIDTH: f32 = Self::INSPECTOR_WIDTH_REVIEW;
-    pub const DIFF_PANEL_MIN_WIDTH: f32 = 440.0;
+    pub const DIFF_PANEL_MIN_WIDTH: f32 = 320.0;
     pub const DIFF_PANEL_MAX_WIDTH: f32 = 760.0;
-    pub const CENTER_MIN_WIDTH: f32 = 520.0;
+    pub const CENTER_MIN_WIDTH: f32 = 400.0;
     pub const TOP_BAR_HEIGHT: f32 = 44.0;
     /// Left inset clearing macOS traffic-light window controls.
     pub const TOP_BAR_TRAFFIC_LIGHT_INSET: f32 = 78.0;

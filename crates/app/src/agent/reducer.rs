@@ -1529,6 +1529,7 @@ impl AgentWindow {
     }
 
     pub fn replay_session_events(&mut self, session_key: &str, cx: &mut Context<Self>) {
+        self.reset_selected_session_presentation();
         let session = agent_protocol::SessionId::new(session_key);
         let conv_id = ConversationId(session_key.to_string());
         if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == conv_id) {

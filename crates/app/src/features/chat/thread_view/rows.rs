@@ -788,6 +788,7 @@ fn assistant_action_row(
 pub(crate) fn render_empty_thread_state() -> impl IntoElement {
     div()
         .id("thread-empty-state")
+        .min_w(px(0.0))
         .flex_1()
         .w_full()
         .max_w(px(Tokens::THREAD_MAX_WIDTH))
@@ -796,6 +797,8 @@ pub(crate) fn render_empty_thread_state() -> impl IntoElement {
         .justify_center()
         .child(
             div()
+                .w_full()
+                .min_w(px(0.0))
                 .max_w(px(Tokens::THREAD_EMPTY_COPY_WIDTH))
                 .flex()
                 .flex_col()
