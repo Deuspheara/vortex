@@ -11,7 +11,7 @@ use gpui::{Pixels, Size, px, size};
 use crate::features::agent_activity::components::tool_call::tool_call_detail_row_count;
 use crate::features::chat::layout::{
     self, APPROVAL_H, DIFF_FILE_H, HEADER_H, LINE_H, PLAN_STATUS_H, REASONING_BODY_MAX_H,
-    RUN_ERROR_TITLE_H, SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
+    SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
 };
 use crate::features::shell::state::{
     AgentStatus, ChoiceMeta, ChoiceOption, DiffFileSummary, ThreadItem, USER_MESSAGE_PREVIEW_LINES,
@@ -94,7 +94,7 @@ fn top_gap(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) -> f32 {
         return layout::activity_band_gap();
     }
     if prev_row.is_some_and(|prev| prev_row_item_is_activity(prev, items)) {
-        return f32::from(Tokens::spacing_3());
+        return f32::from(Tokens::spacing_2());
     }
     f32::from(Tokens::spacing_4())
 }
@@ -463,12 +463,10 @@ fn estimate_choice_height(
 }
 
 fn estimate_run_error_height(message: &str) -> f32 {
-    let msg_lines = message.chars().count().div_ceil(55).max(1) as f32;
-    let content_h = RUN_ERROR_TITLE_H + layout::run_error_inner_gap() + msg_lines * LINE_LEADING;
-    layout::run_error_py()
-        + content_h.max(14.0)
-        + layout::run_error_py()
-        + layout::assistant_body_pt()
+    // Visible errors are measured at the actual lane width, including actions.
+    // This is only the initial virtual-list estimate before first layout.
+    let body = message.split_once('\n').map_or(message, |(_, body)| body);
+    HEADER_H + estimate_wrapped_text_height(body, 55, LINE_LEADING) + f32::from(Tokens::spacing_2())
 }
 
 pub fn reasoning_preview(summary: &str) -> String {

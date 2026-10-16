@@ -1,6 +1,5 @@
 //! Shared thread layout constants — gaps and heights for manifest + components.
 
-use crate::shared::components::markdown_preview::LINE_LEADING;
 use crate::tokens::Tokens;
 
 #[inline]
@@ -10,12 +9,12 @@ fn px(v: gpui::Pixels) -> f32 {
 
 /// Space before a new conversational turn — compact but readable.
 pub fn turn_gap() -> f32 {
-    px(Tokens::spacing_8())
+    px(Tokens::spacing_4())
 }
 
 /// Space before the first row in an agent activity band.
 pub fn activity_band_gap() -> f32 {
-    px(Tokens::spacing_6())
+    px(Tokens::spacing_4())
 }
 
 /// Consecutive activity headers form one uninterrupted 24 px rhythm.
@@ -25,7 +24,7 @@ pub fn activity_inner_gap() -> f32 {
 
 /// Space between assistant prose and the following tool/reasoning band.
 pub fn post_assistant_activity_gap() -> f32 {
-    px(Tokens::spacing_3())
+    px(Tokens::spacing_2())
 }
 
 /// Vertical padding inside user message bubble (both sides) — `Tokens::spacing_4()`.
@@ -35,19 +34,6 @@ pub fn user_bubble_py() -> f32 {
 
 /// Height of truncated-output notice rows — `Tokens::ROW_HEIGHT_XS`.
 pub const TRUNCATED_H: f32 = Tokens::ROW_HEIGHT_XS;
-
-/// Vertical padding inside run-error row (both sides) — `Tokens::spacing_4()`.
-pub fn run_error_py() -> f32 {
-    px(Tokens::spacing_4())
-}
-
-/// Title line height in run-error estimate — `LINE_LEADING`.
-pub const RUN_ERROR_TITLE_H: f32 = LINE_LEADING;
-
-/// Gap between error title and message — `Tokens::spacing_0p5()`.
-pub fn run_error_inner_gap() -> f32 {
-    px(Tokens::spacing_0p5())
-}
 
 /// Max expanded reasoning body height.
 pub const REASONING_BODY_MAX_H: f32 = 480.0;

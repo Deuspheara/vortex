@@ -567,6 +567,7 @@ impl ThreadView {
                     title,
                     message: msg,
                     retryable: retry,
+                    stopped: id.starts_with("stopped-"),
                     on_open_settings: (!id.starts_with("stopped-")).then(|| {
                         Box::new(move |app: &mut gpui::App| {
                             settings_entity.update(app, |view, cx| view.open_settings(cx));

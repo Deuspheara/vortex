@@ -57,6 +57,15 @@ impl ThreadView {
                 summary.hash(&mut signature);
                 matches!(status, AgentStatus::Thinking).hash(&mut signature);
             }
+            (
+                RowRef::RunError { .. },
+                ThreadItem::RunError {
+                    message, retryable, ..
+                },
+            ) => {
+                message.hash(&mut signature);
+                retryable.hash(&mut signature);
+            }
             _ => return None,
         }
         Some((item.id().to_string(), signature.finish()))

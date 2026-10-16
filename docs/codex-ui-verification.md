@@ -276,6 +276,29 @@ conversation showed unavailable usage rather than inheriting the other chat’s
 value. See the context-accounting section in
 [codex-backend.md](codex-backend.md) for the investigation and its limits.
 
+## Thread spacing and failure presentation follow-up
+
+Compared the installed reference application window (currently its empty workspace) and the
+available reference application timeline/WorkLog source. Conversational turn and first-activity gaps
+are now 16 px, with 8 px between activity and prose; consecutive activity headers
+retain their uninterrupted 24 px rhythm. This removes the previous 32/24 px gaps
+without changing virtualized history or the streaming hot tail.
+
+Failures use a flat circle-alert row with destructive-colored title, 14 px detail
+text, and the same icon column/detail indentation as activity rows. Removed the
+amber stripe and empty action-container spacing. Cancellation uses a neutral
+stopped row. Errors now participate in cached width-aware layout measurement,
+including wrapped details and settings actions, so their estimated height cannot
+leave blank space or overlap the following turn after resizing.
+
+Exercised the normal native app using the deterministic Codex protocol peer:
+unsupported-request failure, wrapped details in the narrow chat lane alongside
+Changes, Open settings and return, streaming reasoning/code, Stop, and a completed
+command/code response. Reopened at 1305×964 and toggled Changes to verify error
+remeasurement from narrow to full-width lanes, with details and actions remaining
+visible. Runtime logs contained no errors or borrow panics. No live inference was
+needed for these presentation checks.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.
