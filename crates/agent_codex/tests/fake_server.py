@@ -5,6 +5,7 @@ root=pathlib.Path(__file__).parent
 history=root/'history.json'
 turns=json.loads(history.read_text()) if history.exists() else []
 active=None
+parallel_pending=set()
 
 def send(value):
  print(json.dumps(value),flush=True)
@@ -21,7 +22,10 @@ for line in sys.stdin:
  req=json.loads(line);method=req.get('method');params=req.get('params',{})
  if not method:
   (root/'decision.json').write_text(json.dumps(req))
-  if req.get('result',{}).get('decision')=='accept':finish('approved')
+  if req.get('id') in parallel_pending:
+   parallel_pending.remove(req['id'])
+   if not parallel_pending:finish('both approved')
+  elif req.get('result',{}).get('decision')=='accept':finish('approved')
   else:finish('denied')
  elif method=='initialize':reply(req,{'userAgent':'fake'})
  elif method=='initialized':pass
@@ -43,6 +47,11 @@ for line in sys.stdin:
   if text=='approval':
    notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd','type':'commandExecution','command':'echo test'}})
    send({'id':'approval-1','method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd','command':'echo test'}})
+  elif text=='parallel-approval':
+   parallel_pending={'parallel-1','parallel-2'}
+   for n in (1,2):
+    notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd-'+str(n),'type':'commandExecution','command':'echo '+str(n)}})
+    send({'id':'parallel-'+str(n),'method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd-'+str(n),'command':'echo '+str(n)}})
   elif text=='wait':pass
   elif text=='unknown-request':
    send({'id':'unknown-1','method':'item/permissions/requestApproval','params':{'threadId':'thread-1','turnId':active['id']}})

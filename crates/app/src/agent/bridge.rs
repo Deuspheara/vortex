@@ -104,9 +104,8 @@ impl AgentBridge {
         let codex = if use_mock {
             None
         } else {
-            let binary = std::env::var_os("VORTEX_CODEX_BIN")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| "codex".into());
+            let binary = agent_codex::discover_binary();
+            tracing::info!(binary = %binary.display(), "Starting local Codex backend");
             Some(agent_codex::CodexBackend::spawn(
                 store,
                 events_tx,

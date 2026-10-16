@@ -16,6 +16,10 @@ pub struct RunProjection {
     pub texts: HashMap<String, String>,
     pub started: HashSet<String>,
     pub completed: HashSet<String>,
+    #[serde(default)]
+    pub previews: HashMap<String, String>,
+    #[serde(default)]
+    pub paths: HashMap<String, Vec<String>>,
 }
 impl RunProjection {
     pub fn new(run_id: RunId, session_id: SessionId, thread_id: String) -> Self {
@@ -29,6 +33,8 @@ impl RunProjection {
             texts: HashMap::new(),
             started: HashSet::new(),
             completed: HashSet::new(),
+            previews: HashMap::new(),
+            paths: HashMap::new(),
         }
     }
     pub fn usage_update(&mut self, total: &Value) -> Option<AgentEvent> {
@@ -63,6 +69,12 @@ impl RunProjection {
         snapshot: bool,
         reasoning: bool,
     ) -> Option<AgentEvent> {
+        let separate = !self.texts.contains_key(key)
+            && !reasoning
+            && self
+                .texts
+                .keys()
+                .any(|key| !key.starts_with("reasoning/") && !key.starts_with("plan/"));
         let seen = self.texts.entry(key.to_string()).or_default();
         let suffix = if snapshot {
             text.strip_prefix(seen.as_str())?
@@ -82,7 +94,11 @@ impl RunProjection {
         } else {
             AgentEvent::AssistantTextDelta {
                 run_id: self.run_id.clone(),
-                text: suffix,
+                text: if separate {
+                    format!("\n\n{suffix}")
+                } else {
+                    suffix
+                },
             }
         })
     }
@@ -96,7 +112,47 @@ impl RunProjection {
             }
             return events;
         }
-        if kind == "reasoning" || kind == "userMessage" {
+        if kind == "reasoning" {
+            if complete {
+                for (index, summary) in item["summary"].as_array().into_iter().flatten().enumerate()
+                {
+                    if let Some(e) = self.text(
+                        &reasoning_key(id, index),
+                        summary.as_str().unwrap_or(""),
+                        true,
+                        true,
+                    ) {
+                        events.push(e);
+                    }
+                }
+                if item["summary"].as_array().is_none_or(|v| v.is_empty()) {
+                    for (index, content) in
+                        item["content"].as_array().into_iter().flatten().enumerate()
+                    {
+                        if let Some(event) = self.text(
+                            &format!("reasoning/raw/{id}/{index}"),
+                            content.as_str().unwrap_or(""),
+                            true,
+                            true,
+                        ) {
+                            events.push(event);
+                        }
+                    }
+                }
+            }
+            return events;
+        }
+        if kind == "userMessage" {
+            return events;
+        }
+        if kind == "plan" {
+            if complete && self.completed.insert(id.into()) {
+                events.push(AgentEvent::PlanUpdated {
+                    run_id: self.run_id.clone(),
+                    markdown: string(item, "text").into(),
+                    created_at: chrono::Utc::now().to_rfc3339(),
+                });
+            }
             return events;
         }
         let name = match kind {
@@ -123,6 +179,18 @@ impl RunProjection {
             _ => kind.to_string(),
         };
         let call_id = self.call_id(id);
+        self.previews.insert(id.into(), preview.clone());
+        if kind == "fileChange" {
+            self.paths.insert(
+                id.into(),
+                item["changes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|c| c["path"].as_str().map(str::to_string))
+                    .collect(),
+            );
+        }
         if self.started.insert(id.to_string()) {
             events.push(AgentEvent::ToolCallStarted {
                 run_id: self.run_id.clone(),
@@ -139,14 +207,7 @@ impl RunProjection {
                 .map(|changes| {
                     changes
                         .iter()
-                        .map(|c| {
-                            format!(
-                                "--- a/{}\n+++ b/{}\n{}",
-                                string(c, "path"),
-                                string(c, "path"),
-                                string(c, "diff")
-                            )
-                        })
+                        .map(|c| change_diff(c))
                         .collect::<Vec<_>>()
                         .join("\n")
                 })
@@ -163,7 +224,13 @@ impl RunProjection {
         if complete && self.completed.insert(id.to_string()) {
             let status = match string(item, "status") {
                 "failed" => ToolStatus::Failed,
-                "declined" => ToolStatus::Denied,
+                "declined" | "denied" => ToolStatus::Denied,
+                "interrupted" | "cancelled" => ToolStatus::Cancelled,
+                _ if kind == "commandExecution"
+                    && item["exitCode"].as_i64().is_some_and(|code| code != 0) =>
+                {
+                    ToolStatus::Failed
+                }
                 _ => ToolStatus::Completed,
             };
             let body = item["aggregatedOutput"]
@@ -174,6 +241,11 @@ impl RunProjection {
                         .filter(|v| !v.is_null())
                         .map(Value::to_string)
                 });
+            let body = body.or_else(|| {
+                item.get("error")
+                    .filter(|v| !v.is_null())
+                    .map(Value::to_string)
+            });
             events.push(AgentEvent::ToolCallFinished {
                 run_id: Some(self.run_id.clone()),
                 call_id,
@@ -183,6 +255,49 @@ impl RunProjection {
             });
         }
         events
+    }
+}
+pub fn reasoning_key(id: &str, index: usize) -> String {
+    if index == 0 {
+        format!("reasoning/{id}")
+    } else {
+        format!("reasoning/{id}/{index}")
+    }
+}
+
+fn change_diff(change: &Value) -> String {
+    let path = string(change, "path");
+    let diff = string(change, "diff");
+    // Codex sends literal contents for adds/deletes, and unified hunks for updates.
+    let kind = string(&change["kind"], "type");
+    match kind {
+        "add" | "delete" => {
+            let lines = diff.lines().collect::<Vec<_>>();
+            let (old, new, hunk, prefix) = if kind == "add" {
+                (
+                    "/dev/null".to_string(),
+                    format!("b/{path}"),
+                    format!("@@ -0,0 +1,{} @@", lines.len()),
+                    '+',
+                )
+            } else {
+                (
+                    format!("a/{path}"),
+                    "/dev/null".to_string(),
+                    format!("@@ -1,{} +0,0 @@", lines.len()),
+                    '-',
+                )
+            };
+            format!(
+                "--- {old}\n+++ {new}\n{hunk}\n{}",
+                lines
+                    .into_iter()
+                    .map(|l| format!("{prefix}{l}\n"))
+                    .collect::<String>()
+            )
+        }
+        _ if diff.starts_with("diff --git ") || diff.starts_with("--- ") => diff.to_string(),
+        _ => format!("--- a/{path}\n+++ b/{path}\n{diff}"),
     }
 }
 pub fn string<'a>(value: &'a Value, key: &str) -> &'a str {
@@ -210,6 +325,23 @@ mod tests {
         let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
         let item = json!({"id":"i","type":"commandExecution","command":"pwd","status":"completed","aggregatedOutput":"/tmp"});
         assert_eq!(p.item(&item, true).len(), 2);
+        assert!(p.item(&item, true).is_empty());
+    }
+    #[test]
+    fn literal_new_file_contents_become_reviewable_diff() {
+        let diff = change_diff(
+            &json!({"path":"proof.txt","kind":{"type":"add"},"diff":"proof version one\n"}),
+        );
+        assert!(diff.contains("+++ b/proof.txt\n@@ -0,0 +1,1 @@\n+proof version one"));
+    }
+    #[test]
+    fn reasoning_snapshot_reconciles_each_summary_part() {
+        let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
+        p.text(&reasoning_key("i", 0), "First", false, true);
+        let item = json!({"id":"i","type":"reasoning","summary":["First part", "Second part"]});
+        let events = p.item(&item, true);
+        assert!(matches!(&events[0], AgentEvent::ReasoningDelta{text,..} if text == " part"));
+        assert!(matches!(&events[1], AgentEvent::ReasoningDelta{text,..} if text == "Second part"));
         assert!(p.item(&item, true).is_empty());
     }
 }

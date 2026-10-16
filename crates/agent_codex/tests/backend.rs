@@ -162,10 +162,11 @@ async fn approval_accept_and_reject_use_correlated_request_id() {
             }
         })
         .unwrap();
-        assert_eq!(
-            text(&finished(&rx).await),
-            if accept { "approved" } else { "denied" }
-        );
+        let completed = finished(&rx).await;
+        assert!(completed.iter().any(
+            |e| matches!(e, AgentEvent::ApprovalResolved { accepted, .. } if *accepted == accept)
+        ));
+        assert_eq!(text(&completed), if accept { "approved" } else { "denied" });
         let reply: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(f.dir.path().join("decision.json")).unwrap(),
         )
@@ -173,6 +174,36 @@ async fn approval_accept_and_reject_use_correlated_request_id() {
         assert_eq!(reply["id"], "approval-1");
     }
 }
+#[tokio::test]
+async fn concurrent_approvals_are_presented_one_at_a_time() {
+    let f = Fixture::new();
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    start(&b, "parallel-approval");
+    let first = until(&rx, |e| matches!(e, AgentEvent::ApprovalRequested { .. })).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        !rx.drain()
+            .any(|e| matches!(e, AgentEvent::ApprovalRequested { .. }))
+    );
+    let AgentEvent::ApprovalRequested { approval_id, .. } = first.last().unwrap() else {
+        panic!()
+    };
+    b.send(AgentCommand::ApproveTool {
+        approval_id: approval_id.clone(),
+    })
+    .unwrap();
+    let second = until(&rx, |e| matches!(e, AgentEvent::ApprovalRequested { .. })).await;
+    let AgentEvent::ApprovalRequested { approval_id, .. } = second.last().unwrap() else {
+        panic!()
+    };
+    b.send(AgentCommand::ApproveTool {
+        approval_id: approval_id.clone(),
+    })
+    .unwrap();
+    assert_eq!(text(&finished(&rx).await), "both approved");
+}
+
 #[tokio::test]
 async fn cancellation_interrupts_turn() {
     let f = Fixture::new();
@@ -213,7 +244,14 @@ async fn unknown_permission_request_is_rejected() {
     let (b, rx) = f.spawn();
     ready(&b).await;
     start(&b, "unknown-request");
-    finished(&rx).await;
+    let events = finished(&rx).await;
+    assert!(events.iter().any(|e| matches!(
+        e,
+        AgentEvent::RunFinished {
+            status: RunStatus::Failed,
+            ..
+        }
+    )));
     let reply: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(f.dir.path().join("decision.json")).unwrap())
             .unwrap();
@@ -234,6 +272,16 @@ async fn signed_out_does_not_start_login_or_turn() {
     .await
     .unwrap();
     assert!(!f.dir.path().join("starts").exists());
+    std::fs::remove_file(f.dir.path().join("signed-out")).unwrap();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            if b.updates.recv_async().await.unwrap().state == ConnectionState::Ready {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("sign-in polling must release the status lock before refreshing");
 }
 #[tokio::test]
 async fn unavailable_model_fails_without_starting_thread() {
@@ -289,7 +337,7 @@ async fn live_codex_login_and_conversation_survive_backend_restart() {
     let models = b.status().models;
     let model = models
         .iter()
-        .find(|m| m.id.contains("sol"))
+        .find(|m| std::env::var("VORTEX_TEST_CODEX_MODEL").is_ok_and(|id| m.id == id))
         .unwrap_or(&models[0])
         .id
         .clone();
@@ -393,7 +441,7 @@ async fn live_codex_edit_requires_approval_and_reports_completed_diff() {
     let models = b.status().models;
     let model = models
         .iter()
-        .find(|m| m.id.contains("sol"))
+        .find(|m| std::env::var("VORTEX_TEST_CODEX_MODEL").is_ok_and(|id| m.id == id))
         .unwrap_or(&models[0])
         .id
         .clone();

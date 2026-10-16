@@ -29,7 +29,18 @@ pub struct Client {
 }
 impl Client {
     pub async fn launch(binary: &Path) -> Result<Self, String> {
-        let mut child = Command::new(binary)
+        let mut command = Command::new(binary);
+        // npm-installed launchers use `env node`; Finder's PATH may lack Node too.
+        if let Some(parent) = binary.parent().filter(|p| !p.as_os_str().is_empty()) {
+            let mut paths = vec![parent.to_path_buf()];
+            if let Some(path) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&path));
+            }
+            if let Ok(path) = std::env::join_paths(paths) {
+                command.env("PATH", path);
+            }
+        }
+        let mut child = command
             .args(["app-server", "--listen", "stdio://"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -84,7 +95,7 @@ impl Client {
             }
             let _ = tx.send_async(Err(failure)).await;
         });
-        let client = Self {
+        let mut client = Self {
             child,
             input: Mutex::new(input),
             pending,
@@ -93,7 +104,10 @@ impl Client {
             incoming,
             reader,
         };
-        client.request("initialize", json!({"clientInfo":{"name":"vortex","title":"Vortex","version":env!("CARGO_PKG_VERSION")}})).await?;
+        if let Err(error) = client.request("initialize", json!({"clientInfo":{"name":"vortex","title":"Vortex","version":env!("CARGO_PKG_VERSION")}})).await {
+            let exit = client.child.try_wait().ok().flatten().map(|s| format!(" ({s})")).unwrap_or_default();
+            return Err(format!("Codex at {} could not initialize{exit}: {error}. Check `codex --version` and run `codex app-server` in a terminal to diagnose CLI configuration; update the CLI if needed.", binary.display()));
+        }
         client
             .send(json!({"method":"initialized","params":{}}))
             .await?;

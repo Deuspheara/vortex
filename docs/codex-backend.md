@@ -14,10 +14,15 @@ app-server for account status; it does not read, copy, log, or store auth tokens
 Codex handles its own saved authentication and token refresh. Expired or revoked
 credentials can still require another login.
 
-If Codex is not on the app's PATH, set `VORTEX_CODEX_BIN` to its executable path.
+Discovery checks PATH, common local npm/Volta/Homebrew directories, and installed
+NVM versions (newest version first). npm launchers also receive Node's directory
+on their child PATH, including when Vortex starts from Finder. Set
+`VORTEX_CODEX_BIN` to an executable path to override discovery; an invalid override
+fails visibly rather than silently selecting another CLI.
 Choose **Codex** under Settings → Models. The model picker includes the reasoning
 levels advertised by the installed CLI. Availability comes from `model/list`,
-not a hard-coded model catalog. New installations prefer authenticated Codex;
+not a hard-coded model catalog. New installations select Codex and show explicit
+installation/sign-in/connection guidance until ready;
 the last selected provider is saved. Demo builds never start Codex.
 
 A conversation retains its backend after its first run. Start a new conversation
@@ -36,7 +41,10 @@ inherit a full-access CLI default or expose a full-access Codex mode.
 
 The user's approval response is correlated to the exact server request. Unknown
 server requests are rejected, including unsupported permission and credential
-requests. Approvals expire when a process is replaced. Vortex never interprets
+requests; unsupported interactions stop the affected turn with a visible error.
+Command/edit requests within a turn are presented in order, one at a time.
+Allow/deny decisions are persisted as `ApprovalResolved` events correlated to the
+exact tool item. Approvals expire when a process is replaced. Vortex never interprets
 "always allow" as an unbounded Codex permission grant.
 
 Codex file-change items supply previews and completed diffs. Completed edits are
@@ -56,7 +64,9 @@ SQLite stores session backend, Codex thread ID, model/effort, normalized
 `AgentEvent`s, and per-run reconciliation state. The additive migration leaves
 legacy sessions untouched. Provider events never reach GPUI directly. Each
 normalized event batch and its reconciliation cursor commit in one transaction
-before publication to the UI.
+before publication to the UI. Session replay uses database insertion order,
+not per-run sequence numbers, so separate turns and child runs cannot interleave
+incorrectly. Completed runs are not re-imported on later resumes.
 
 Broken connections retry with delays of 1, 2, 4, and 8 seconds, then report an
 unavailable state. Restart Vortex to retry after exhaustion. Sign-in-required
@@ -64,7 +74,9 @@ state rechecks every 15 seconds. Previously confirmed turn IDs are reconciled
 from stored Codex history; only missing text suffixes and new tool completions
 are emitted. Vortex never automatically resends a turn whose outcome is
 uncertain. Interrupted work is reported explicitly; review changes and send a
-follow-up. Cancellation uses `turn/interrupt` and waits for completion events.
+follow-up. Cancellation uses `turn/interrupt`; the UI keeps the turn active until
+completion confirms interruption. Unfinished tool items receive terminal events,
+and a stopped notice survives replay.
 
 The protocol is version-sensitive. Integration was exercised with Codex CLI
 0.157.1; an incompatible CLI produces an actionable error instead of silently
@@ -87,3 +99,12 @@ server interaction types rather than guessing their approval semantics.
   approval and then verifies the completed diff.
 
 Reference: [official app-server documentation](https://developers.openai.com/codex/app-server).
+
+For reproducible native UI testing, build the normal app and run
+`python3 scripts/run-codex-ui-test.py`. This creates an isolated store and workspace
+and reuses the installed CLI's authentication without copying it. `--fixture`
+selects the deterministic protocol peer; `--fixture --signed-out` simulates missing
+authentication without changing the user's real account. `--missing-cli` tests
+installation guidance. The normal app also accepts an absolute `VORTEX_DATA_DIR`
+for an isolated store. Demo mode keeps its separate marker requirement and never
+starts Codex. See [native verification results](codex-ui-verification.md).

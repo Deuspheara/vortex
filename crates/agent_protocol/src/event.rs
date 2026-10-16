@@ -125,6 +125,12 @@ pub enum AgentEvent {
         command_preview: Option<String>,
         affected_paths: Vec<PathBuf>,
     },
+    ApprovalResolved {
+        run_id: RunId,
+        approval_id: ApprovalId,
+        call_id: ToolCallId,
+        accepted: bool,
+    },
     ChoiceRequested {
         run_id: RunId,
         choice_id: String,
@@ -254,6 +260,7 @@ impl AgentEvent {
             | Self::ReasoningDelta { run_id, .. }
             | Self::ToolCallStarted { run_id, .. }
             | Self::ToolCallUpdated { run_id, .. }
+            | Self::ApprovalResolved { run_id, .. }
             | Self::ChoiceRequested { run_id, .. }
             | Self::TodoUpdated { run_id, .. }
             | Self::ContextTrace { run_id, .. }

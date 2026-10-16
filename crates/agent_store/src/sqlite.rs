@@ -166,6 +166,7 @@ fn serialize_event(event: &AgentEvent) -> Result<(String, String), String> {
         AgentEvent::ToolCallStarted { .. } => "ToolCallStarted",
         AgentEvent::ToolCallUpdated { .. } => "ToolCallUpdated",
         AgentEvent::ApprovalRequested { .. } => "ApprovalRequested",
+        AgentEvent::ApprovalResolved { .. } => "ApprovalResolved",
         AgentEvent::ChoiceRequested { .. } => "ChoiceRequested",
         AgentEvent::TodoUpdated { .. } => "TodoUpdated",
         AgentEvent::ContextTrace { .. } => "ContextTrace",
@@ -715,7 +716,7 @@ impl EventStore for SqliteEventStore {
                  FROM events e
                  JOIN runs r ON r.id = e.run_id
                  WHERE r.session_id = ?1
-                 ORDER BY e.sequence ASC, e.created_at ASC",
+                 ORDER BY e.rowid ASC",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -1063,6 +1064,32 @@ mod tests {
         assert!(store.load_run_events(&run_id).unwrap().is_empty());
         assert_eq!(store.list_projects().unwrap().len(), 1);
         assert_eq!(store.list_approval_rules(&project_id).unwrap().len(), 1);
+    }
+    #[test]
+    fn session_replay_preserves_insertion_order_across_run_sequences() {
+        let store = SqliteEventStore::in_memory().unwrap();
+        let (_, session, first) = seed_session_with_run_data(&store);
+        let mut second = store.get_run(&first).unwrap().unwrap();
+        second.id = RunId::new("run-2");
+        store.create_run(&second).unwrap();
+        let before = store.load_session_events(&session).unwrap().len();
+        for (run, sequence, text) in [(&first, 100, "first turn"), (&second.id, 0, "second turn")] {
+            store
+                .append_event(&StoredEvent {
+                    id: EventId::new(uuid::Uuid::new_v4().to_string()),
+                    run_id: run.clone(),
+                    sequence,
+                    event: AgentEvent::AssistantTextDelta {
+                        run_id: run.clone(),
+                        text: text.into(),
+                    },
+                    created_at: Utc::now(),
+                })
+                .unwrap();
+        }
+        let events = store.load_session_events(&session).unwrap();
+        assert_eq!(events[before].run_id, first);
+        assert_eq!(events[before + 1].run_id, second.id);
     }
 
     #[test]

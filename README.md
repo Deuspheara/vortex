@@ -2,7 +2,8 @@
 
 Vortex is a native desktop workspace for transparent local agent workflows. It
 combines project indexing, event-sourced sessions, approval-gated tools,
-patch-first edits, and an inspectable activity timeline in one Rust/GPUI app.
+native patch-first edits, Codex-owned execution, and an inspectable activity timeline
+in one Rust/GPUI app.
 
 <p align="center">
   <img src="screenshot/thread.png" alt="Vortex desktop UI showing a running agent thread, plan, tool activity, and diff review" width="100%">
@@ -17,8 +18,8 @@ patch-first edits, and an inspectable activity timeline in one Rust/GPUI app.
 - Native macOS desktop UI built with Rust, GPUI, and `gpui-component`.
 - Threaded agent sessions with project context, plans, tool activity, and
   generated changes kept visible.
-- Patch-first editing flow so writes are represented as previewable diffs before
-  they are applied.
+- Native patch-first editing, plus approval previews and observed completed diffs
+  for Codex-owned edits.
 - Approval and sandbox policies for risky tools and real process execution.
 - Event-sourced local sessions stored outside the repository in SQLite.
 - Native Codex agent integration using your existing Codex CLI login, with automatic
@@ -82,10 +83,12 @@ cargo run -p app
 ```
 
 Vortex reuses Codex-managed authentication. Select **Codex** in Settings → Models;
-new installations select it automatically when authenticated. Choose a model and
+new installations select it automatically and show sign-in guidance when needed. Choose a model and
 reasoning level, then use Plan or Apply with approval. Conversations resume after
 restart without repeating login while credentials remain valid. See
 [Codex setup, permissions, and recovery](docs/codex-backend.md).
+Finder launches also discover Homebrew, local npm, Volta, and NVM installations;
+use `VORTEX_CODEX_BIN=/absolute/path/to/codex` to override discovery.
 
 No `.env` file is required or loaded. For the alternative OpenRouter backend,
 export a key before starting the app:

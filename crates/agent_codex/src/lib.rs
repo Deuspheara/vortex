@@ -1,13 +1,15 @@
 //! Full Codex agent backend, independent of the native model/tool loop.
+mod discovery;
 mod projection;
 mod transport;
 use agent_protocol::*;
 use agent_store::{EventStore, StoredRun};
 use chrono::Utc;
+pub use discovery::discover_binary;
 use projection::{RunProjection, string};
 use serde_json::{Value, json};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
@@ -68,6 +70,7 @@ impl CodexBackend {
             updates: tx,
             runs: HashMap::new(),
             approvals: HashMap::new(),
+            approval_order: VecDeque::new(),
         };
         runtime.spawn(worker.supervise(binary));
         Self {
@@ -93,7 +96,10 @@ impl CodexBackend {
 struct PendingApproval {
     request_id: Value,
     run_id: RunId,
+    call_id: ToolCallId,
     method: String,
+    prompt: AgentEvent,
+    shown: bool,
 }
 struct Worker {
     store: Arc<dyn EventStore>,
@@ -103,6 +109,7 @@ struct Worker {
     updates: flume::Sender<BackendStatus>,
     runs: HashMap<String, RunProjection>,
     approvals: HashMap<String, PendingApproval>,
+    approval_order: VecDeque<String>,
 }
 impl Worker {
     fn status(&self, state: ConnectionState, detail: impl Into<String>, models: Vec<CodexModel>) {
@@ -111,6 +118,7 @@ impl Worker {
             detail: detail.into(),
             models,
         };
+        tracing::info!(state = ?status.state, model_count = status.models.len(), "Codex connection status");
         *self.status.lock().unwrap() = status.clone();
         let _ = self.updates.send(status);
     }
@@ -159,6 +167,7 @@ impl Worker {
                 Err(e) => Err(e),
             };
             self.approvals.clear();
+            self.approval_order.clear();
             match outcome {
                 Ok(()) => return,
                 Err(e) => {
@@ -232,7 +241,11 @@ impl Worker {
                     if client.is_broken(){return Err("Codex connection lost during request".into());}
                 }
                 _=poll.tick() => {
-                    if self.status.lock().unwrap().state==ConnectionState::SignInRequired {self.refresh_account(client).await?;}
+                    let signed_out = {
+                        let status = self.status.lock().unwrap();
+                        status.state == ConnectionState::SignInRequired
+                    };
+                    if signed_out {self.refresh_account(client).await?;}
                 }
             }
         }
@@ -311,6 +324,9 @@ impl Worker {
                 .map(|p| p.run_id.0.clone());
             if let Some(run) = run {
                 let p = self.runs.get_mut(&run).unwrap();
+                if !p.active {
+                    continue;
+                }
                 let mut events = Vec::new();
                 for item in turn["items"].as_array().into_iter().flatten() {
                     events.extend(p.item(item, true));
@@ -515,8 +531,35 @@ impl Worker {
         client
             .send(json!({"id":pending.request_id,"result":{"decision":decision}}))
             .await?;
+        self.persist(
+            &self.runs[&pending.run_id.0],
+            vec![AgentEvent::ApprovalResolved {
+                run_id: pending.run_id.clone(),
+                approval_id: ApprovalId::new(id),
+                call_id: pending.call_id,
+                accepted: accept,
+            }],
+        )?;
         self.store
             .update_run_status(&pending.run_id, RunStatus::Running, None)?;
+        self.approval_order.retain(|queued| queued != id);
+        let next = self
+            .approval_order
+            .iter()
+            .find(|queued| {
+                self.approvals
+                    .get(*queued)
+                    .is_some_and(|a| a.run_id == pending.run_id && !a.shown)
+            })
+            .cloned();
+        if let Some(next) = next {
+            let approval = self.approvals.get_mut(&next).unwrap();
+            approval.shown = true;
+            let prompt = approval.prompt.clone();
+            self.persist(&self.runs[&pending.run_id.0], vec![prompt])?;
+            self.store
+                .update_run_status(&pending.run_id, RunStatus::PausedForApproval, None)?;
+        }
         Ok(())
     }
     fn finish_from_turn(&mut self, run: &str, turn: &Value) -> Result<(), String> {
@@ -535,9 +578,32 @@ impl Worker {
         if !p.active {
             return Ok(());
         }
+        let unfinished = p
+            .started
+            .difference(&p.completed)
+            .cloned()
+            .collect::<Vec<_>>();
+        p.completed.extend(unfinished.iter().cloned());
         p.active = false;
         let p = p.clone();
         let mut events = Vec::new();
+        for item in unfinished {
+            events.push(AgentEvent::ToolCallFinished {
+                run_id: Some(p.run_id.clone()),
+                call_id: p.call_id(&item),
+                status: if status == RunStatus::Cancelled {
+                    ToolStatus::Cancelled
+                } else {
+                    ToolStatus::Failed
+                },
+                summary: p
+                    .previews
+                    .get(&item)
+                    .cloned()
+                    .unwrap_or_else(|| "Activity ended with the turn".into()),
+                body: None,
+            });
+        }
         if let Some(message) = error {
             events.push(AgentEvent::RunFailed {
                 run_id: p.run_id.clone(),
@@ -556,6 +622,8 @@ impl Worker {
         self.store
             .update_run_status(&p.run_id, status, Some(Utc::now()))?;
         self.approvals.retain(|_, a| a.run_id != p.run_id);
+        self.approval_order
+            .retain(|id| self.approvals.contains_key(id));
         Ok(())
     }
     async fn notification(&mut self, client: &Client, message: Value) -> Result<(), String> {
@@ -578,44 +646,74 @@ impl Worker {
             })
             .map(|p| p.run_id.0.clone());
         if message.get("id").is_some() {
-            if let Some(id) = id
+            if let Some(ref id) = id
                 && matches!(
                     method,
                     "item/commandExecution/requestApproval" | "item/fileChange/requestApproval"
                 )
             {
-                let p = self.runs.get(&id).unwrap();
+                let p = self.runs.get(id).unwrap();
                 let approval_id = ApprovalId::new(format!("codex-{}", uuid::Uuid::new_v4()));
                 let item = string(params, "itemId");
                 let call = p.call_id(item);
-                self.persist(
-                    p,
-                    vec![AgentEvent::ApprovalRequested {
-                        run_id: Some(p.run_id.clone()),
-                        approval_id: approval_id.clone(),
-                        call_id: call,
-                        risk: RiskLevel::High,
-                        reason: params["reason"]
-                            .as_str()
-                            .unwrap_or("Codex requests permission to proceed")
-                            .to_string(),
-                        command_preview: params["command"].as_str().map(str::to_string),
-                        affected_paths: Vec::new(),
-                    }],
-                )?;
+                let prompt = AgentEvent::ApprovalRequested {
+                    run_id: Some(p.run_id.clone()),
+                    approval_id: approval_id.clone(),
+                    call_id: call.clone(),
+                    risk: RiskLevel::High,
+                    reason: params["reason"]
+                        .as_str()
+                        .unwrap_or("Codex requests permission to proceed")
+                        .to_string(),
+                    command_preview: params["command"]
+                        .as_str()
+                        .map(str::to_string)
+                        .or_else(|| p.previews.get(item).cloned().filter(|s| !s.is_empty())),
+                    affected_paths: p
+                        .paths
+                        .get(item)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(PathBuf::from)
+                        .collect(),
+                };
+                let shown = !self
+                    .approvals
+                    .values()
+                    .any(|a| a.run_id == p.run_id && a.shown);
+                if shown {
+                    self.persist(p, vec![prompt.clone()])?;
+                }
                 self.store
                     .update_run_status(&p.run_id, RunStatus::PausedForApproval, None)?;
                 self.approvals.insert(
-                    approval_id.0,
+                    approval_id.0.clone(),
                     PendingApproval {
                         request_id: message["id"].clone(),
                         run_id: p.run_id.clone(),
+                        call_id: call,
                         method: method.into(),
+                        prompt,
+                        shown,
                     },
                 );
+                self.approval_order.push_back(approval_id.0);
             } else {
                 // Unknown requests must not silently grant permissions or disclose credentials.
                 client.send(json!({"id":message["id"],"error":{"code":-32601,"message":"Vortex does not support this request; permission not granted"}})).await?;
+                if let Some(id) = id {
+                    let p = &self.runs[&id];
+                    if let Some(turn) = &p.turn_id {
+                        let _ = client
+                            .request(
+                                "turn/interrupt",
+                                json!({"threadId":p.thread_id,"turnId":turn}),
+                            )
+                            .await;
+                    }
+                    self.finish(&id, RunStatus::Failed, Some(format!("Codex requested unsupported interaction `{method}`. Permission was not granted; this turn was stopped. Send a follow-up using supported tools.")))?;
+                }
             }
             return Ok(());
         }
@@ -643,7 +741,10 @@ impl Worker {
             }
             "item/reasoning/summaryTextDelta" => {
                 if let Some(e) = p.text(
-                    &format!("reasoning/{}", string(params, "itemId")),
+                    &projection::reasoning_key(
+                        string(params, "itemId"),
+                        params["summaryIndex"].as_u64().unwrap_or(0) as usize,
+                    ),
                     string(params, "delta"),
                     false,
                     true,
@@ -651,15 +752,31 @@ impl Worker {
                     events.push(e);
                 }
             }
+            "item/reasoning/textDelta" => {
+                if let Some(event) = p.text(
+                    &format!(
+                        "reasoning/raw/{}/{}",
+                        string(params, "itemId"),
+                        params["contentIndex"].as_u64().unwrap_or(0)
+                    ),
+                    string(params, "delta"),
+                    false,
+                    true,
+                ) {
+                    events.push(event);
+                }
+            }
             "item/started" | "item/completed" => {
                 events.extend(p.item(&params["item"], method == "item/completed"))
             }
-            "item/commandExecution/outputDelta" => events.push(AgentEvent::ToolOutputDelta {
-                run_id: Some(p.run_id.clone()),
-                call_id: p.call_id(string(params, "itemId")),
-                stream: OutputStreamKind::Stdout,
-                chunk: string(params, "delta").into(),
-            }),
+            "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
+                events.push(AgentEvent::ToolOutputDelta {
+                    run_id: Some(p.run_id.clone()),
+                    call_id: p.call_id(string(params, "itemId")),
+                    stream: OutputStreamKind::Stdout,
+                    chunk: string(params, "delta").into(),
+                })
+            }
             "turn/plan/updated" => {
                 let markdown = params["plan"]
                     .as_array()
@@ -681,6 +798,18 @@ impl Worker {
                 events.push(AgentEvent::PlanUpdated {
                     run_id: p.run_id.clone(),
                     markdown,
+                    created_at: Utc::now().to_rfc3339(),
+                });
+            }
+            "item/plan/delta" => {
+                let markdown = p
+                    .texts
+                    .entry(format!("plan/{}", string(params, "itemId")))
+                    .or_default();
+                markdown.push_str(string(params, "delta"));
+                events.push(AgentEvent::PlanUpdated {
+                    run_id: p.run_id.clone(),
+                    markdown: markdown.clone(),
                     created_at: Utc::now().to_rfc3339(),
                 });
             }

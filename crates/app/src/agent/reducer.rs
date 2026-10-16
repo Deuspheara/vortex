@@ -1302,6 +1302,58 @@ impl AgentWindow {
                     self.sync_thread_view(conv_id, cx);
                 }
             }
+            AgentEvent::ApprovalResolved {
+                approval_id,
+                call_id,
+                accepted,
+                ..
+            } => {
+                let Some(cid) = conv_id else {
+                    return;
+                };
+                let status = if accepted {
+                    AgentStatus::RunningTool
+                } else {
+                    AgentStatus::Failed
+                };
+                if let Some(item_id) = self.reducer_state.tool_items.get(&call_id.0).cloned() {
+                    self.update_thread_item(
+                        cid.clone(),
+                        &item_id,
+                        |item| {
+                            if let ThreadItem::ToolCall {
+                                status: current, ..
+                            } = item
+                            {
+                                *current = status;
+                            }
+                        },
+                        cx,
+                    );
+                }
+                self.update_thread_item(
+                    cid.clone(),
+                    &approval_id.0,
+                    |item| {
+                        if let ThreadItem::ApprovalRequest {
+                            resolved, title, ..
+                        } = item
+                        {
+                            *resolved = true;
+                            *title = if accepted {
+                                "Permission allowed once"
+                            } else {
+                                "Permission denied"
+                            }
+                            .into();
+                        }
+                    },
+                    cx,
+                );
+                if self.pending_approval_id.as_deref() == Some(&approval_id.0) {
+                    self.clear_pending_approval_ui(&cid, cx);
+                }
+            }
             AgentEvent::ApprovalRequested {
                 approval_id,
                 call_id,
