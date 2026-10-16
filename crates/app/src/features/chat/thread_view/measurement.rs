@@ -44,7 +44,6 @@ impl ThreadView {
                     .get(id)
                     .map(|cache| cache.sealed_end)
                     .hash(&mut signature);
-                self.user_scrolled_up.hash(&mut signature);
                 crate::features::chat::state::is_final_assistant(item_ix, &self.items)
                     .hash(&mut signature);
             }

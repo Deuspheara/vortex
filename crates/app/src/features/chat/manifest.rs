@@ -124,6 +124,7 @@ pub enum RowRef {
     ReasoningHeader { item_ix: u32 },
     ReasoningPreviewLine { item_ix: u32, line_ix: u16 },
     ReasoningBody { item_ix: u32 },
+    CommandGroup { item_ix: u32, count: u32 },
     ToolHeader { item_ix: u32 },
     ToolDetailLine { item_ix: u32, line_ix: u16 },
     ToolOutputBody { item_ix: u32 },
@@ -150,6 +151,7 @@ impl RowRef {
             | RowRef::ReasoningHeader { item_ix }
             | RowRef::ReasoningPreviewLine { item_ix, .. }
             | RowRef::ReasoningBody { item_ix }
+            | RowRef::CommandGroup { item_ix, .. }
             | RowRef::ToolHeader { item_ix }
             | RowRef::ToolDetailLine { item_ix, .. }
             | RowRef::ToolOutputBody { item_ix }
@@ -172,6 +174,7 @@ impl RowRef {
             RowRef::UserMessage { .. }
                 | RowRef::SubagentHeader { .. }
                 | RowRef::ReasoningHeader { .. }
+                | RowRef::CommandGroup { .. }
                 | RowRef::ToolHeader { .. }
                 | RowRef::DiffHeader { .. }
                 | RowRef::ContextTraceHeader { .. }
@@ -268,7 +271,8 @@ pub fn row_height_with_collapsed(
             };
             vertical_padding + lines as f32 * LINE_LEADING + see_more + attachments_h + gap
         }
-        RowRef::ReasoningHeader { .. }
+        RowRef::CommandGroup { .. }
+        | RowRef::ReasoningHeader { .. }
         | RowRef::SubagentHeader { .. }
         | RowRef::ToolHeader { .. }
         | RowRef::DiffHeader { .. }
@@ -542,6 +546,52 @@ pub fn section_label_for_row(_row: RowRef) -> Option<&'static str> {
     None
 }
 
+/// Fold successful commands by user turn once execution has settled.
+/// Failures and approval requests remain visible; stored events stay untouched.
+pub fn fold_completed_commands(
+    rows: Vec<RowRef>,
+    items: &[ThreadItem],
+    expanded: &HashSet<String>,
+    run_active: bool,
+) -> Vec<RowRef> {
+    let mut result = rows;
+    let mut start = 0;
+    for end in (1..=items.len())
+        .filter(|&ix| ix == items.len() || matches!(items[ix], ThreadItem::UserMessage { .. }))
+    {
+        if !(run_active && end == items.len()) {
+            let commands: HashSet<u32> = (start..end).filter(|&ix| matches!(&items[ix], ThreadItem::ToolCall{tool_name,status:AgentStatus::Completed,..} if is_command_tool(tool_name))).map(|ix| ix as u32).collect();
+            let anchor = result
+                .iter()
+                .filter_map(|row| row.item_ix())
+                .find(|ix| commands.contains(ix));
+            if let Some(anchor) = anchor {
+                let command_rows: Vec<_> = result
+                    .iter()
+                    .copied()
+                    .filter(|row| row.item_ix().is_some_and(|ix| commands.contains(&ix)))
+                    .collect();
+                let insertion = result
+                    .iter()
+                    .position(|row| row.item_ix() == Some(anchor))
+                    .unwrap();
+                result.retain(|row| !row.item_ix().is_some_and(|ix| commands.contains(&ix)));
+                let mut group = vec![RowRef::CommandGroup {
+                    item_ix: anchor,
+                    count: commands.len() as u32,
+                }];
+                if expanded.contains(items[anchor as usize].id()) {
+                    group.extend(command_rows);
+                }
+                result.splice(insertion..insertion, group);
+            }
+        }
+        start = end;
+    }
+    result
+}
+
+#[allow(dead_code)]
 pub fn row_sizes_for_manifest(manifest: &[RowRef], items: &[ThreadItem]) -> Vec<Size<Pixels>> {
     manifest
         .iter()
@@ -1183,6 +1233,49 @@ document.querySelector("#year").textContent = year;
                 TranscriptMode::Activity
             ),
             vec![RowRef::ToolHeader { item_ix: 0 }]
+        );
+    }
+
+    #[test]
+    fn completed_commands_fold_per_turn_without_hiding_failures_or_the_reply() {
+        let make = |id: &str, status| ThreadItem::ToolCall {
+            id: id.into(),
+            tool_name: "codex_command".into(),
+            command: Some("echo hi".into()),
+            output: None,
+            expanded: false,
+            status,
+            depth: 0,
+            parent_call_id: None,
+        };
+        let items = vec![
+            make("ok", AgentStatus::Completed),
+            make("failed", AgentStatus::Failed),
+            ThreadItem::AssistantMessage {
+                id: "reply".into(),
+                markdown: "Done".into(),
+                streaming: false,
+                depth: 0,
+                parent_call_id: None,
+            },
+        ];
+        let rows = build_manifest_with_transcript(&items, TranscriptMode::Activity);
+        let folded = fold_completed_commands(rows.clone(), &items, &HashSet::new(), false);
+        assert!(folded.contains(&RowRef::CommandGroup {
+            item_ix: 0,
+            count: 1
+        }));
+        assert!(!folded.contains(&RowRef::ToolHeader { item_ix: 0 }));
+        assert!(folded.contains(&RowRef::ToolHeader { item_ix: 1 }));
+        assert!(folded.contains(&RowRef::AssistantMessage { item_ix: 2 }));
+        assert_eq!(
+            fold_completed_commands(rows.clone(), &items, &HashSet::new(), true),
+            rows
+        );
+        let expanded = HashSet::from(["ok".into()]);
+        assert!(
+            fold_completed_commands(rows, &items, &expanded, false)
+                .contains(&RowRef::ToolHeader { item_ix: 0 })
         );
     }
 

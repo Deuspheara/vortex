@@ -13,3 +13,5 @@ pub mod step_icon;
 pub mod streaming_markdown;
 pub mod tab_bar;
 pub mod workspace_readiness;
+
+pub mod inline_code_text;

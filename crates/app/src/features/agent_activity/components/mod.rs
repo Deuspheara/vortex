@@ -155,7 +155,7 @@ pub fn activity_icon(name: &str) -> impl IntoElement {
         "reasoning" => icons::brain(),
         "codex_approval_review" => icons::shield(),
         "codex_file_change" | "write_file" | "apply_patch" | "edit_file" => icons::file_edit(),
-        "run_real_command" | "codex_command" | "bash_virtual" => icons::command(),
+        "run_real_command" | "codex_command" | "bash_virtual" => Icon::new(icons::TERMINAL),
         "search_project" | "find_symbol" => Icon::new(icons::SEARCH),
         "list_files" | "repo_map" | "related_files" => Icon::new(icons::FOLDER),
         "web_search" | "web_fetch" | "codex_web_search" => Icon::new(icons::GLOBE),

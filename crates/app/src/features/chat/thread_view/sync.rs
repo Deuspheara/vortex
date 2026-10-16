@@ -18,6 +18,7 @@ impl ThreadView {
         self.markdown_cache.clear();
         self.measured_rows.clear();
         self.unwrapped_code_blocks.clear();
+        self.expanded_command_groups.clear();
         self.tool_output_cache.clear();
         self.item_index.clear();
         self.header_manifest_index.clear();
@@ -367,9 +368,10 @@ impl ThreadView {
 
     pub(crate) fn apply_thread_effect(&mut self, effect: ThreadEffect) {
         if matches!(effect, ThreadEffect::ScrollToBottom) {
-            self.stick_to_bottom = true;
-            self.user_scrolled_up = false;
-            self.pending_scroll_bottom = true;
+            self.handle_scroll_if_changed();
+            if self.stick_to_bottom && !self.user_scrolled_up {
+                self.pending_scroll_bottom = true;
+            }
         }
     }
 
@@ -425,6 +427,9 @@ impl ThreadView {
             .map(|size| f32::from(size.height))
             .unwrap_or(0.0);
 
+        // An estimate must never shrink an already measured streaming row.
+        // Exact visible measurement runs before the virtual list lays out.
+        let new_height = new_height.max(current_height);
         let height_changed = (new_height - current_height).abs() > STREAMING_HEIGHT_EPSILON;
         if height_changed {
             let new_size = gpui::size(gpui::px(Tokens::THREAD_MAX_WIDTH), gpui::px(new_height));
@@ -539,6 +544,11 @@ impl ThreadView {
     }
 
     pub(crate) fn rebuild_all(&mut self, items: Vec<ThreadItem>) -> Vec<ThreadEffect> {
+        let offset = self.scroll_handle.base_handle().offset();
+        let anchor = self
+            .user_scrolled_up
+            .then(|| super::scroll::scroll_anchor(&self.manifest, &self.row_sizes, offset.y))
+            .flatten();
         self.items = items;
         self.tool_output_cache.clear();
         self.pending_sealed_parses.clear();
@@ -548,10 +558,30 @@ impl ThreadView {
             .enumerate()
             .map(|(ix, item)| (item.id().to_string(), ix))
             .collect();
-        self.manifest = build_manifest_with_transcript(&self.items, self.transcript_mode);
-        self.row_sizes = Rc::new(row_sizes_for_manifest(&self.manifest, &self.items));
+        let rows = build_manifest_with_transcript(&self.items, self.transcript_mode);
+        self.manifest = if self.transcript_mode == TranscriptMode::Debug {
+            rows
+        } else {
+            crate::features::chat::manifest::fold_completed_commands(
+                rows,
+                &self.items,
+                &self.expanded_command_groups,
+                self.run_active,
+            )
+        };
+        self.row_sizes = Rc::new(self.row_sizes_for_patch(&self.manifest.clone(), None));
         self.rebuild_header_manifest_index();
         self.refresh_end_spacer_size();
+        if let Some(y) = anchor.and_then(|anchor| {
+            super::scroll::anchored_offset(&self.manifest, &self.row_sizes, anchor)
+        }) {
+            let offset = gpui::point(offset.x, y);
+            self.scroll_handle.base_handle().set_offset(offset);
+            self.last_scroll_offset = Some(offset);
+        }
+        if self.stick_to_bottom && !self.user_scrolled_up {
+            self.pending_scroll_bottom = true;
+        }
         vec![ThreadEffect::Notify]
     }
 
@@ -599,11 +629,14 @@ impl ThreadView {
         items: Vec<ThreadItem>,
         _cx: &mut Context<Self>,
         immediate: bool,
-        _run_active: bool,
+        run_active: bool,
     ) -> Vec<ThreadEffect> {
+        self.handle_scroll_if_changed();
         self.conversation_id = Some(conversation_id);
+        let activity_changed = self.run_active != run_active;
+        self.run_active = run_active;
 
-        if immediate {
+        if immediate || activity_changed {
             self.pending_item_updates.clear();
             self.pending_streaming_row_patches.clear();
             self.pending_mutated_item_patches.clear();

@@ -33,8 +33,8 @@ use crate::features::chat::manifest::{
     RowRef, activity_group_pos, assistant_accessory_height, assistant_actions_height,
     assistant_row_height_from_blocks, build_manifest_with_transcript, build_tool_output_preview,
     collapsed_item_header_changed, manifest_span, reasoning_preview_line_text,
-    row_height_with_collapsed, row_refs_for_item_with_mode, row_size, row_sizes_for_manifest,
-    row_sizes_for_rows, row_top_gap,
+    row_height_with_collapsed, row_refs_for_item_with_mode, row_size, row_sizes_for_rows,
+    row_top_gap,
 };
 use crate::features::composer::layout::render_composer_fade;
 use crate::features::shell::state::{ConversationId, ThreadItem};
@@ -103,6 +103,8 @@ pub struct ThreadView {
     layout_width: gpui::Pixels,
     measured_rows: HashMap<String, measurement::MeasuredRow>,
     unwrapped_code_blocks: HashSet<(String, usize)>,
+    expanded_command_groups: HashSet<String>,
+    run_active: bool,
     item_index: HashMap<String, usize>,
     header_manifest_index: Vec<Option<usize>>,
     markdown_cache: HashMap<String, MarkdownCacheEntry>,
@@ -152,6 +154,8 @@ impl ThreadView {
             layout_width: px(0.0),
             measured_rows: HashMap::new(),
             unwrapped_code_blocks: HashSet::new(),
+            expanded_command_groups: HashSet::new(),
+            run_active: false,
             item_index: HashMap::new(),
             header_manifest_index: Vec::new(),
             markdown_cache: HashMap::new(),
@@ -205,6 +209,8 @@ impl ThreadView {
             layout_width: px(0.0),
             measured_rows: HashMap::new(),
             unwrapped_code_blocks: HashSet::new(),
+            expanded_command_groups: HashSet::new(),
+            run_active: false,
             item_index: HashMap::new(),
             header_manifest_index: Vec::new(),
             markdown_cache: HashMap::new(),

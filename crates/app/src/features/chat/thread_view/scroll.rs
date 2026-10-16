@@ -89,3 +89,53 @@ impl ThreadView {
         }
     }
 }
+
+/// Preserve the viewport's local position inside a stable row across regrouping.
+pub(super) fn scroll_anchor(
+    rows: &[RowRef],
+    sizes: &[gpui::Size<gpui::Pixels>],
+    offset: gpui::Pixels,
+) -> Option<(RowRef, gpui::Pixels)> {
+    let mut top = px(0.0);
+    for (&row, size) in rows.iter().zip(sizes) {
+        if top + size.height > -offset {
+            return Some((row, -offset - top));
+        }
+        top += size.height;
+    }
+    None
+}
+pub(super) fn anchored_offset(
+    rows: &[RowRef],
+    sizes: &[gpui::Size<gpui::Pixels>],
+    (anchor, local): (RowRef, gpui::Pixels),
+) -> Option<gpui::Pixels> {
+    let index = rows.iter().position(|row| *row == anchor)?;
+    Some(-sizes[..index].iter().fold(px(0.0), |sum, s| sum + s.height) - local)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn folding_completed_commands_keeps_the_same_response_position_visible() {
+        let old = [
+            RowRef::ToolHeader { item_ix: 0 },
+            RowRef::ToolHeader { item_ix: 1 },
+            RowRef::AssistantMessage { item_ix: 2 },
+        ];
+        let sizes = [
+            gpui::size(px(400.0), px(24.0)),
+            gpui::size(px(400.0), px(24.0)),
+            gpui::size(px(400.0), px(200.0)),
+        ];
+        let anchor = scroll_anchor(&old, &sizes, px(-70.0)).unwrap();
+        let new = [
+            RowRef::CommandGroup {
+                item_ix: 0,
+                count: 2,
+            },
+            RowRef::AssistantMessage { item_ix: 2 },
+        ];
+        assert_eq!(anchored_offset(&new, &sizes[..2], anchor), Some(px(-46.0)));
+    }
+}

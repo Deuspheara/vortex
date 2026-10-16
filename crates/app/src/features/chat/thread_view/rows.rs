@@ -73,6 +73,20 @@ impl ThreadView {
                     if updates.is_empty() {
                         return;
                     }
+                    // Changes in overscan rows above the viewport must not move
+                    // the text the user is reading during a streaming update.
+                    let offset = view.scroll_handle.base_handle().offset();
+                    let mut top = px(0.0);
+                    let mut correction = px(0.0);
+                    for (index, old) in view.row_sizes.iter().enumerate() {
+                        top += old.height;
+                        if top > -offset.y {
+                            break;
+                        }
+                        if let Some((_, height)) = updates.iter().find(|(ix, _)| *ix == index) {
+                            correction += *height - old.height;
+                        }
+                    }
                     view.mutate_row_sizes(|sizes| {
                         for (index, height) in updates {
                             if let Some(size) = sizes.get_mut(index) {
@@ -80,6 +94,11 @@ impl ThreadView {
                             }
                         }
                     });
+                    if view.user_scrolled_up && correction != px(0.0) {
+                        let anchored = gpui::point(offset.x, offset.y - correction);
+                        view.scroll_handle.base_handle().set_offset(anchored);
+                        view.last_scroll_offset = Some(anchored);
+                    }
                     if view.stick_to_bottom && !view.user_scrolled_up {
                         view.pending_scroll_bottom = true;
                     }
@@ -296,6 +315,40 @@ impl ThreadView {
                 )
                 .into_any_element()
             }
+            RowRef::CommandGroup { item_ix, count } => {
+                let key = self.items[item_ix as usize].id().to_string();
+                let expanded = self.expanded_command_groups.contains(&key);
+                let view = cx.entity();
+                crate::shared::components::collapsible_row::timeline_row(
+                    element_key("command-group", &key),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(Tokens::spacing_2())
+                        .child(
+                            gpui_component::Icon::new(crate::tokens::icons::TERMINAL)
+                                .size(Tokens::spacing_4())
+                                .text_color(Tokens::text_tertiary()),
+                        )
+                        .child(div().text_color(Tokens::text_secondary()).child(format!(
+                            "Ran {count} command{}",
+                            if count == 1 { "" } else { "s" }
+                        )))
+                        .into_any_element(),
+                    crate::shared::components::collapsible_row::disclosure_chevron(expanded)
+                        .into_any_element(),
+                    move |_, _, cx| {
+                        view.update(cx, |view, cx| {
+                            if !view.expanded_command_groups.remove(&key) {
+                                view.expanded_command_groups.insert(key.clone());
+                            }
+                            let effects = view.rebuild_all(view.items.clone());
+                            view.apply_thread_effects(effects, cx);
+                        });
+                    },
+                )
+                .into_any_element()
+            }
             RowRef::ToolHeader { .. } => {
                 let Some(ThreadItem::ToolCall {
                     id,
@@ -406,9 +459,11 @@ impl ThreadView {
                 .into_any_element()
             }
             RowRef::ToolOutputBody { .. } => {
-                let (id, out) = {
+                let (id, out, command) = {
                     let Some(ThreadItem::ToolCall {
                         id,
+                        tool_name,
+                        command,
                         output: Some(out),
                         expanded: true,
                         ..
@@ -416,11 +471,24 @@ impl ThreadView {
                     else {
                         return div().into_any_element();
                     };
-                    (id.clone(), out.clone())
+                    (
+                        id.clone(),
+                        out.clone(),
+                        crate::features::agent_activity::components::tool_call::is_command_tool(
+                            tool_name,
+                        )
+                        .then(|| command.clone())
+                        .flatten(),
+                    )
                 };
                 let preview = self.cached_tool_output_preview(&id, &out);
                 activity_group_wrap(
-                    render_tool_output_body(&id, preview.lines.clone(), preview.full.clone()),
+                    render_tool_output_body(
+                        &id,
+                        preview.lines.clone(),
+                        preview.full.clone(),
+                        command.as_deref(),
+                    ),
                     group_pos,
                 )
                 .into_any_element()
@@ -687,38 +755,6 @@ impl ThreadView {
             let id = id.clone();
             let markdown = markdown.clone();
             self.flush_sealed_blocks_sanitized(&id, &markdown);
-            let jump_to_latest = self.user_scrolled_up.then(|| {
-                let entity = cx.entity();
-                let button_id = id.clone();
-                div()
-                    .id(element_key("stream-scroll-pill", &button_id))
-                    .w_full()
-                    .pt(Tokens::spacing_1())
-                    .flex()
-                    .justify_start()
-                    .child(
-                        div()
-                            .id(element_key("stream-scroll-pill-btn", &button_id))
-                            .px(Tokens::spacing_2())
-                            .py(Tokens::spacing_0p5())
-                            .rounded(Tokens::radius_sm())
-                            .bg(Tokens::surface_hover())
-                            .text_size(Tokens::text_xs())
-                            .text_color(Tokens::text_tertiary())
-                            .cursor_pointer()
-                            .hover(|s| s.bg(Tokens::surface_active()))
-                            .on_click(move |_, _, cx| {
-                                entity.update(cx, |view, cx| {
-                                    view.stick_to_bottom = true;
-                                    view.user_scrolled_up = false;
-                                    view.pending_scroll_bottom = true;
-                                    cx.notify();
-                                });
-                            })
-                            .child("Jump to latest ↓"),
-                    )
-                    .into_any_element()
-            });
 
             let sealed = self.sealed_blocks.get(&id).cloned().unwrap_or_default();
             let show_cursor = markdown.len() > 2;
@@ -735,7 +771,6 @@ impl ThreadView {
                     show_cursor,
                     self.code_preview_controls(&id, cx),
                 ))
-                .when_some(jump_to_latest, |el, button| el.child(button))
                 .into_any_element();
         }
 
@@ -1126,6 +1161,7 @@ pub(crate) fn stable_row_id(row_ref: RowRef, item: Option<&ThreadItem>) -> Strin
             format!("reasoning-preview-{item_id}-{line_ix}")
         }
         RowRef::ReasoningBody { .. } => format!("reasoning-body-{item_id}"),
+        RowRef::CommandGroup { .. } => format!("command-group-{item_id}"),
         RowRef::ToolHeader { .. } => format!("tool-header-{item_id}"),
         RowRef::ToolDetailLine { line_ix, .. } => format!("tool-detail-{item_id}-{line_ix}"),
         RowRef::ToolOutputBody { .. } => format!("tool-output-{item_id}"),

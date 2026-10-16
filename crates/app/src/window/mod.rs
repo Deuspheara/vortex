@@ -366,7 +366,7 @@ impl AgentWindow {
         })
         .detach();
 
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search chats"));
 
         apply_theme(DEFAULT_DARK_THEME, Some(window), cx);
         sync_palette(cx);
@@ -723,6 +723,7 @@ impl AgentWindow {
             .then(|| self.agent_bridge.codex.as_ref().map(|b| b.status()))
             .flatten();
         let mut readiness = build_workspace_readiness(WorkspaceReadinessInputs {
+            external_context: self.selected_provider == "Codex",
             provider_connected: codex
                 .as_ref()
                 .map(|s| s.state == agent_codex::ConnectionState::Ready)

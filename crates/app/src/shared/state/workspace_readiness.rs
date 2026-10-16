@@ -95,6 +95,7 @@ impl WorkspaceReadiness {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceReadinessInputs {
+    pub external_context: bool,
     pub provider_connected: bool,
     pub uses_mock_provider: bool,
     pub has_project: bool,
@@ -273,13 +274,11 @@ pub fn build_workspace_readiness(inputs: WorkspaceReadinessInputs) -> WorkspaceR
         }
     };
 
-    let checks = vec![
-        provider_check,
-        project_check,
-        trust_check,
-        index_check,
-        context_check,
-    ];
+    let mut checks = vec![provider_check, project_check, trust_check];
+    // Codex owns its context and does not depend on Vortex's native index.
+    if !inputs.external_context {
+        checks.extend([index_check, context_check]);
+    }
 
     let recommended_action = checks
         .iter()
@@ -308,6 +307,19 @@ pub fn build_workspace_readiness(inputs: WorkspaceReadinessInputs) -> WorkspaceR
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn external_agent_does_not_flash_setup_when_native_index_becomes_stale() {
+        let readiness = super::build_workspace_readiness(super::WorkspaceReadinessInputs {
+            external_context: true,
+            provider_connected: true,
+            has_project: true,
+            project_trusted: true,
+            index_phase: Some(crate::features::shell::state::IndexPhase::Stale),
+            ..Default::default()
+        });
+        assert!(readiness.is_ready());
+        assert_eq!(readiness.total_count(), 3);
+    }
     use super::{ReadinessState, WorkspaceReadinessInputs, build_workspace_readiness};
     use crate::features::shell::state::IndexPhase;
 

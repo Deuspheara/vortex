@@ -829,21 +829,7 @@ pub fn render_tool_detail_line_row(
     on_open_file: Option<OpenToolFileCallback>,
 ) -> impl IntoElement {
     if let ToolCallDetailRow::Command { command, .. } = &detail {
-        return div()
-            .id(element_key("tool-detail-line", item_id))
-            .w_full()
-            .min_w(px(0.0))
-            .max_h(px(Tokens::TOOL_OUTPUT_MAX_HEIGHT))
-            .overflow_y_scroll()
-            .pl(Tokens::spacing_7())
-            .pr(Tokens::spacing_2())
-            .py(Tokens::spacing_2())
-            .font_family(Tokens::code_font_family())
-            .text_size(Tokens::text_code())
-            .line_height(Tokens::text_sm_leading())
-            .text_color(Tokens::text_secondary())
-            .child(command.clone())
-            .into_any_element();
+        return shell_card(item_id, command, "").into_any_element();
     }
     div()
         .id(element_key("tool-detail-line", item_id))
@@ -1007,16 +993,73 @@ fn change_counts_badge(item_id: &str, change_counts: Option<(usize, usize)>) -> 
         .into_any_element()
 }
 
+/// Explicitly expanded command details use one compact shell card.
+fn shell_card(item_id: &str, command: &str, output: &str) -> impl IntoElement {
+    let text = if output.is_empty() {
+        format!("$ {command}")
+    } else {
+        format!("$ {command}\n\n{output}")
+    };
+    let copy = Arc::<str>::from(text.as_str());
+    div().w_full().min_w(px(0.0)).pb(Tokens::spacing_2()).child(
+        div()
+            .w_full()
+            .min_w(px(0.0))
+            .rounded(Tokens::radius_md())
+            .border_1()
+            .border_color(Tokens::border_subtle())
+            .bg(Tokens::code_bg())
+            .overflow_hidden()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .h(px(Tokens::ROW_HEIGHT_MD))
+                    .px(Tokens::spacing_3())
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_size(Tokens::text_xs())
+                    .text_color(Tokens::text_secondary())
+                    .child("Shell")
+                    .child(btn_copy_icon_arc(
+                        element_key("copy-shell", item_id),
+                        copy,
+                        "Copy command and output",
+                    )),
+            )
+            .child(
+                div()
+                    .id(element_key("shell-scroll", item_id))
+                    .w_full()
+                    .min_w(px(0.0))
+                    .max_h(px(Tokens::TOOL_OUTPUT_MAX_HEIGHT))
+                    .overflow_y_scroll()
+                    .px(Tokens::spacing_3())
+                    .pb(Tokens::spacing_3())
+                    .font_family(Tokens::code_font_family())
+                    .text_size(Tokens::text_code())
+                    .line_height(Tokens::text_sm_leading())
+                    .text_color(Tokens::text_secondary())
+                    .child(text),
+            ),
+    )
+}
+
 pub fn render_tool_output_body(
     item_id: &str,
     lines: Arc<[Arc<str>]>,
     full: Arc<str>,
+    command: Option<&str>,
 ) -> impl IntoElement {
     let text = lines
         .iter()
         .map(|line| line.as_ref())
         .collect::<Vec<_>>()
         .join("\n");
+    if let Some(command) = command {
+        return shell_card(item_id, &display_command(command), &text).into_any_element();
+    }
     let group = format!("tool-output-hover-{item_id}");
     div()
         .id(element_key("tool-output", item_id))
@@ -1055,6 +1098,7 @@ pub fn render_tool_output_body(
                     "Copy output",
                 )),
         )
+        .into_any_element()
 }
 
 pub fn render_tool_output_truncated_row(

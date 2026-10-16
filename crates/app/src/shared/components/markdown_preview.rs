@@ -147,7 +147,7 @@ fn estimate_block_height(block: &MarkdownBlock) -> f32 {
                 .iter()
                 .map(|item| item.text.chars().count().div_ceil(82).max(1) as f32 * LINE_LEADING)
                 .sum::<f32>();
-            let gaps_h = items.len().saturating_sub(1) as f32 * f32::from(Tokens::spacing_1());
+            let gaps_h = items.len().saturating_sub(1) as f32 * f32::from(Tokens::spacing_0p5());
             rows_h + gaps_h + 4.0
         }
         MarkdownBlock::Code { body, .. } => code_block_height(body),
@@ -653,7 +653,7 @@ fn inline_highlight_style(style: InlineStyle) -> HighlightStyle {
         },
         InlineStyle::Code => HighlightStyle {
             color: Some(Tokens::code_fg()),
-            background_color: Some(Tokens::code_bg()),
+            background_color: None,
             ..Default::default()
         },
         InlineStyle::Link => HighlightStyle {
@@ -712,6 +712,44 @@ pub(crate) fn sanitize_highlights(
     sanitized
 }
 
+fn pad_inline_code(
+    plain: String,
+    spans: Vec<(std::ops::Range<usize>, InlineStyle)>,
+) -> (String, Vec<(std::ops::Range<usize>, InlineStyle)>) {
+    let mut insertions = std::collections::BTreeMap::<usize, usize>::new();
+    for (range, style) in &spans {
+        if matches!(style, InlineStyle::Code) {
+            *insertions.entry(range.start).or_default() += 1;
+            *insertions.entry(range.end).or_default() += 1;
+        }
+    }
+    if insertions.is_empty() {
+        return (plain, spans);
+    }
+    let mut result = String::new();
+    let mut before = std::collections::HashMap::new();
+    let mut after = std::collections::HashMap::new();
+    for (index, ch) in plain
+        .char_indices()
+        .map(|(i, c)| (i, Some(c)))
+        .chain(std::iter::once((plain.len(), None)))
+    {
+        before.insert(index, result.len());
+        for _ in 0..insertions.get(&index).copied().unwrap_or(0) {
+            result.push('\u{a0}');
+        }
+        after.insert(index, result.len());
+        if let Some(ch) = ch {
+            result.push(ch);
+        }
+    }
+    let spans = spans
+        .into_iter()
+        .map(|(range, style)| (before[&range.start]..after[&range.end], style))
+        .collect();
+    (result, spans)
+}
+
 fn render_inline(text: &str, enabled: bool, base_size: gpui::AbsoluteLength) -> impl IntoElement {
     render_inline_colored(text, enabled, base_size, Tokens::thread_body_text())
 }
@@ -731,6 +769,12 @@ fn render_inline_colored(
     }
 
     let (plain, spans) = parse_inline_spans(text);
+    let (plain, spans) = pad_inline_code(plain, spans);
+    let code_ranges = spans
+        .iter()
+        .filter(|(_, style)| matches!(style, InlineStyle::Code))
+        .map(|(range, _)| range.clone())
+        .collect();
     if spans.is_empty() {
         return div()
             .min_w(gpui::px(0.0))
@@ -757,7 +801,12 @@ fn render_inline_colored(
     div()
         .min_w(gpui::px(0.0))
         .whitespace_normal()
-        .child(StyledText::new(plain).with_default_highlights(&default_style, highlights))
+        .child(
+            crate::shared::components::inline_code_text::InlineCodeText {
+                text: StyledText::new(plain).with_default_highlights(&default_style, highlights),
+                code_ranges,
+            },
+        )
         .into_any_element()
 }
 
@@ -922,7 +971,7 @@ fn render_list(items: &[ListItem], inline_enabled: bool) -> impl IntoElement {
         .w_full()
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_1())
+        .gap(Tokens::spacing_0p5())
         .children(items.iter().map(|item| {
             let indent = Tokens::tree_indent(item.indent.min(4) as u32);
             div()
@@ -956,7 +1005,7 @@ fn render_ordered_list(items: &[ListItem], inline_enabled: bool) -> impl IntoEle
         .w_full()
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_1())
+        .gap(Tokens::spacing_0p5())
         .children(items.iter().enumerate().map(|(ix, item)| {
             let indent = Tokens::tree_indent(item.indent.min(4) as u32);
             div()
@@ -988,7 +1037,7 @@ fn render_ordered_list(items: &[ListItem], inline_enabled: bool) -> impl IntoEle
 fn render_list_marker(checked: Option<bool>) -> gpui::AnyElement {
     match checked {
         Some(done) => div()
-            .mt(px(3.0))
+            .mt(Tokens::spacing_1())
             .w(px(14.0))
             .h(px(14.0))
             .flex_shrink_0()
@@ -1013,12 +1062,18 @@ fn render_list_marker(checked: Option<bool>) -> gpui::AnyElement {
             } else {
                 Tokens::text_tertiary()
             })
-            .child(if done { "✓" } else { "" })
+            .when(done, |el| {
+                el.child(
+                    gpui_component::Icon::new(gpui_component::IconName::Check)
+                        .size(Tokens::spacing_3()),
+                )
+            })
             .into_any_element(),
         None => div()
             .flex_shrink_0()
             .text_size(Tokens::text_md())
-            .text_color(Tokens::text_tertiary())
+            .line_height(Tokens::text_md_leading())
+            .text_color(Tokens::thread_body_text())
             .child("•")
             .into_any_element(),
     }
@@ -1033,7 +1088,8 @@ fn render_ordered_list_marker(index: usize, checked: Option<bool>) -> gpui::AnyE
         .w(Tokens::ordered_list_marker_width())
         .flex_shrink_0()
         .text_size(Tokens::text_md())
-        .text_color(Tokens::text_tertiary())
+        .line_height(Tokens::text_md_leading())
+        .text_color(Tokens::thread_body_text())
         .child(format!("{}.", index + 1))
         .into_any_element()
 }
@@ -1490,6 +1546,17 @@ fn render_table_thread(headers: &[String], rows: &[Vec<String>], index: usize) -
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn inline_code_padding_keeps_unicode_and_highlight_boundaries_valid() {
+        let (plain, spans) = super::parse_inline_spans("**Use `café.rs` now** and `x`");
+        let (plain, spans) = super::pad_inline_code(plain, spans);
+        assert!(plain.contains("\u{a0}café.rs\u{a0}"));
+        for (range, _) in spans {
+            assert!(plain.is_char_boundary(range.start));
+            assert!(plain.is_char_boundary(range.end));
+            assert!(range.end <= plain.len());
+        }
+    }
     use super::*;
 
     #[test]

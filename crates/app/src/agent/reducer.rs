@@ -965,7 +965,7 @@ impl AgentWindow {
                 }
             }
             AgentEvent::FileChangesObserved {
-                call_id,
+                run_id,
                 unified_diff,
                 applied,
                 ..
@@ -983,20 +983,39 @@ impl AgentWindow {
                             removed: f.removed,
                         })
                         .collect::<Vec<_>>();
-                    self.push_thread_item(
-                        cid.clone(),
-                        ThreadItem::DiffSummary {
-                            id: format!("codex-diff-{}", call_id.0),
-                            files_changed: files.len(),
-                            additions: files.iter().map(|f| f.added).sum(),
-                            deletions: files.iter().map(|f| f.removed).sum(),
-                            files,
-                            expanded: false,
-                            depth: 0,
-                            parent_call_id: None,
-                        },
-                        cx,
-                    );
+                    let diff_id = format!("codex-diff-{}", run_id.0);
+                    let existing = self
+                        .conversations
+                        .iter()
+                        .find(|c| c.id == cid)
+                        .is_some_and(|c| c.thread_items.iter().any(|item| item.id() == diff_id));
+                    let summary = ThreadItem::DiffSummary {
+                        id: diff_id.clone(),
+                        files_changed: files.len(),
+                        additions: files.iter().map(|f| f.added).sum(),
+                        deletions: files.iter().map(|f| f.removed).sum(),
+                        files,
+                        expanded: false,
+                        depth: 0,
+                        parent_call_id: None,
+                    };
+                    if existing {
+                        self.update_thread_item(
+                            cid.clone(),
+                            &diff_id,
+                            |item| {
+                                let expanded =
+                                    matches!(item, ThreadItem::DiffSummary { expanded: true, .. });
+                                *item = summary;
+                                if let ThreadItem::DiffSummary { expanded: e, .. } = item {
+                                    *e = expanded;
+                                }
+                            },
+                            cx,
+                        );
+                    } else {
+                        self.push_thread_item(cid.clone(), summary, cx);
+                    }
                 }
                 if self.selected_conversation_id.as_ref() == Some(&cid) {
                     self.apply_diff_panel_now(&unified_diff, cx);

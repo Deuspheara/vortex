@@ -455,3 +455,60 @@ Formatting, workspace Clippy, app check/build, workspace tests (256 passed,
 remain. No additional real inference was needed: the real conversation was
 replayed from its existing event store, and new rejection/output scenarios used
 the nonexecuting protocol fixture.
+
+## Thread hierarchy, live previews, and scroll stability — 2026-10-16
+
+Normal native app checked at 1100×800 and 900×600, including reopening the saved
+real-account conversation and running new real Codex file edits. This supersedes
+the previous flat expanded-command treatment: the user explicitly requested a
+small Shell card for expanded command contents.
+
+- Assistant steps, summaries, and bullet text use the full theme foreground
+  (black in light themes, readable foreground in dark themes). Commands and their
+  completed group use the secondary foreground. Successful commands fold by
+  user turn after execution finishes. The group expands/collapses independently
+  of each command. Failures and approval prompts remain visible.
+- Expanded command/script details use a bounded Shell card with the readable
+  command, output, and copy action. Command execution and persisted events retain
+  their exact original contents. Terminal, search, check, and disclosure icons
+  use the existing gpui-component icon library.
+- Bullet gaps use the tight spacing token and the same 23 px line height as
+  paragraphs. Inline code reserves whitespace on each side and paints rounded
+  backgrounds from the actual shaped text positions, retaining natural wrapping.
+  Unicode/highlight-boundary tests cover padded code nested inside bold text.
+- Sidebar search has one padded field, a library search icon, a clear action,
+  and “Search chats” placeholder. Native filtering and clearing were exercised.
+- Codex turn-level diff notifications update the Changes panel while the turn
+  runs. The protocol fixture changed the same preview at checkpoints 2, 15, 40,
+  and 65 during streaming. Snapshots are deduplicated, persisted, and represented
+  by one change summary per run instead of repeated summaries.
+- A real native Codex conversation created `vortex-live-preview.txt` with
+  `first\n`, then changed it to `second\n` in a separate apply_patch call. Both
+  approval previews updated correctly, each edit was manually approved through
+  the native UI, and the final observed diff showed `second`. Independent file
+  inspection confirmed `second\n`; the previous QA file remained `after\n`.
+  Reopening the app retained the final changes and one summary for the run.
+- Codex readiness checks now cover its provider, project, and trust. Native
+  indexing/context refresh no longer inserts a transient setup banner while
+  Codex writes, which previously shifted the thread during real file generation.
+- Scroll effects respect manual scrolling rather than resetting follow mode.
+  Jump to latest is an overlay instead of changing the streaming text height.
+  Exact streaming-row measurement happens before virtual-list row placement;
+  cheap height estimates cannot repeatedly shrink measured content. This fixes
+  alternating heights and overlaps with activity following the streaming reply.
+  Overscan measurements and completion regrouping preserve a stable row anchor.
+  At 900×600, checkpoint 14 remained at the same vertical position before and
+  after completion while the adjacent preview advanced from checkpoint 15 to 65;
+  Jump to latest returned to the final response without inserting a text row.
+
+Regression coverage includes command grouping with failures left visible,
+completion scroll anchoring, Unicode inline code, native readiness isolation,
+and live diff updates/deduplication/replay. Formatting, workspace Clippy, app
+check/build, workspace tests (262 passed; 3 opt-in account tests ignored), and the
+demo fixture test passed. Existing warnings remain.
+
+Limits: live file previews update when Codex reports a file-change or turn-diff
+snapshot. This does not invent keystroke-level file contents or guarantee that
+Codex reports every shell-owned write. Streaming/scroll checks used controlled
+protocol generation; the real-account native run verified file approvals,
+preview updates, final contents, and replay.

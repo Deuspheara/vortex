@@ -478,7 +478,7 @@ impl Tokens {
 
     /// Match the reference thread's 80% foreground reading tone.
     pub fn thread_body_text() -> Hsla {
-        Self::text_primary().opacity(0.8)
+        Self::text_primary()
     }
 
     /// Proportional reading face for chat and activity surfaces.

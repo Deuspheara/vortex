@@ -45,20 +45,28 @@ pub(crate) fn render_app_nav(
                 .flex_1()
                 .min_w(px(0.0))
                 .h(px(Tokens::ROW_HEIGHT_LG))
-                .bg(Tokens::surface().opacity(0.55))
+                .px(Tokens::spacing_2())
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .bg(Tokens::search_bg())
                 .border_1()
-                .border_color(Tokens::border_subtle())
-                .rounded(Tokens::radius_sm())
+                .border_color(Tokens::search_border())
+                .rounded(Tokens::radius_md())
+                .hover(|s| s.border_color(Tokens::text_tertiary()))
+                .child(
+                    Icon::new(icons::SEARCH)
+                        .size(Tokens::spacing_4())
+                        .text_color(Tokens::text_secondary()),
+                )
                 .child(
                     Input::new(&search_input)
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .text_size(Tokens::text_sm())
                         .with_size(Size::Small)
                         .appearance(false)
-                        .cleanable(true)
-                        .prefix(
-                            Icon::new(icons::SEARCH)
-                                .size(Tokens::spacing_4())
-                                .text_color(Tokens::text_tertiary()),
-                        ),
+                        .cleanable(true),
                 ),
         )
         .child(
