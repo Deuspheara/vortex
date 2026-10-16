@@ -284,10 +284,13 @@ are now 16 px, with 8 px between activity and prose; consecutive activity header
 retain their uninterrupted 24 px rhythm. This removes the previous 32/24 px gaps
 without changing virtualized history or the streaming hot tail.
 
-Failures use a flat circle-alert row with destructive-colored title, 14 px detail
-text, and the same icon column/detail indentation as activity rows. Removed the
-amber stripe and empty action-container spacing. Cancellation uses a neutral
-stopped row. Errors now participate in cached width-aware layout measurement,
+Failures use a flat circle-alert row with a destructive-colored title. Title,
+details, and actions share one text column and an explicit 14 px font with 20 px
+line height. The title-to-detail gap is 4 px; actions follow the details by 8 px.
+Open settings uses a compact bordered, filled button with an explicitly styled
+label, avoiding the component library’s larger default label typography. Action
+IDs include the error item identity. Removed the amber stripe and empty action
+spacing. Cancellation uses a neutral stopped row. Errors now participate in cached width-aware layout measurement,
 including wrapped details and settings actions, so their estimated height cannot
 leave blank space or overlap the following turn after resizing.
 

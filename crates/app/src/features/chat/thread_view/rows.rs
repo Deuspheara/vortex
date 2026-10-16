@@ -564,6 +564,7 @@ impl ThreadView {
                 let retry = *retryable;
                 let settings_entity = agent.clone();
                 error_card(ErrorCardProps {
+                    id: id.clone(),
                     title,
                     message: msg,
                     retryable: retry,
