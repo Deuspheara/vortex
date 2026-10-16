@@ -796,9 +796,8 @@ fn tool_refs_with_mode(
     }
 
     if output.is_some() {
-        if mode.shows_tool_output_rows() {
-            tool_output_rows(item_ix, output, status, &mut rows);
-        }
+        // Explicit disclosure is a user request for details in every transcript mode.
+        tool_output_rows(item_ix, output, status, &mut rows);
         return rows;
     }
 
@@ -1182,7 +1181,7 @@ document.querySelector("#year").textContent = year;
     }
 
     #[test]
-    fn expanded_tool_in_activity_mode_hides_raw_output() {
+    fn explicit_tool_expansion_reveals_output_in_activity_mode() {
         let item = ThreadItem::ToolCall {
             id: "tool-1".into(),
             tool_name: "search_project".into(),
@@ -1201,6 +1200,10 @@ document.querySelector("#year").textContent = year;
             std::slice::from_ref(&item),
         );
 
-        assert_eq!(refs, vec![RowRef::ToolHeader { item_ix: 0 }]);
+        assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
+        assert!(refs.contains(&RowRef::ToolOutputLine {
+            item_ix: 0,
+            line_ix: 0
+        }));
     }
 }
