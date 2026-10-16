@@ -115,6 +115,12 @@ pub enum AgentEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dedupe_key: Option<String>,
     },
+    /// A tool is blocked on a provider approval queued behind the active prompt.
+    /// This updates tool state without replacing the user's current decision card.
+    ToolCallAwaitingApproval {
+        run_id: RunId,
+        call_id: ToolCallId,
+    },
     ApprovalRequested {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         run_id: Option<RunId>,
@@ -260,6 +266,7 @@ impl AgentEvent {
             | Self::ReasoningDelta { run_id, .. }
             | Self::ToolCallStarted { run_id, .. }
             | Self::ToolCallUpdated { run_id, .. }
+            | Self::ToolCallAwaitingApproval { run_id, .. }
             | Self::ApprovalResolved { run_id, .. }
             | Self::ChoiceRequested { run_id, .. }
             | Self::TodoUpdated { run_id, .. }

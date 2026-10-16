@@ -165,6 +165,7 @@ fn serialize_event(event: &AgentEvent) -> Result<(String, String), String> {
         AgentEvent::ReasoningDelta { .. } => "ReasoningDelta",
         AgentEvent::ToolCallStarted { .. } => "ToolCallStarted",
         AgentEvent::ToolCallUpdated { .. } => "ToolCallUpdated",
+        AgentEvent::ToolCallAwaitingApproval { .. } => "ToolCallAwaitingApproval",
         AgentEvent::ApprovalRequested { .. } => "ApprovalRequested",
         AgentEvent::ApprovalResolved { .. } => "ApprovalResolved",
         AgentEvent::ChoiceRequested { .. } => "ChoiceRequested",

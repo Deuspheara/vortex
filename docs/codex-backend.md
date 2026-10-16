@@ -43,6 +43,8 @@ The user's approval response is correlated to the exact server request. Unknown
 server requests are rejected, including unsupported permission and credential
 requests; unsupported interactions stop the affected turn with a visible error.
 Command/edit requests within a turn are presented in order, one at a time.
+Queued requests persist a normalized waiting state for their tool item without
+replacing the active decision card.
 Allow/deny decisions are persisted as `ApprovalResolved` events correlated to the
 exact tool item. Approvals expire when a process is replaced. Vortex never interprets
 "always allow" as an unbounded Codex permission grant.

@@ -684,6 +684,14 @@ impl Worker {
                     .any(|a| a.run_id == p.run_id && a.shown);
                 if shown {
                     self.persist(p, vec![prompt.clone()])?;
+                } else {
+                    self.persist(
+                        p,
+                        vec![AgentEvent::ToolCallAwaitingApproval {
+                            run_id: p.run_id.clone(),
+                            call_id: call.clone(),
+                        }],
+                    )?;
                 }
                 self.store
                     .update_run_status(&p.run_id, RunStatus::PausedForApproval, None)?;

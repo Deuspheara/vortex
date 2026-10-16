@@ -181,11 +181,21 @@ async fn concurrent_approvals_are_presented_one_at_a_time() {
     ready(&b).await;
     start(&b, "parallel-approval");
     let first = until(&rx, |e| matches!(e, AgentEvent::ApprovalRequested { .. })).await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    let queued = until(&rx, |e| {
+        matches!(e, AgentEvent::ToolCallAwaitingApproval { .. })
+    })
+    .await;
     assert!(
-        !rx.drain()
+        !queued
+            .iter()
             .any(|e| matches!(e, AgentEvent::ApprovalRequested { .. }))
     );
+    let queued_call = match queued.last().unwrap() {
+        AgentEvent::ToolCallAwaitingApproval { call_id, .. } => call_id.clone(),
+        _ => unreachable!(),
+    };
+    assert!(f.store.load_session_events(&SessionId::new("s")).unwrap().iter()
+        .any(|stored| matches!(&stored.event, AgentEvent::ToolCallAwaitingApproval { call_id, .. } if call_id == &queued_call)));
     let AgentEvent::ApprovalRequested { approval_id, .. } = first.last().unwrap() else {
         panic!()
     };
@@ -194,9 +204,15 @@ async fn concurrent_approvals_are_presented_one_at_a_time() {
     })
     .unwrap();
     let second = until(&rx, |e| matches!(e, AgentEvent::ApprovalRequested { .. })).await;
-    let AgentEvent::ApprovalRequested { approval_id, .. } = second.last().unwrap() else {
+    let AgentEvent::ApprovalRequested {
+        approval_id,
+        call_id,
+        ..
+    } = second.last().unwrap()
+    else {
         panic!()
     };
+    assert_eq!(call_id, &queued_call);
     b.send(AgentCommand::ApproveTool {
         approval_id: approval_id.clone(),
     })

@@ -79,6 +79,7 @@ impl AgentWindow {
                     | AgentEvent::ReasoningDelta { .. }
                     | AgentEvent::ToolOutputDelta { .. }
                     | AgentEvent::ToolCallUpdated { .. }
+                    | AgentEvent::ToolCallAwaitingApproval { .. }
                     | AgentEvent::ToolCallStarted { .. }
                     | AgentEvent::ToolCallFinished { .. }
                     | AgentEvent::TodoUpdated { .. }
@@ -1385,6 +1386,23 @@ impl AgentWindow {
                     self.clear_pending_approval_ui(&cid, cx);
                 }
             }
+            AgentEvent::ToolCallAwaitingApproval { call_id, .. } => {
+                let Some(conv_id) = conv_id else {
+                    return;
+                };
+                if let Some(item_id) = self.reducer_state.tool_items.get(&call_id.0).cloned() {
+                    self.update_thread_item(
+                        conv_id,
+                        &item_id,
+                        |item| {
+                            if let ThreadItem::ToolCall { status, .. } = item {
+                                *status = AgentStatus::WaitingApproval;
+                            }
+                        },
+                        cx,
+                    );
+                }
+            }
             AgentEvent::ApprovalRequested {
                 approval_id,
                 call_id,
@@ -1747,6 +1765,7 @@ fn event_needs_window_notify(event: &AgentEvent) -> bool {
             | AgentEvent::ReasoningDelta { .. }
             | AgentEvent::ToolOutputDelta { .. }
             | AgentEvent::ToolCallUpdated { .. }
+            | AgentEvent::ToolCallAwaitingApproval { .. }
             | AgentEvent::ToolCallStarted { .. }
             | AgentEvent::ToolCallFinished { .. }
             | AgentEvent::TodoUpdated { .. }
