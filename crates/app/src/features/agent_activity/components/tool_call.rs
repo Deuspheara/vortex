@@ -141,7 +141,13 @@ fn tool_call_summary(
             Some("virtual shell"),
         ),
         "run_real_command" | "codex_command" => command_summary(
-            if running { "Running" } else { "Ran" },
+            if running {
+                "Running"
+            } else if matches!(status, AgentStatus::Failed) {
+                "Stopped"
+            } else {
+                "Ran"
+            },
             command,
             Some("real command"),
         ),

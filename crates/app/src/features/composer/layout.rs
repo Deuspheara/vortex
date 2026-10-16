@@ -27,7 +27,6 @@ pub fn render_composer_fade(bottom_inset: f32) -> impl IntoElement {
         .right_0()
         .h(px(Tokens::COMPOSER_FADE_HEIGHT))
         .bg(Tokens::composer_fade_gradient())
-        .block_mouse_except_scroll()
 }
 
 /// Props for the composer layout.

@@ -125,9 +125,14 @@ its final line above the wrapped toolbar. The deterministic peer also exercised
 Stop, visible unsupported-request failure, sequential approvals, and reconnect
 from partial `hello` to one reconciled `hello world` without resubmission.
 
-The final queue check exposed a separate normalized-state issue: an approval
-waiting behind another request still appeared as running. That backend follow-up
-is kept separate from these visual/layout fixes.
+The final queue check found and fixed a normalized-state issue: approvals queued
+behind the active prompt now persist a waiting state for their exact tool item
+without replacing the active card. Native checks verified both waiting rows,
+cancellation clearing both requests, and sequential Allow once decisions. Reopening
+retained the settled conversation without an orphaned approval. A decorative
+transcript fade was also intercepting approval-card clicks; it no longer blocks
+mouse input. Cancelled/failed command rows display “Stopped” rather than “Ran”.
+Backend event changes and visual fixes are committed separately.
 
 ## Verification commands
 
