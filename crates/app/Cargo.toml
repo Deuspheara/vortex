@@ -10,6 +10,7 @@ demo_mode = []
 
 [dependencies]
 android_device = { path = "../android_device" }
+agent_codex = { path = "../agent_codex" }
 agent_core = { path = "../agent_core" }
 agent_models = { path = "../agent_models" }
 agent_protocol = { path = "../agent_protocol" }

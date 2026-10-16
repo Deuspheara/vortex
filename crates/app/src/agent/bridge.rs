@@ -23,6 +23,7 @@ use crate::features::shell::state::{
 
 pub struct AgentBridge {
     pub runtime: Arc<AgentRuntime>,
+    pub codex: Option<agent_codex::CodexBackend>,
     pub event_rx: flume::Receiver<AgentEvent>,
     pub uses_mock: bool,
     /// Populated asynchronously on the agent tokio runtime when OpenRouter is configured.
@@ -62,7 +63,8 @@ impl AgentBridge {
             (true, Arc::new(MockProvider::default()))
         };
 
-        let (runtime, event_rx, command_rx) = AgentRuntime::new(store.clone(), provider, config);
+        let (runtime, native_events, command_rx) =
+            AgentRuntime::new(store.clone(), provider, config);
         let runtime = Arc::new(runtime);
 
         #[cfg(all(feature = "demo_mode", debug_assertions))]
@@ -90,9 +92,32 @@ impl AgentBridge {
             rx
         });
 
+        let (events_tx, event_rx) = flume::unbounded();
+        let native_tx = events_tx.clone();
+        tokio.handle().spawn(async move {
+            while let Ok(event) = native_events.recv_async().await {
+                if native_tx.send(event).is_err() {
+                    break;
+                }
+            }
+        });
+        let codex = if use_mock {
+            None
+        } else {
+            let binary = std::env::var_os("VORTEX_CODEX_BIN")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| "codex".into());
+            Some(agent_codex::CodexBackend::spawn(
+                store,
+                events_tx,
+                tokio.handle(),
+                binary,
+            ))
+        };
         runtime.clone().spawn(tokio.handle().clone(), command_rx);
         Self {
             runtime,
+            codex,
             event_rx,
             uses_mock,
             openrouter_models_rx,
@@ -101,7 +126,61 @@ impl AgentBridge {
         }
     }
 
+    pub fn select_backend(
+        &self,
+        session: &SessionId,
+        provider: &str,
+        model: &str,
+        effort: Option<String>,
+    ) -> Result<(), String> {
+        let backend = if provider == "Codex" {
+            "codex"
+        } else {
+            "native"
+        };
+        let mut binding = self
+            .runtime
+            .store
+            .session_backend(session)?
+            .unwrap_or_else(|| agent_store::SessionBackend {
+                backend: "native".into(),
+                ..Default::default()
+            });
+        if binding.backend != backend
+            && !self.runtime.store.load_session_events(session)?.is_empty()
+        {
+            return Err("Start a new conversation to switch agent backends; this conversation keeps its original runtime.".into());
+        }
+        binding.backend = backend.into();
+        binding.model = Some(model.into());
+        binding.effort = effort;
+        self.runtime.store.save_session_backend(session, &binding)?;
+        self.runtime.store.save_runtime_preference(provider)
+    }
+
     pub fn send(&self, command: AgentCommand) -> Result<(), String> {
+        let codex_command = match &command {
+            AgentCommand::StartRun { session_id, .. }
+            | AgentCommand::CompactSession { session_id }
+            | AgentCommand::SwitchModel { session_id, .. }
+            | AgentCommand::RetryFromEvent { session_id, .. } => self
+                .runtime
+                .store
+                .session_backend(session_id)?
+                .is_some_and(|b| b.backend == "codex"),
+            AgentCommand::CancelRun { run_id } => run_id.0.starts_with("codex-"),
+            AgentCommand::ApproveTool { approval_id }
+            | AgentCommand::ApproveToolAlways { approval_id }
+            | AgentCommand::RejectTool { approval_id, .. } => approval_id.0.starts_with("codex-"),
+            _ => false,
+        };
+        if codex_command {
+            return self
+                .codex
+                .as_ref()
+                .ok_or("Codex is disabled in demo mode")?
+                .send(command);
+        }
         match &command {
             AgentCommand::StartRun {
                 session_id, model, ..

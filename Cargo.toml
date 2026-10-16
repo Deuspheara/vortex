@@ -5,6 +5,7 @@ members = [
     "crates/agent_protocol",
     "crates/agent_store",
     "crates/agent_core",
+    "crates/agent_codex",
     "crates/agent_models",
     "crates/agent_tools",
     "crates/agent_sandbox",

@@ -381,12 +381,14 @@ fn render_section_content(
                 props.model_search_keys.clone(),
                 props.entity.clone(),
             ))
-            .child(render_subagent_model_section(
-                props.selected_subagent_model.clone(),
-                props.model_items.clone(),
-                props.model_search_keys.clone(),
-                props.entity.clone(),
-            ))
+            .when(props.selected_provider != "Codex", |el| {
+                el.child(render_subagent_model_section(
+                    props.selected_subagent_model.clone(),
+                    props.model_items.clone(),
+                    props.model_search_keys.clone(),
+                    props.entity.clone(),
+                ))
+            })
         })
         .when(section == SettingsSection::Appearance, |el| {
             el.child(render_appearance_section(props.dark, props.entity.clone()))
@@ -400,6 +402,7 @@ fn render_section_content(
             el.child(render_agent_mode_section(
                 props.safety_mode,
                 props.entity.clone(),
+                props.selected_provider == "Codex",
             ))
         })
         .when(section == SettingsSection::Transcript, |el| {
@@ -416,7 +419,11 @@ fn render_section_content(
         })
 }
 
-fn render_agent_mode_section(mode: AgentMode, entity: Entity<AgentWindow>) -> impl IntoElement {
+fn render_agent_mode_section(
+    mode: AgentMode,
+    entity: Entity<AgentWindow>,
+    codex: bool,
+) -> impl IntoElement {
     let modes = [
         (
             AgentMode::ApplyWithApproval,
@@ -444,6 +451,12 @@ fn render_agent_mode_section(mode: AgentMode, entity: Entity<AgentWindow>) -> im
             "Auto-run low-risk tools; approval for the rest",
         ),
     ];
+    let modes = modes
+        .into_iter()
+        .filter(|(mode, _, _)| {
+            !codex || matches!(mode, AgentMode::ApplyWithApproval | AgentMode::PlanOnly)
+        })
+        .collect::<Vec<_>>();
     let mode_count = modes.len();
 
     div()

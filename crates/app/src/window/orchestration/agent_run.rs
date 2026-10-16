@@ -157,7 +157,25 @@ impl AgentWindow {
             self.push_thinking_indicator(cid, cx);
         }
 
-        let model_name = if self.agent_bridge.uses_mock {
+        let is_codex = self.selected_provider == "Codex";
+        let (codex_model, effort) = self
+            .selected_model
+            .split_once(" · ")
+            .map(|(m, e)| (m.to_string(), Some(e.to_string())))
+            .unwrap_or((self.selected_model.clone(), None));
+        self.agent_bridge.select_backend(
+            &session_id,
+            &self.selected_provider,
+            if is_codex {
+                &codex_model
+            } else {
+                &self.selected_model
+            },
+            effort,
+        )?;
+        let model_name = if is_codex {
+            codex_model
+        } else if self.agent_bridge.uses_mock {
             self.selected_model.clone()
         } else {
             crate::shared::state::openrouter_model_slug(
@@ -174,7 +192,9 @@ impl AgentWindow {
             };
             agent_protocol::ModelId::new(model_name)
         });
-        let prompt = if let Some(conv) = self
+        let prompt = if is_codex {
+            prompt.to_string()
+        } else if let Some(conv) = self
             .conversations
             .iter()
             .find(|c| Some(&c.id) == self.selected_conversation_id.as_ref())

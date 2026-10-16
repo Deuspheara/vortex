@@ -58,6 +58,21 @@ pub struct ContextSectionEstimate {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum AgentEvent {
+    SessionCommandFailed {
+        session_id: SessionId,
+        message: String,
+    },
+    /// A backend-owned edit. It is observable, not a Vortex patch awaiting application.
+    FileChangesObserved {
+        run_id: RunId,
+        call_id: ToolCallId,
+        unified_diff: String,
+        applied: bool,
+    },
+    UserMessage {
+        run_id: RunId,
+        text: String,
+    },
     RunStarted {
         run_id: RunId,
         session_id: SessionId,
@@ -231,7 +246,9 @@ fn default_subagent_model() -> ModelId {
 impl AgentEvent {
     pub fn run_id(&self) -> Option<&RunId> {
         match self {
-            Self::RunStarted { run_id, .. }
+            Self::FileChangesObserved { run_id, .. }
+            | Self::UserMessage { run_id, .. }
+            | Self::RunStarted { run_id, .. }
             | Self::ContextBuilt { run_id, .. }
             | Self::AssistantTextDelta { run_id, .. }
             | Self::ReasoningDelta { run_id, .. }

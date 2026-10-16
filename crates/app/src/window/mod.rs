@@ -393,10 +393,38 @@ impl AgentWindow {
         })
         .detach();
 
-        let (selected_provider, selected_model) = if agent_bridge.uses_mock {
+        let (selected_provider, selected_model) = if agent_bridge
+            .runtime
+            .store
+            .runtime_preference()
+            .ok()
+            .flatten()
+            .as_deref()
+            == Some("Codex")
+            && agent_bridge.codex.is_some()
+        {
+            ("Codex".into(), "Connecting…".into())
+        } else if agent_bridge.uses_mock {
             (DEFAULT_PROVIDER.to_string(), default_model())
         } else {
             (OPENROUTER_PROVIDER.to_string(), openrouter_default_model())
+        };
+
+        let (selected_provider, selected_model) = match agent_bridge
+            .runtime
+            .store
+            .runtime_preference()
+            .ok()
+            .flatten()
+        {
+            Some(provider) if provider != "Codex" => {
+                let model = crate::shared::state::models_for_provider(&provider, &[])
+                    .first()
+                    .map(|m| m.name.to_string())
+                    .unwrap_or(selected_model);
+                (provider, model)
+            }
+            _ => (selected_provider, selected_model),
         };
 
         let mut window_state = Self {
@@ -500,6 +528,17 @@ impl AgentWindow {
             }
         })
         .detach();
+
+        if let Some(codex) = &agent_bridge.codex {
+            let rx = codex.updates.clone();
+            let weak = cx.weak_entity();
+            cx.spawn(async move |_, cx| {
+                while let Ok(status) = rx.recv_async().await {
+                    let _ = weak.update(cx, |view, cx| view.apply_codex_status(status, cx));
+                }
+            })
+            .detach();
+        }
 
         if let Some(models_rx) = agent_bridge.openrouter_models_rx.clone() {
             let weak = cx.weak_entity();
@@ -679,16 +718,38 @@ impl AgentWindow {
     pub(crate) fn workspace_readiness(&self) -> WorkspaceReadiness {
         let selected_project = self.selected_project();
         let context_recap = &self.context_inspector_recap;
-        build_workspace_readiness(WorkspaceReadinessInputs {
-            provider_connected: !self.agent_bridge.uses_mock,
-            uses_mock_provider: self.agent_bridge.uses_mock,
+        let codex = (self.selected_provider == "Codex")
+            .then(|| self.agent_bridge.codex.as_ref().map(|b| b.status()))
+            .flatten();
+        let mut readiness = build_workspace_readiness(WorkspaceReadinessInputs {
+            provider_connected: codex
+                .as_ref()
+                .map(|s| s.state == agent_codex::ConnectionState::Ready)
+                .unwrap_or(!self.agent_bridge.uses_mock),
+            uses_mock_provider: self.selected_provider != "Codex" && self.agent_bridge.uses_mock,
             has_project: selected_project.is_some(),
             project_trusted: selected_project.is_some_and(|project| project.trusted),
             index_phase: selected_project.map(|project| project.index_status.phase),
             context_trace_groups: context_recap.context_trace.len(),
             read_cache_entries: context_recap.read_cache.entries,
             page_cache_configured: context_recap.page_cache.configured,
-        })
+        });
+        if let Some(status) = codex {
+            if let Some(check) = readiness.checks.iter_mut().find(|c| c.key == "provider") {
+                check.detail = status.detail.clone();
+                if matches!(
+                    status.state,
+                    agent_codex::ConnectionState::Starting
+                        | agent_codex::ConnectionState::Recovering
+                ) {
+                    check.state = crate::shared::state::ReadinessState::InProgress;
+                }
+            }
+            if status.state != agent_codex::ConnectionState::Ready {
+                readiness.recommended_action = status.detail;
+            }
+        }
+        readiness
     }
 
     fn sync_context_chips_for_conversation(&mut self, conv_id: &ConversationId) {

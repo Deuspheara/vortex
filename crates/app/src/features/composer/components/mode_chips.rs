@@ -64,6 +64,7 @@ const MODE_CHIPS: &[ModeChip] = &[
 ];
 
 pub struct ModeChipsProps {
+    pub codex: bool,
     pub selected_mode: AgentMode,
     pub on_select: Rc<dyn Fn(AgentMode, &mut gpui::App) + 'static>,
 }
@@ -78,12 +79,23 @@ pub fn mode_chips(props: ModeChipsProps) -> impl IntoElement {
             .flex()
             .items_center()
             .gap(Tokens::spacing_1())
-            .children(MODE_CHIPS.iter().map(|chip| {
-                let is_selected = props.selected_mode == chip.mode;
-                let mode = chip.mode.clone();
-                let on_select = props.on_select.clone();
-                render_chip(chip, is_selected, mode, on_select)
-            })),
+            .children(
+                MODE_CHIPS
+                    .iter()
+                    .filter(|chip| {
+                        !props.codex
+                            || matches!(
+                                chip.mode,
+                                AgentMode::PlanOnly | AgentMode::ApplyWithApproval
+                            )
+                    })
+                    .map(|chip| {
+                        let is_selected = props.selected_mode == chip.mode;
+                        let mode = chip.mode.clone();
+                        let on_select = props.on_select.clone();
+                        render_chip(chip, is_selected, mode, on_select)
+                    }),
+            ),
     )
 }
 

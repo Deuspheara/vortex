@@ -43,6 +43,7 @@ pub fn render_composer_fade(bottom_inset: f32) -> impl IntoElement {
 
 /// Props for the composer layout.
 pub struct ComposerProps {
+    pub codex: bool,
     pub has_text: bool,
     pub input_expanded: bool,
     pub on_send: Option<Box<dyn Fn(&mut Window, &mut gpui::App) + 'static>>,
@@ -121,7 +122,11 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
                     entity: props.entity.clone(),
                 }))
                 // ══ Layer 3: Mode chips (8px below pill) ══
-                .child(render_mode_row(&props.selected_mode, props.entity.clone())),
+                .child(render_mode_row(
+                    &props.selected_mode,
+                    props.entity.clone(),
+                    props.codex,
+                )),
         )
         .when(props.composer_dimmed, |el| el.opacity(0.72))
         .when(props.composer_disabled, |el| el.opacity(0.5))
@@ -129,7 +134,11 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
 
 // ── Mode chips row ──
 
-fn render_mode_row(selected_mode: &AgentMode, entity: Entity<AgentWindow>) -> impl IntoElement {
+fn render_mode_row(
+    selected_mode: &AgentMode,
+    entity: Entity<AgentWindow>,
+    codex: bool,
+) -> impl IntoElement {
     div()
         .id("composer-mode-row")
         .w_full()
@@ -140,6 +149,7 @@ fn render_mode_row(selected_mode: &AgentMode, entity: Entity<AgentWindow>) -> im
         .justify_start()
         .pt(Tokens::spacing_1p5())
         .child(mode_chips(ModeChipsProps {
+            codex,
             selected_mode: selected_mode.clone(),
             on_select: Rc::new(move |mode, app| {
                 entity.update(app, |view, cx| {

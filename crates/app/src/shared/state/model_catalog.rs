@@ -172,6 +172,7 @@ impl SelectItem for ModelOption {
 /// All supported LLM providers.
 pub fn provider_options() -> Vec<ProviderOption> {
     vec![
+        ProviderOption::new("Codex", IconName::SquareTerminal),
         ProviderOption::new("Anthropic", IconName::Bot),
         ProviderOption::new("OpenAI", IconName::Star),
         ProviderOption::new("Google", IconName::Globe),
@@ -235,6 +236,11 @@ fn static_openrouter_models() -> Vec<ModelOption> {
 /// Models for a single provider (flat list).
 pub fn models_for_provider(provider: &str, openrouter_models: &[ModelOption]) -> Vec<ModelOption> {
     match provider {
+        "Codex" => openrouter_models
+            .iter()
+            .filter(|m| m.provider.as_ref() == "Codex")
+            .cloned()
+            .collect(),
         "Anthropic" => vec![
             model(
                 "Anthropic",
@@ -268,10 +274,15 @@ pub fn models_for_provider(provider: &str, openrouter_models: &[ModelOption]) ->
             model("Local", "Ollama", "128k", "", "~0.3s", "free"),
         ],
         "OpenRouter" => {
-            if openrouter_models.is_empty() {
+            let models: Vec<_> = openrouter_models
+                .iter()
+                .filter(|m| m.provider.as_ref() != "Codex")
+                .cloned()
+                .collect();
+            if models.is_empty() {
                 static_openrouter_models()
             } else {
-                openrouter_models.to_vec()
+                models
             }
         }
         _ => vec![model(provider, "Unknown Model", "", "", "", "")],

@@ -21,6 +21,8 @@ patch-first edits, and an inspectable activity timeline in one Rust/GPUI app.
   they are applied.
 - Approval and sandbox policies for risky tools and real process execution.
 - Event-sourced local sessions stored outside the repository in SQLite.
+- Native Codex agent integration using your existing Codex CLI login, with automatic
+  reconnection and conversation resume.
 - OpenRouter-backed model calls when `OPENROUTER_API_KEY` is set, with a mock
   provider fallback for local UI exploration.
 
@@ -37,7 +39,9 @@ audit, replay, and harden as the product moves toward release.
 
 ## Safety Model
 
-Vortex is built to keep agent activity inspectable:
+Vortex is built to keep agent activity inspectable. The following patch-first
+guarantees describe the native backend; [Codex execution](docs/codex-backend.md)
+uses Codex-owned tools, approvals, and observed diffs:
 
 - Provider streams are normalized into `AgentEvent` before UI rendering.
 - Writes are represented as previewable patches before apply.
@@ -69,15 +73,30 @@ rustup show
 cargo check -p app
 ```
 
-No `.env` file is required or loaded. For real model calls, export the key in
-your shell before starting the app:
+For Codex, install the official [Codex CLI](https://developers.openai.com/codex/cli),
+then authenticate once:
+
+```bash
+codex login
+cargo run -p app
+```
+
+Vortex reuses Codex-managed authentication. Select **Codex** in Settings → Models;
+new installations select it automatically when authenticated. Choose a model and
+reasoning level, then use Plan or Apply with approval. Conversations resume after
+restart without repeating login while credentials remain valid. See
+[Codex setup, permissions, and recovery](docs/codex-backend.md).
+
+No `.env` file is required or loaded. For the alternative OpenRouter backend,
+export a key before starting the app:
 
 ```bash
 export OPENROUTER_API_KEY=...
 cargo run -p app
 ```
 
-Without `OPENROUTER_API_KEY`, Vortex starts with the mock provider.
+Without `OPENROUTER_API_KEY`, the native backend uses Mock; the independent Codex
+backend remains available with an authenticated Codex CLI.
 
 ## Running
 
@@ -104,6 +123,7 @@ cargo test --workspace
 
 | Variable | Purpose |
 | --- | --- |
+| `VORTEX_CODEX_BIN` | Optional path to the installed Codex executable when it is not on PATH. |
 | `OPENROUTER_API_KEY` | Enables real OpenRouter model calls. If omitted, the mock provider is used. |
 | `PAGEINDEX_API_KEY` | Optional key for hosted document/PDF context provider experiments. |
 | `EXA_API_KEY` | Optional key for Exa-backed web search tools. |
@@ -137,7 +157,8 @@ cargo run -p app
 crates/
   agent_protocol/    Shared command, event, tool, risk, and status types
   agent_store/       SQLite event log and session/project persistence
-  agent_core/        Runtime state machine and model loop
+  agent_core/        Native runtime state machine and model loop
+  agent_codex/       Local Codex agent process, approvals, and recovery
   agent_models/      Mock and OpenRouter providers
   agent_tools/       Tool registry and tool executors
   agent_sandbox/     Risk, approval, path, and secret policies

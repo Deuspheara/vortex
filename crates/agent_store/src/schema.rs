@@ -82,6 +82,19 @@ pub fn storage_tool_call_id(run_id: &RunId, call_id: &ToolCallId) -> ToolCallId 
 }
 
 pub trait EventStore: Send + Sync {
+    fn session_backend(&self, id: &SessionId) -> Result<Option<SessionBackend>, String>;
+    fn save_session_backend(&self, id: &SessionId, backend: &SessionBackend) -> Result<(), String>;
+    fn runtime_preference(&self) -> Result<Option<String>, String>;
+    fn save_runtime_preference(&self, provider: &str) -> Result<(), String>;
+    fn backend_run_states(&self) -> Result<Vec<(RunId, String)>, String>;
+    /// Persist the normalized event and its provider reconciliation cursor atomically.
+    fn record_backend_events(
+        &self,
+        run_id: &RunId,
+        events: &[AgentEvent],
+        state: &str,
+    ) -> Result<(), String>;
+
     fn init(&self) -> Result<(), String>;
 
     fn upsert_project(&self, project: &StoredProject) -> Result<(), String>;
@@ -138,4 +151,13 @@ pub trait EventStore: Send + Sync {
         &self,
         id: &agent_protocol::CheckpointId,
     ) -> Result<Option<agent_protocol::WorkspaceCheckpoint>, String>;
+}
+
+/// A session stays on its chosen runtime after its first run. Missing legacy rows use native.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionBackend {
+    pub backend: String,
+    pub thread_id: Option<String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
 }

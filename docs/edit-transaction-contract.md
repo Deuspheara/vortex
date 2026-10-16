@@ -1,5 +1,9 @@
 # Edit transaction contract
 
+> This contract applies to Vortex's native runtime. The full Codex backend owns
+> its execution and file changes; see [Codex backend](codex-backend.md) for its
+> restricted defaults, approval routing, persistence, and recovery limitations.
+
 Poor editing usually comes from the agent acting too incrementally:
 
 ```txt

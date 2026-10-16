@@ -1,5 +1,9 @@
 # Context and tool contract
 
+> This contract applies to Vortex's native runtime. The full Codex backend owns
+> its execution and file changes; see [Codex backend](codex-backend.md) for its
+> restricted defaults, approval routing, persistence, and recovery limitations.
+
 The bottleneck for coding agents is usually not the model — it is the **tool contract**. Context must be managed like memory, not like an unbounded chat transcript.
 
 Use this document as the product and architecture spec for Vortex agent tooling and context management.

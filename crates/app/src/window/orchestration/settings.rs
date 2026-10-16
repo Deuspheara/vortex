@@ -70,6 +70,17 @@ impl AgentWindow {
     }
 
     pub fn set_safety_mode(&mut self, mode: agent_protocol::AgentMode, cx: &mut Context<Self>) {
+        if self.selected_provider == "Codex"
+            && !matches!(
+                mode,
+                agent_protocol::AgentMode::PlanOnly | agent_protocol::AgentMode::ApplyWithApproval
+            )
+        {
+            self.composer_error =
+                Some("Codex supports Plan and Apply with approval in Vortex.".into());
+            cx.notify();
+            return;
+        }
         self.safety_mode = mode;
         cx.notify();
     }

@@ -677,6 +677,7 @@ fn composer_layer(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEl
         .left_0()
         .right_0()
         .child(composer::render_composer(ComposerProps {
+            codex: vs.selected_provider == "Codex",
             has_text: composer_vm.has_text,
             input_expanded: composer_vm.input_expanded,
             on_send: Some(Box::new({

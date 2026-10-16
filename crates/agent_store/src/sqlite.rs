@@ -42,6 +42,9 @@ impl SqliteEventStore {
 }
 
 const MIGRATIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS session_backends (session_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS runtime_preferences (id INTEGER PRIMARY KEY CHECK(id = 1), provider TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS backend_run_states (run_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   root_path TEXT NOT NULL,
@@ -116,6 +119,14 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   payload_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TRIGGER IF NOT EXISTS delete_session_backend AFTER DELETE ON sessions BEGIN
+ DELETE FROM session_backends WHERE session_id = OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS delete_backend_run_state AFTER DELETE ON runs BEGIN
+ DELETE FROM backend_run_states WHERE run_id = OLD.id;
+END;
+
+
 "#;
 
 fn parse_dt(s: &str) -> DateTime<Utc> {
@@ -146,6 +157,8 @@ fn ensure_runs_column(conn: &Connection, name: &str, ddl: &str) -> Result<(), St
 
 fn serialize_event(event: &AgentEvent) -> Result<(String, String), String> {
     let event_type = match event {
+        AgentEvent::FileChangesObserved { .. } => "FileChangesObserved",
+        AgentEvent::UserMessage { .. } => "UserMessage",
         AgentEvent::RunStarted { .. } => "RunStarted",
         AgentEvent::ContextBuilt { .. } => "ContextBuilt",
         AgentEvent::AssistantTextDelta { .. } => "AssistantTextDelta",
@@ -173,6 +186,7 @@ fn serialize_event(event: &AgentEvent) -> Result<(String, String), String> {
         AgentEvent::RunFinished { .. } => "RunFinished",
         AgentEvent::RunFailed { .. } => "RunFailed",
         AgentEvent::CommandFailed { .. } => "CommandFailed",
+        AgentEvent::SessionCommandFailed { .. } => "SessionCommandFailed",
     };
     let payload = serde_json::to_string(event).map_err(|e| e.to_string())?;
     Ok((event_type.to_string(), payload))
@@ -213,6 +227,106 @@ fn delete_runs_for_session(conn: &Connection, session_id: &SessionId) -> Result<
 }
 
 impl EventStore for SqliteEventStore {
+    fn session_backend(&self, id: &SessionId) -> Result<Option<crate::SessionBackend>, String> {
+        use rusqlite::OptionalExtension;
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let payload: Option<String> = conn
+            .query_row(
+                "SELECT payload FROM session_backends WHERE session_id=?1",
+                [&id.0],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        payload
+            .map(|p| serde_json::from_str(&p).map_err(|e| e.to_string()))
+            .transpose()
+    }
+    fn save_session_backend(
+        &self,
+        id: &SessionId,
+        backend: &crate::SessionBackend,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("INSERT INTO session_backends VALUES (?1,?2) ON CONFLICT(session_id) DO UPDATE SET payload=excluded.payload", params![id.0,serde_json::to_string(backend).map_err(|e| e.to_string())?]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    fn runtime_preference(&self) -> Result<Option<String>, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .lock()
+            .map_err(|e| e.to_string())?
+            .query_row(
+                "SELECT provider FROM runtime_preferences WHERE id=1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+    fn save_runtime_preference(&self, provider: &str) -> Result<(), String> {
+        self.conn.lock().map_err(|e| e.to_string())?.execute("INSERT INTO runtime_preferences VALUES (1,?1) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider", [provider]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    fn backend_run_states(&self) -> Result<Vec<(RunId, String)>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT run_id,payload FROM backend_run_states")
+            .map_err(|e| e.to_string())?;
+        stmt.query_map([], |r| Ok((RunId::new(r.get::<_, String>(0)?), r.get(1)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+    fn record_backend_events(
+        &self,
+        run_id: &RunId,
+        events: &[AgentEvent],
+        state: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let sequence: i64 = tx
+            .query_row(
+                "SELECT COALESCE(MAX(sequence),-1)+1 FROM events WHERE run_id=?1",
+                [&run_id.0],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        for (offset, event) in events.iter().enumerate() {
+            let (kind, payload) = serialize_event(event)?;
+            tx.execute(
+                "INSERT INTO events VALUES (?1,?2,?3,?4,?5,?6)",
+                params![
+                    uuid::Uuid::new_v4().to_string(),
+                    run_id.0,
+                    sequence + offset as i64,
+                    kind,
+                    payload,
+                    Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        // Terminal status and replay state must agree even if the process crashes here.
+        if let Some(status) = events.iter().rev().find_map(|e| match e {
+            AgentEvent::RunFinished { status, .. } => Some(status),
+            _ => None,
+        }) {
+            tx.execute(
+                "UPDATE runs SET status=?1,finished_at=?2 WHERE id=?3",
+                params![
+                    serde_json::to_string(status).map_err(|e| e.to_string())?,
+                    Utc::now().to_rfc3339(),
+                    run_id.0
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.execute("INSERT INTO backend_run_states VALUES (?1,?2) ON CONFLICT(run_id) DO UPDATE SET payload=excluded.payload", params![run_id.0,state]).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
     fn init(&self) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute_batch(MIGRATIONS).map_err(|e| e.to_string())?;
@@ -963,5 +1077,67 @@ mod tests {
         assert!(store.get_run(&run_id).unwrap().is_none());
         assert!(store.list_projects().unwrap().is_empty());
         assert!(store.list_approval_rules(&project_id).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::*;
+    #[test]
+    fn migration_keeps_legacy_sessions_and_persists_backend_preferences() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.sqlite");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE sessions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL,title TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL); INSERT INTO sessions VALUES ('old','p','Legacy','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');").unwrap();
+        drop(conn);
+        let store = SqliteEventStore::open(&path).unwrap();
+        let id = SessionId::new("old");
+        assert_eq!(store.get_session(&id).unwrap().unwrap().title, "Legacy");
+        assert!(store.session_backend(&id).unwrap().is_none());
+        let backend = crate::SessionBackend {
+            backend: "codex".into(),
+            thread_id: Some("thread".into()),
+            model: Some("model".into()),
+            effort: Some("high".into()),
+        };
+        store.save_session_backend(&id, &backend).unwrap();
+        store.save_runtime_preference("Codex").unwrap();
+        drop(store);
+        let store = SqliteEventStore::open(&path).unwrap();
+        assert_eq!(store.session_backend(&id).unwrap(), Some(backend));
+        assert_eq!(
+            store.runtime_preference().unwrap().as_deref(),
+            Some("Codex")
+        );
+        store.delete_session(&id).unwrap();
+        assert!(store.session_backend(&id).unwrap().is_none());
+    }
+    #[test]
+    fn normalized_events_and_reconciliation_state_commit_together() {
+        let store = SqliteEventStore::in_memory().unwrap();
+        let run = RunId::new("r");
+        store
+            .record_backend_events(
+                &run,
+                &[
+                    AgentEvent::AssistantTextDelta {
+                        run_id: run.clone(),
+                        text: "a".into(),
+                    },
+                    AgentEvent::AssistantTextDelta {
+                        run_id: run.clone(),
+                        text: "b".into(),
+                    },
+                ],
+                "cursor",
+            )
+            .unwrap();
+        let events = store.load_run_events(&run).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[1].sequence, 1);
+        assert_eq!(
+            store.backend_run_states().unwrap(),
+            vec![(run, "cursor".into())]
+        );
     }
 }

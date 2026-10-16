@@ -37,6 +37,7 @@ cargo check -p app
 | `agent_protocol` | Shared `AgentCommand`, `AgentEvent`, tool, risk, patch, status, and cancellation types |
 | `agent_store` | SQLite event log, sessions, projects, and replayable state |
 | `agent_core` | Runtime state machine, run loop, model context, tool execution, and cancellation |
+| `agent_codex` | Local Codex app-server process, protocol normalization, approval routing, and recovery |
 | `agent_models` | Provider adapters, currently Mock and OpenRouter |
 | `agent_tools` | Tool registry, schemas, assessment, execution, and presentation metadata |
 | `agent_sandbox` | Command risk, approval, path, and secret policies |
@@ -57,8 +58,13 @@ Runtime contracts:
 
 ## Runtime safety rules
 
-These rules are enforced across `agent_core`, `agent_tools`, and
-`agent_sandbox`:
+The native backend enforces the rules below across `agent_core`, `agent_tools`,
+and `agent_sandbox`. The separate Codex backend delegates execution to the local
+Codex agent: it must normalize and persist events, explicitly restrict sandbox
+and network defaults, route approvals to the user, and preserve cancellation.
+Native patch-before-write and crash rollback guarantees must not be claimed for
+Codex-owned commands or edits. Display completed Codex diffs as observed changes,
+never as unapplied native patches. See [Codex backend](docs/codex-backend.md).
 
 1. The model never writes directly to disk.
 2. The model never executes real shell commands directly.

@@ -26,16 +26,8 @@ fn main() {
         fonts::register_bundled_fonts(cx);
         init_themes(cx);
 
-        let use_mock = match std::env::var("OPENROUTER_API_KEY") {
-            Ok(key) if !key.trim().is_empty() => false,
-            _ => true,
-        };
-        if use_mock {
-            tracing::warn!(
-                "OPENROUTER_API_KEY not set — using mock provider. \
-                 Get a key at https://openrouter.ai/keys and export it before launching."
-            );
-        }
+        // Demo builds never launch an external agent or reuse real credentials.
+        let use_mock = cfg!(all(feature = "demo_mode", debug_assertions));
         let bridge = Arc::new(AgentBridge::new(use_mock));
         let bridge_for_window = bridge.clone();
 

@@ -115,6 +115,9 @@ impl AgentWindow {
     }
 
     fn conv_id_for_event(&self, event: &AgentEvent) -> Option<ConversationId> {
+        if let AgentEvent::SessionCommandFailed { session_id, .. } = event {
+            return Some(ConversationId(session_id.0.clone()));
+        }
         if let Some(run_id) = event.run_id() {
             if let Some(conv_id) = self.reducer_state.run_conversations.get(run_id) {
                 return Some(conv_id.clone());
@@ -472,6 +475,42 @@ impl AgentWindow {
         let conv_id = self.conv_id_for_event(&event);
         self.set_event_conversation(conv_id.clone());
         match event {
+            AgentEvent::UserMessage { run_id, text } => {
+                if let Some(cid) = conv_id {
+                    let user_id = format!("user-{}", run_id.0);
+                    let mut already_visible = false;
+                    if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == cid) {
+                        if let Some(ThreadItem::UserMessage {
+                            id, text: existing, ..
+                        }) = conv
+                            .thread_items
+                            .iter_mut()
+                            .rev()
+                            .find(|i| matches!(i, ThreadItem::UserMessage { .. }))
+                        {
+                            if *id == user_id {
+                                already_visible = true;
+                            } else if id.starts_with("user-msg-") && *existing == text {
+                                *id = user_id.clone();
+                                already_visible = true;
+                            }
+                        }
+                    }
+                    self.rebuild_thread_item_index(&cid);
+                    if !already_visible {
+                        self.push_thread_item(
+                            cid,
+                            ThreadItem::UserMessage {
+                                id: format!("user-{}", run_id.0),
+                                text,
+                                attachments: Vec::new(),
+                                expanded: false,
+                            },
+                            cx,
+                        );
+                    }
+                }
+            }
             AgentEvent::RunStarted {
                 run_id,
                 session_id,
@@ -890,6 +929,49 @@ impl AgentWindow {
                             }
                         }
                     }
+                }
+            }
+            AgentEvent::FileChangesObserved {
+                call_id,
+                unified_diff,
+                applied,
+                ..
+            } => {
+                let Some(cid) = conv_id else {
+                    return;
+                };
+                let parsed = diff_panel::parse_unified_diff(&unified_diff);
+                if applied {
+                    let files = parsed
+                        .iter()
+                        .map(|f| crate::features::shell::state::DiffFileSummary {
+                            path: f.path.clone(),
+                            added: f.added,
+                            removed: f.removed,
+                        })
+                        .collect::<Vec<_>>();
+                    self.push_thread_item(
+                        cid.clone(),
+                        ThreadItem::DiffSummary {
+                            id: format!("codex-diff-{}", call_id.0),
+                            files_changed: files.len(),
+                            additions: files.iter().map(|f| f.added).sum(),
+                            deletions: files.iter().map(|f| f.removed).sum(),
+                            files,
+                            expanded: false,
+                            depth: 0,
+                            parent_call_id: None,
+                        },
+                        cx,
+                    );
+                }
+                if self.selected_conversation_id.as_ref() == Some(&cid) {
+                    self.apply_diff_panel_now(&unified_diff, cx);
+                    self.diff_panel.pending_patch_id = None;
+                    self.diff_panel.applied = applied;
+                    self.artifact_store.set_primary_patch(None);
+                    self.artifact_store
+                        .update_diff_files("patch-preview", parsed);
                 }
             }
             AgentEvent::PatchPreviewUpdated { unified_diff, .. } => {
@@ -1324,7 +1406,8 @@ impl AgentWindow {
                 }
                 self.request_thread_scroll_to_bottom = true;
             }
-            AgentEvent::CommandFailed { message } => {
+            AgentEvent::CommandFailed { message }
+            | AgentEvent::SessionCommandFailed { message, .. } => {
                 self.pending_approval_id = None;
                 self.diff_panel.pending_approval = None;
                 self.pending_thread_approval = None;
@@ -1530,6 +1613,7 @@ impl AgentWindow {
 
     pub fn replay_session_events(&mut self, session_key: &str, cx: &mut Context<Self>) {
         self.reset_selected_session_presentation();
+        self.restore_session_backend();
         let session = agent_protocol::SessionId::new(session_key);
         let conv_id = ConversationId(session_key.to_string());
         if let Some(conv) = self.conversations.iter_mut().find(|c| c.id == conv_id) {
