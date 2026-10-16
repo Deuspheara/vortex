@@ -85,6 +85,37 @@ The protocol is version-sensitive. Integration was exercised with Codex CLI
 falling back to Mock. The first implementation intentionally rejects unsupported
 server interaction types rather than guessing their approval semantics.
 
+## Context meter and token accounting
+
+Context occupancy and processed usage are separate quantities. Codex sends
+`thread/tokenUsage/updated` with thread-cumulative `total`, latest-request `last`,
+and `modelContextWindow`. Vortex persists `last.totalTokens` and the reported
+capacity as `ContextWindowUpdated`; the composer ring and fresh-context advice
+use that snapshot. Compaction can decrease the snapshot. Cumulative `total`
+deltas remain `UsageUpdated` for the run's input/output/cache ledger; cache hits
+are included in context occupancy and are not subtracted from the context window.
+
+The native backend uses its latest request usage (or the ContextBuilt estimate
+before usage arrives), rather than adding requests together for the ring. Its
+capacity still comes from the model catalog. Codex capacity comes from the server,
+without guessing a 200K fallback. When an older saved Codex run predates occupancy
+snapshots, the meter says context usage is unavailable until a new usage update;
+existing token totals are retained and no prompt is automatically resubmitted.
+
+An investigation of the saved “make a simple html js todo app” run found five
+model calls: 102,469 accumulated input tokens, including 69,248 cache-read tokens,
+and 2,419 output tokens. The final request occupied 22,098 / 475,000 tokens (4.65%).
+The old meter incorrectly displayed cumulative input against a 200,000 fallback
+(51.23%). The reference adapter uses `last.totalTokens` and
+`modelContextWindow`, matching the corrected projection. This is a reporting fix,
+not a claim that the underlying model requests became cheaper or smaller.
+
+The Codex path sends the new user input to the existing Codex thread; it does not
+inject Vortex's native context builder, transcript, project map, or tool catalog.
+Installed Codex instructions/plugins and model behavior can still affect actual
+usage. A performance comparison requires matching model, effort, workspace,
+configuration, and task; no equivalent live reference application benchmark was run here.
+
 ## Verification
 
 - `cargo test -p agent_codex`: deterministic local fake-server tests; no network

@@ -253,13 +253,36 @@ Escape cancelled a new confirmation on the rebuilt app after reopening. No panic
 borrow error, or error-level entry appeared in either QA log. Real user data was
 untouched.
 
+## Context-meter accounting correction
+
+The ring previously accumulated processed input across model calls, divided by
+a catalog fallback of 200K even for Codex. The todo task's saved Codex usage proves
+102,469 processed input tokens across five requests versus 22,098 current-context
+tokens and a reported 475K capacity. Current occupancy now has its own normalized,
+persisted snapshot; run input/output/cache totals remain separate. The tooltip
+labels run totals explicitly, and fresh-context advice uses occupancy instead of
+cumulative processing. Older Codex runs without saved snapshots show unavailable
+context instead of an invented percentage.
+
+Regression coverage includes latest-request versus cumulative/cache accounting,
+capacity changes, compaction decreasing occupancy, repeated snapshots after
+projection serialization, missing usage/capacity, native latest-request accounting,
+and store persistence of all five controlled protocol updates. The normal native
+QA app replays the exact todo measurements through a deterministic peer; this
+performs no inference or file changes. Native tooltip verification showed
+22,098 / 475K alongside a separately labelled 102.5K run-input total. Reopening
+retained the snapshot with exactly one user submission. Switching to an older
+conversation showed unavailable usage rather than inheriting the other chat’s
+value. See the context-accounting section in
+[codex-backend.md](codex-backend.md) for the investigation and its limits.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.
 - `cargo clippy --workspace --all-targets` — passed with repository warnings.
 - `cargo check -p app` — passed with repository warnings.
 - `cargo build -p app` — passed; the normal build was exercised natively.
-- `cargo test --workspace` — 239 passed, 2 opt-in live tests ignored.
+- `cargo test --workspace` — 246 passed, 2 opt-in live tests ignored.
 - `cargo test -p app --features demo_mode fixture_is_isolated_idempotent_and_replayable`
   — passed.
 - `VORTEX_TEST_CODEX_MODEL=gpt-6-astra cargo test -p agent_codex --test backend -- --ignored --nocapture --test-threads=1`

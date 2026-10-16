@@ -125,8 +125,8 @@ fn context_usage_tooltip(
         Some(AgentStatus::Failed) => "Failed",
         None => "Unknown",
     };
-    let input_line = format_token_line("Input", input_tokens);
-    let output_line = format_token_line("Output", output_tokens);
+    let input_line = format_token_line("Run input total", input_tokens);
+    let output_line = format_token_line("Run output total", output_tokens);
     let cache_read_line = format_token_line("Cache read", cache_read_tokens);
     let cache_write_line = format_token_line("Cache write", cache_write_tokens);
     let show_cache = cache_read_tokens > 0 || cache_write_tokens > 0;
@@ -147,7 +147,7 @@ fn context_usage_tooltip(
                 div()
                     .text_size(Tokens::text_xs())
                     .text_color(Tokens::text_secondary())
-                    .child(format!("{usage_label} prompt tokens")),
+                    .child(usage_label.clone()),
             )
             .child(
                 div()
@@ -285,33 +285,5 @@ fn stroke_arc(
 
     if let Ok(path) = builder.build() {
         window.paint_path(path, color);
-    }
-}
-
-/// Parse a display string like `"12.4K / 200K"` into numeric used/max values.
-pub fn parse_token_usage(raw: &str) -> (f32, f32, String) {
-    let mut parts = raw.split('/').map(str::trim);
-    let used_label = parts.next().unwrap_or("0").to_string();
-    let max_label = parts.next().unwrap_or("200K").to_string();
-    (
-        parse_token_amount(&used_label),
-        parse_token_amount(&max_label),
-        format!("{used_label} / {max_label}"),
-    )
-}
-
-fn parse_token_amount(raw: &str) -> f32 {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return 0.0;
-    }
-
-    let upper = raw.to_uppercase();
-    if let Some(num) = upper.strip_suffix('K') {
-        num.trim().parse::<f32>().unwrap_or(0.0) * 1_000.0
-    } else if let Some(num) = upper.strip_suffix('M') {
-        num.trim().parse::<f32>().unwrap_or(0.0) * 1_000_000.0
-    } else {
-        raw.parse::<f32>().unwrap_or(0.0)
     }
 }

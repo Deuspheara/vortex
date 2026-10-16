@@ -15,7 +15,7 @@ use crate::features::shell::state::{
 };
 use crate::features::terminal::components::terminal_view::TerminalView;
 use crate::features::terminal::layout::TerminalTabVm;
-use crate::shared::components::context_usage_ring::{ContextUsageProps, parse_token_usage};
+use crate::shared::components::context_usage_ring::ContextUsageProps;
 use crate::shared::state::{WorkspaceReadiness, context_for_model};
 use agent_protocol::AgentMode;
 
@@ -153,12 +153,14 @@ impl AgentWindow {
         let has_text = !self.input_state.read(cx).value().trim().is_empty()
             || !self.pending_image_attachments.is_empty();
         let is_running = self.selected_conversation_has_active_work();
-        let recommend_fresh_context = self.status.input_tokens
-            > context_for_model(
+        let fallback = (self.selected_provider != "Codex").then(|| {
+            context_for_model(
                 &self.selected_provider,
                 &self.selected_model,
                 &self.openrouter_models,
-            ) / 2;
+            )
+        });
+        let recommend_fresh_context = self.status.context.is_over_half(fallback);
         let active_todos = self
             .selected_conversation_id
             .as_ref()
@@ -239,7 +241,16 @@ impl AgentWindow {
     }
 
     fn build_composer_context_usage_vm(&self) -> ComposerContextUsageVm {
-        let (used, max, usage_label) = parse_token_usage(&self.status.token_usage);
+        let fallback = (self.selected_provider != "Codex").then(|| {
+            context_for_model(
+                &self.selected_provider,
+                &self.selected_model,
+                &self.openrouter_models,
+            )
+        });
+        let used = self.status.context.used_tokens.unwrap_or(0) as f32;
+        let max = self.status.context.capacity(fallback).unwrap_or(0) as f32;
+        let usage_label = self.status.token_usage.clone();
         ComposerContextUsageVm {
             used,
             max,

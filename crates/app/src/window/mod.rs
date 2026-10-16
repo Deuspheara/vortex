@@ -255,6 +255,7 @@ mod tests {
 pub struct StatusBarState {
     pub model: String,
     pub token_usage: String,
+    pub context: crate::shared::state::ContextUsageState,
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
@@ -267,7 +268,8 @@ impl Default for StatusBarState {
     fn default() -> Self {
         Self {
             model: "Claude Sonnet 4.5".into(),
-            token_usage: "0 / 200K".into(),
+            token_usage: "Context usage unavailable".into(),
+            context: Default::default(),
             input_tokens: 0,
             output_tokens: 0,
             cache_read_tokens: 0,
@@ -1617,16 +1619,21 @@ impl AgentWindow {
         }
     }
 
-    fn refresh_token_usage_display(&mut self) {
-        let max = context_for_model(
-            &self.selected_provider,
-            &self.selected_model,
-            &self.openrouter_models,
-        );
-        let max_label = format_context_label(max);
-        let parts: Vec<&str> = self.status.token_usage.split(" / ").collect();
-        let used = parts.first().copied().unwrap_or("0");
-        self.status.token_usage = format!("{used} / {max_label}");
+    pub(crate) fn refresh_token_usage_display(&mut self) {
+        let fallback = (self.selected_provider != "Codex").then(|| {
+            context_for_model(
+                &self.selected_provider,
+                &self.selected_model,
+                &self.openrouter_models,
+            )
+        });
+        self.status.token_usage = match self.status.context.used_tokens {
+            Some(used) => match self.status.context.capacity(fallback) {
+                Some(max) => format!("{used} / {}", format_context_label(max)),
+                None => format!("{used} tokens · capacity unavailable"),
+            },
+            None => "Context usage unavailable".into(),
+        };
     }
 
     fn cancel_in_progress_todos(&mut self, conv_id: &ConversationId) {

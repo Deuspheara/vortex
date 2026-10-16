@@ -11,8 +11,7 @@ use crate::features::shell::state::{
     ReviewPanelTab, ThreadItem, excerpt_output,
 };
 use crate::shared::state::{
-    TimelineRowKind, context_for_model, default_expansion, estimate_cost_usd, format_context_label,
-    format_cost_usd, pricing_for_model,
+    TimelineRowKind, default_expansion, estimate_cost_usd, format_cost_usd, pricing_for_model,
 };
 use crate::ui::agent_window::AgentWindow;
 
@@ -506,6 +505,13 @@ impl AgentWindow {
             self.sync_sidebar_view(cx);
             return;
         }
+        if self
+            .status
+            .context
+            .observe(&event, self.selected_provider == "Codex")
+        {
+            self.refresh_token_usage_display();
+        }
         match event {
             AgentEvent::ContextWindowUpdated { .. } => {}
             AgentEvent::UserMessage { run_id, text } => {
@@ -567,14 +573,7 @@ impl AgentWindow {
                 self.status.output_tokens = 0;
                 self.status.cache_read_tokens = 0;
                 self.status.cache_write_tokens = 0;
-                self.status.token_usage = format!(
-                    "0 / {}",
-                    format_context_label(context_for_model(
-                        &self.selected_provider,
-                        &self.selected_model,
-                        &self.openrouter_models,
-                    ))
-                );
+                self.refresh_token_usage_display();
                 self.reducer_state.tool_dedupe_keys.clear();
                 self.sync_agent_status(AgentStatus::Thinking);
                 if depth == 0 {
@@ -1537,13 +1536,6 @@ impl AgentWindow {
                 self.status.cache_read_tokens += cache_read_tokens.unwrap_or(0);
                 self.status.cache_write_tokens += cache_write_tokens.unwrap_or(0);
 
-                let max = context_for_model(
-                    &self.selected_provider,
-                    &self.selected_model,
-                    &self.openrouter_models,
-                );
-                let max_label = format_context_label(max);
-
                 if let Some(cost) = estimated_cost_usd {
                     self.run_cost_usd += cost;
                     self.status.estimated_cost = Some(format_cost_usd(self.run_cost_usd));
@@ -1562,12 +1554,6 @@ impl AgentWindow {
                     );
                     self.status.estimated_cost = Some(format_cost_usd(self.run_cost_usd));
                 }
-
-                self.status.token_usage = format!(
-                    "{} / {}",
-                    format_tokens(self.status.input_tokens),
-                    max_label
-                );
             }
             AgentEvent::RunFinished { run_id, status, .. } => {
                 if self.composer_error.as_deref() == Some("Stopping Codex…") {
@@ -1796,14 +1782,6 @@ fn allow_always_label(command: &str) -> Option<String> {
         None => format!("Always allow {program}"),
     };
     Some(label)
-}
-
-fn format_tokens(n: u64) -> String {
-    if n >= 1000 {
-        format!("{:.1}K", n as f64 / 1000.0)
-    } else {
-        n.to_string()
-    }
 }
 
 fn uuid_simple() -> String {
