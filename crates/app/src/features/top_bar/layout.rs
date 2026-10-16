@@ -56,29 +56,7 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                 .items_center()
                 .gap(Tokens::spacing_1())
                 .px(Tokens::spacing_1())
-                .when_some(props.project_name, |el, project| {
-                    el.child(
-                        Icon::new(icons::FOLDER)
-                            .size(Tokens::spacing_4())
-                            .text_color(Tokens::text_tertiary()),
-                    )
-                    .child(
-                        div()
-                            .max_w(px(Tokens::SIDEBAR_WIDTH))
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .text_size(Tokens::text_sm())
-                            .text_color(Tokens::text_secondary())
-                            .child(project),
-                    )
-                    .child(
-                        div()
-                            .px(Tokens::spacing_2())
-                            .text_color(Tokens::text_tertiary())
-                            .child("/"),
-                    )
-                })
-                .child(render_title_block(title))
+                .child(render_title_block(title, props.project_name))
                 .child(render_title_menu(
                     props.conversation_title,
                     props.on_new_chat,
@@ -109,17 +87,36 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
         )
 }
 
-fn render_title_block(title: String) -> impl IntoElement {
-    div().flex_1().min_w(px(0.0)).flex().items_center().child(
-        div()
-            .text_size(Tokens::text_sm())
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(Tokens::topbar_title_active())
-            .opacity(0.92)
-            .overflow_hidden()
-            .text_ellipsis()
-            .child(title),
-    )
+fn render_title_block(title: String, project: Option<String>) -> impl IntoElement {
+    let breadcrumb = project
+        .as_ref()
+        .map_or_else(|| title.clone(), |project| format!("{project} / {title}"));
+    div()
+        .flex_1()
+        .min_w(px(0.0))
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .gap(Tokens::spacing_2())
+        .when(project.is_some(), |el| {
+            el.child(
+                Icon::new(icons::FOLDER)
+                    .size(Tokens::spacing_4())
+                    .flex_shrink_0()
+                    .text_color(Tokens::text_tertiary()),
+            )
+        })
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .text_ellipsis()
+                .text_size(Tokens::text_sm())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(Tokens::topbar_title_active())
+                .child(breadcrumb),
+        )
 }
 
 fn render_title_menu(

@@ -544,6 +544,11 @@ impl Tokens {
         }
     }
     pub const STATUS_BAR_HEIGHT: f32 = 24.0;
+    /// Lift the empty-thread input group to match the desktop reference.
+    pub const EMPTY_THREAD_BOTTOM_INSET: f32 = 88.0;
+    pub const EMPTY_THREAD_ITEM_GAP: f32 = 36.0;
+    pub const EMPTY_THREAD_TITLE_SIZE: f32 = 28.0;
+    pub const MARKDOWN_TABLE_COLUMN_MIN_WIDTH: f32 = 160.0;
     pub const THREAD_MAX_WIDTH: f32 = 736.0;
     pub const THREAD_EMPTY_COPY_WIDTH: f32 = 456.0;
     pub const COMPOSER_MAX_WIDTH: f32 = Self::THREAD_MAX_WIDTH;
@@ -584,6 +589,7 @@ impl Tokens {
     /// Max scrollable input area height (rows × line height).
     pub fn composer_input_max_height() -> f32 {
         Self::COMPOSER_INPUT_MAX_ROWS as f32 * Self::COMPOSER_INPUT_LINE_HEIGHT
+            + f32::from(Self::spacing_4())
     }
 
     /// Max pill height when the toolbar sits below the input (stacked layout).

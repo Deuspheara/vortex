@@ -6,6 +6,7 @@ impl Render for ThreadView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = crate::shared::render_profile::span("ThreadView::render");
         self.clear_motion_pause_if_idle();
+        self.observe_layout_width(self.scroll_handle.base_handle().bounds().size.width, cx);
         if self.chrome == ThreadChrome::Main {
             self.sync_composer_footer(cx);
         }
@@ -63,7 +64,24 @@ impl Render for ThreadView {
                     } else {
                         div()
                             .id("thread-list")
+                            .relative()
                             .w_full()
+                            .child({
+                                let view = entity.downgrade();
+                                gpui::canvas(
+                                    move |bounds, _, cx| {
+                                        let view = view.clone();
+                                        cx.defer(move |cx| {
+                                            let _ = view.update(cx, |view, cx| {
+                                                view.observe_layout_width(bounds.size.width, cx)
+                                            });
+                                        });
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .size_full()
+                            })
                             .when(self.chrome == ThreadChrome::Main, |el| {
                                 el.max_w(px(Tokens::THREAD_MAX_WIDTH))
                             })
@@ -77,7 +95,9 @@ impl Render for ThreadView {
                                     entity.clone(),
                                     "thread-virtual-list",
                                     row_sizes,
-                                    |this, range, _window, cx| this.render_visible(range, cx),
+                                    |this, range, window, cx| {
+                                        this.render_visible(range, window, cx)
+                                    },
                                 )
                                 .track_scroll(&self.scroll_handle)
                                 .flex_1()

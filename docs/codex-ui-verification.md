@@ -106,8 +106,28 @@ peer and the real installed Codex CLI with existing authentication:
 
 Native reference screenshots and QA artifacts remain outside the repository.
 This is a substantial visual follow-up, not a claim of pixel-identical output.
-Further narrow-pane transcript sizing and matching-window comparisons remain
-part of the ongoing UI verification.
+The responsive follow-up compared the installed app and Vortex at approximately
+1305×964, and exercised a 400 px chat pane in a 1100×800 native window. It found
+and fixed clipped expanded prompts, fixed-character row estimates, bottom-scroll
+misclassification, multiline input/toolbar overlap, and a full-height table wrapper
+that squeezed code blocks. Visible user/assistant rows now cache width-aware
+heights and publish changes after layout; stable history stays virtualized and
+the streaming caches remain in place. Code and table content keeps its natural
+height and supports horizontal scrolling. Empty-state spacing follows the native
+reference, and breadcrumbs remain readable in a narrow pane.
+
+Real Codex checks verified expanded `USER-TAIL`, completed `RESPONSE-END`, a
+heading/list/four-line Rust block/table ending with `STRUCTURE-END`, and a rejected
+file edit at the minimum chat width. The file stayed absent before and after
+rejection; the full path and decision controls remained visible. Reopening retained
+the reply and the diff's explicit “Not applied” state. A long multiline draft kept
+its final line above the wrapped toolbar. The deterministic peer also exercised
+Stop, visible unsupported-request failure, sequential approvals, and reconnect
+from partial `hello` to one reconciled `hello world` without resubmission.
+
+The final queue check exposed a separate normalized-state issue: an approval
+waiting behind another request still appeared as running. That backend follow-up
+is kept separate from these visual/layout fixes.
 
 ## Verification commands
 

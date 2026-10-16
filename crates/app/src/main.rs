@@ -68,6 +68,18 @@ fn main() {
         let preferred_size = size(px(1100.), px(720.));
         #[cfg(not(all(feature = "demo_mode", debug_assertions)))]
         let preferred_size = size(px(1440.), px(900.));
+        // Reproducible native QA sizes without a demo build or a user's store.
+        #[cfg(debug_assertions)]
+        let preferred_size = std::env::var("VORTEX_DATA_DIR")
+            .ok()
+            .and_then(|_| {
+                let value = std::env::var("VORTEX_TEST_WINDOW_SIZE").ok()?;
+                let (width, height) = value.split_once('x')?;
+                let (width, height) = (width.parse::<f32>().ok()?, height.parse::<f32>().ok()?);
+                (width.is_finite() && height.is_finite() && width >= 640.0 && height >= 480.0)
+                    .then(|| size(px(width), px(height)))
+            })
+            .unwrap_or(preferred_size);
         // Keep controls reachable on laptop displays, including isolated previews.
         let window_size = cx.primary_display().map_or(preferred_size, |display| {
             let available = display.bounds().size;

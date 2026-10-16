@@ -6,7 +6,6 @@ use gpui::{
     FontStyle, FontWeight, HighlightStyle, IntoElement, StrikethroughStyle, StyledText, TextStyle,
     UnderlineStyle, div, prelude::*, px,
 };
-use gpui_component::scroll::ScrollableElement;
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
 use crate::features::diff_panel::components::code_highlight::highlight_code;
@@ -777,7 +776,9 @@ fn render_block(
         MarkdownBlock::Code { lang, body } => {
             render_code_block(lang.as_deref(), &body, syntax_highlight, index).into_any_element()
         }
-        MarkdownBlock::Table { headers, rows } => render_table(&headers, &rows).into_any_element(),
+        MarkdownBlock::Table { headers, rows } => {
+            render_table(&headers, &rows, index).into_any_element()
+        }
     }
 }
 
@@ -835,7 +836,7 @@ fn render_block_thread(block: &MarkdownBlock, index: usize) -> gpui::AnyElement 
             render_code_block_thread(lang.as_deref(), body, index).into_any_element()
         }
         MarkdownBlock::Table { headers, rows } => {
-            render_table_thread(headers, rows).into_any_element()
+            render_table_thread(headers, rows, index).into_any_element()
         }
     }
 }
@@ -1010,8 +1011,8 @@ fn render_code_text_line(
     };
     if spans.is_empty() {
         return div()
-            .w_full()
-            .overflow_hidden()
+            .flex_shrink_0()
+            .h(px(Tokens::DIFF_LINE_HEIGHT))
             .whitespace_nowrap()
             .font_family(Tokens::terminal_font_family())
             .text_size(Tokens::text_code())
@@ -1029,8 +1030,8 @@ fn render_code_text_line(
     let spans = sanitize_highlights(&line, spans);
 
     div()
-        .w_full()
-        .overflow_hidden()
+        .flex_shrink_0()
+        .h(px(Tokens::DIFF_LINE_HEIGHT))
         .whitespace_nowrap()
         .font_family(Tokens::terminal_font_family())
         .text_size(Tokens::text_code())
@@ -1190,6 +1191,7 @@ fn render_code_block(
 
     div()
         .w_full()
+        .flex_shrink_0()
         .rounded(Tokens::radius_sm())
         .border_1()
         .border_color(Tokens::border_subtle())
@@ -1221,9 +1223,14 @@ fn render_code_block(
         )
         .child(
             div()
+                .id(element_key("markdown-code-body", &index.to_string()))
                 .w_full()
                 .min_w(px(0.0))
-                .overflow_x_hidden()
+                .flex_shrink_0()
+                .flex()
+                .flex_col()
+                .items_start()
+                .overflow_x_scroll()
                 .px(Tokens::spacing_2())
                 .py(Tokens::spacing_1())
                 .bg(Tokens::code_bg())
@@ -1258,6 +1265,7 @@ fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> imp
 
     div()
         .w_full()
+        .flex_shrink_0()
         .rounded(Tokens::radius_sm())
         .border_1()
         .border_color(Tokens::border_subtle())
@@ -1289,9 +1297,14 @@ fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> imp
         )
         .child(
             div()
+                .id(element_key("markdown-code-body", &index.to_string()))
                 .w_full()
                 .min_w(px(0.0))
-                .overflow_x_hidden()
+                .flex_shrink_0()
+                .flex()
+                .flex_col()
+                .items_start()
+                .overflow_x_scroll()
                 .px(Tokens::spacing_2())
                 .py(Tokens::spacing_1())
                 .bg(Tokens::code_bg())
@@ -1371,7 +1384,7 @@ fn code_preview(body: &str) -> CodePreview {
     }
 }
 
-fn render_table(headers: &[String], rows: &[Vec<String>]) -> impl IntoElement {
+fn render_table(headers: &[String], rows: &[Vec<String>], index: usize) -> impl IntoElement {
     let column_count = headers
         .len()
         .max(rows.iter().map(Vec::len).max().unwrap_or(0))
@@ -1380,7 +1393,7 @@ fn render_table(headers: &[String], rows: &[Vec<String>]) -> impl IntoElement {
         .iter()
         .map(|h| {
             div()
-                .min_w(px(160.0))
+                .min_w(px(Tokens::MARKDOWN_TABLE_COLUMN_MIN_WIDTH))
                 .flex_1()
                 .px(Tokens::spacing_2())
                 .py(Tokens::spacing_1())
@@ -1409,7 +1422,7 @@ fn render_table(headers: &[String], rows: &[Vec<String>]) -> impl IntoElement {
                 .border_color(Tokens::border_subtle())
                 .children(cells.into_iter().map(|cell| {
                     div()
-                        .min_w(px(160.0))
+                        .min_w(px(Tokens::MARKDOWN_TABLE_COLUMN_MIN_WIDTH))
                         .flex_1()
                         .px(Tokens::spacing_2())
                         .py(Tokens::spacing_1())
@@ -1424,22 +1437,26 @@ fn render_table(headers: &[String], rows: &[Vec<String>]) -> impl IntoElement {
         .collect();
 
     div()
+        .id(element_key("markdown-table", &index.to_string()))
         .w_full()
+        .flex_shrink_0()
         .rounded(Tokens::radius_sm())
         .border_1()
         .border_color(Tokens::border_subtle())
         .overflow_hidden()
-        .overflow_x_scrollbar()
+        .overflow_x_scroll()
         .child(
             div()
-                .min_w(px((column_count as f32 * 160.0).max(320.0)))
+                .min_w(px(
+                    column_count as f32 * Tokens::MARKDOWN_TABLE_COLUMN_MIN_WIDTH
+                ))
                 .child(div().flex().bg(Tokens::panel_bg()).children(header_cells))
                 .children(row_elements),
         )
 }
 
-fn render_table_thread(headers: &[String], rows: &[Vec<String>]) -> impl IntoElement {
-    render_table(headers, rows)
+fn render_table_thread(headers: &[String], rows: &[Vec<String>], index: usize) -> impl IntoElement {
+    render_table(headers, rows, index)
 }
 
 #[cfg(test)]

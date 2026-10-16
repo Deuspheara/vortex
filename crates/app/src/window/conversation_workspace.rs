@@ -7,7 +7,6 @@ use gpui::{Context, Entity};
 
 use super::AgentWindow;
 use crate::features::chat::thread_view::ThreadView;
-use crate::features::composer::components::composer_pill::composer_input_needs_stacked_layout;
 use crate::features::diff_panel::layout::DiffPanelProps;
 use crate::features::inspector::layout::SubagentInspectorVm;
 use crate::features::shell::state::{
@@ -36,7 +35,6 @@ pub(super) struct ConversationWorkspaceVm {
 #[derive(Clone)]
 pub(super) struct ComposerWorkspaceVm {
     pub has_text: bool,
-    pub input_expanded: bool,
     pub is_running: bool,
     pub dimmed: bool,
     pub disabled: bool,
@@ -154,10 +152,6 @@ impl AgentWindow {
         let readiness = self.workspace_readiness();
         let has_text = !self.input_state.read(cx).value().trim().is_empty()
             || !self.pending_image_attachments.is_empty();
-        let input_expanded =
-            composer_input_needs_stacked_layout(&self.input_state.read(cx).value())
-                || !self.pending_image_attachments.is_empty()
-                || self.composer_error.is_some();
         let is_running = self.selected_conversation_has_active_work();
         let recommend_fresh_context = self.status.input_tokens
             > context_for_model(
@@ -196,7 +190,6 @@ impl AgentWindow {
             todo_strip_expanded: self.todo_strip_expanded,
             composer: ComposerWorkspaceVm {
                 has_text,
-                input_expanded,
                 is_running,
                 dimmed: self.session_run_state.composer_dimmed(),
                 disabled: self.session_run_state.composer_disabled(),

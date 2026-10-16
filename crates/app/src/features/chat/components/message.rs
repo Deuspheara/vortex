@@ -10,17 +10,8 @@ use gpui::{
     App, Image, ImageFormat, IntoElement, ObjectFit, StyledImage, div, img, prelude::*, px,
 };
 
-/// User turn — flatter Zed-like row with just a subtle accent wash.
-pub fn user_message(
-    text: &str,
-    attachments: &[MessageAttachment],
-    id: &str,
-    _is_initial: bool,
-    collapsed: bool,
-    show_see_more: bool,
-    app: &App,
-    on_toggle: impl Fn(&mut App) + 'static,
-) -> impl IntoElement {
+/// Preferred bubble width; the parent limits it to the actual transcript width.
+pub fn user_message_width(text: &str, has_attachments: bool, app: &App) -> gpui::Pixels {
     let max_width = px(Tokens::THREAD_MAX_WIDTH * 0.88);
     let text_width = if text.len() > 128 {
         max_width
@@ -40,13 +31,26 @@ pub fn user_message(
             .max()
             .unwrap_or_default()
     };
-    let content_width = if attachments.is_empty() {
+    let content_width = if !has_attachments {
         text_width
     } else {
         text_width.max(Tokens::attachment_preview_size())
     };
-    let bubble_width =
-        (content_width + Tokens::spacing_3() * 2.0 + Tokens::spacing_6()).min(max_width);
+    (content_width + Tokens::spacing_3() * 2.0 + Tokens::spacing_6()).min(max_width)
+}
+
+/// User turn — flatter Zed-like row with just a subtle accent wash.
+pub fn user_message(
+    text: &str,
+    attachments: &[MessageAttachment],
+    id: &str,
+    body_height: gpui::Pixels,
+    collapsed: bool,
+    show_see_more: bool,
+    app: &App,
+    on_toggle: impl Fn(&mut App) + 'static,
+) -> impl IntoElement {
+    let bubble_width = user_message_width(text, !attachments.is_empty(), app);
     let text = text.to_string();
     let copy_text = std::sync::Arc::<str>::from(text.as_str());
     let preview_max_h = px(USER_MESSAGE_PREVIEW_LINES as f32 * LINE_LEADING);
@@ -54,6 +58,8 @@ pub fn user_message(
     div()
         .id(element_key("user-message", id))
         .w(bubble_width)
+        .h(body_height)
+        .flex_shrink_0()
         .max_w(gpui::relative(1.0))
         .relative()
         .flex()
@@ -75,19 +81,24 @@ pub fn user_message(
                 .child(text.clone()),
         )
         .when(!attachments.is_empty(), |el| {
-            el.child(div().flex().flex_wrap().gap(Tokens::spacing_1()).children(
-                attachments.iter().map(|attachment| {
-                    div()
-                        .w(Tokens::attachment_preview_size())
-                        .h(Tokens::attachment_preview_size())
-                        .overflow_hidden()
-                        .rounded(Tokens::radius_sm())
-                        .border_1()
-                        .border_color(Tokens::border_subtle())
-                        .bg(Tokens::surface_active())
-                        .child(render_message_attachment_preview(attachment))
-                }),
-            ))
+            el.child(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_wrap()
+                    .gap(Tokens::spacing_1())
+                    .children(attachments.iter().map(|attachment| {
+                        div()
+                            .w(Tokens::attachment_preview_size())
+                            .h(Tokens::attachment_preview_size())
+                            .overflow_hidden()
+                            .rounded(Tokens::radius_sm())
+                            .border_1()
+                            .border_color(Tokens::border_subtle())
+                            .bg(Tokens::surface_active())
+                            .child(render_message_attachment_preview(attachment))
+                    })),
+            )
         })
         .when(show_see_more, |el| {
             el.child(

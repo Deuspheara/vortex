@@ -12,7 +12,8 @@ impl ThreadView {
         self.last_scroll_offset = Some(offset);
         self.motion_paused = true;
         self.last_scroll_activity = Some(Instant::now());
-        if offset.y < px(-8.0) {
+        let distance_to_bottom = self.scroll_handle.base_handle().max_offset().height + offset.y;
+        if distance_to_bottom > Tokens::spacing_2() {
             self.user_scrolled_up = true;
             self.stick_to_bottom = false;
             self.pending_scroll_bottom = false;

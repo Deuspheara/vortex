@@ -8,6 +8,7 @@ impl ThreadView {
     pub(crate) fn render_visible(
         &mut self,
         range: std::ops::Range<usize>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<gpui::AnyElement> {
         let start = std::time::Instant::now();
@@ -17,6 +18,7 @@ impl ThreadView {
         let agent = self.agent.clone();
         let sizes = Rc::clone(&self.row_sizes);
 
+        let mut changed_heights = Vec::new();
         let rows = range
             .map(|row_ix| {
                 let row_h = sizes
@@ -27,12 +29,64 @@ impl ThreadView {
                     Some(row_ref) => {
                         let prev = self.manifest.get(row_ix.wrapping_sub(1)).copied();
                         let gap = row_top_gap(row_ref, prev, &self.items);
-                        self.render_row(row_ref, row_h, gap, approval_active, animate, &agent, cx)
+                        let measured = self
+                            .measure_visible_row(row_ref, window, cx)
+                            .map(|height| height + px(gap))
+                            .unwrap_or(row_h);
+                        if (measured - row_h).abs() >= px(1.0) {
+                            changed_heights.push((row_ix, row_ref));
+                        }
+                        self.render_row(
+                            row_ref,
+                            row_h,
+                            gap,
+                            approval_active,
+                            animate,
+                            &agent,
+                            false,
+                            cx,
+                        )
                     }
                     None => div().w_full().h(row_h).into_any_element(),
                 }
             })
             .collect();
+        if !changed_heights.is_empty() {
+            let view = cx.entity().downgrade();
+            let width = self.layout_width;
+            cx.defer(move |cx| {
+                let _ = view.update(cx, |view, cx| {
+                    if view.layout_width != width {
+                        return;
+                    }
+                    let updates: Vec<_> = changed_heights
+                        .into_iter()
+                        .filter_map(|(index, row)| {
+                            if view.manifest.get(index) != Some(&row) {
+                                return None;
+                            }
+                            let height = view.cached_measured_height(row)?;
+                            let prev = view.manifest.get(index.wrapping_sub(1)).copied();
+                            Some((index, height + px(row_top_gap(row, prev, &view.items))))
+                        })
+                        .collect();
+                    if updates.is_empty() {
+                        return;
+                    }
+                    view.mutate_row_sizes(|sizes| {
+                        for (index, height) in updates {
+                            if let Some(size) = sizes.get_mut(index) {
+                                size.height = height;
+                            }
+                        }
+                    });
+                    if view.stick_to_bottom && !view.user_scrolled_up {
+                        view.pending_scroll_bottom = true;
+                    }
+                    cx.notify();
+                });
+            });
+        }
         crate::shared::render_profile::record(
             "ThreadView::render_visible",
             start.elapsed(),
@@ -49,6 +103,7 @@ impl ThreadView {
         approval_active: bool,
         animate: bool,
         agent: &Entity<AgentWindow>,
+        measuring: bool,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         if matches!(row_ref, RowRef::EndSpacer) {
@@ -87,7 +142,7 @@ impl ThreadView {
                     text,
                     attachments,
                     id,
-                    is_initial,
+                    row_h - px(top_gap),
                     collapsed,
                     truncatable,
                     cx,
@@ -599,10 +654,10 @@ impl ThreadView {
         div()
             .id(element_key("thread-row-shell", &row_id))
             .w_full()
-            .h(row_h)
+            .when(measuring, |el| el.w(self.layout_width))
+            .when(!measuring, |el| el.h(row_h).overflow_hidden())
             .when(depth > 0, |el| el.pl(Tokens::tree_indent(depth as u32)))
             .when(top_gap > 0.0, |el| el.pt(px(top_gap)))
-            .overflow_hidden()
             .flex()
             .flex_col()
             .justify_start()

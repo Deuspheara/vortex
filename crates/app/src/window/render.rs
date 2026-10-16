@@ -665,12 +665,17 @@ fn chat_column(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEleme
                     .flex()
                     .flex_col()
                     .justify_center()
-                    .gap(Tokens::spacing_5())
+                    .items_center()
+                    .pb(px(Tokens::EMPTY_THREAD_BOTTOM_INSET))
+                    .gap(px(Tokens::EMPTY_THREAD_ITEM_GAP))
                     .child(
                         div()
                             .w_full()
+                            .max_w(px(Tokens::THREAD_MAX_WIDTH))
+                            .px(Tokens::thread_padding_x())
                             .text_center()
-                            .text_size(Tokens::text_xl())
+                            .text_size(px(Tokens::EMPTY_THREAD_TITLE_SIZE))
+                            .line_height(Tokens::text_xl_leading())
                             .text_color(Tokens::text_primary())
                             .child(vs.project_name.as_ref().map_or_else(
                                 || "What should we build?".to_string(),
@@ -750,7 +755,6 @@ fn composer_layer(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEl
         .child(composer::render_composer(ComposerProps {
             codex: vs.selected_provider == "Codex",
             has_text: composer_vm.has_text,
-            input_expanded: composer_vm.input_expanded,
             on_send: Some(Box::new({
                 let cb = cbs.send.clone();
                 move |window, app| cb(window, app)

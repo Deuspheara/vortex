@@ -153,6 +153,17 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, width: f32) -> impl I
     let (total_add, total_del) = count_totals(&files);
     let approval = props.state.pending_approval.clone();
     let applied = props.state.applied;
+    let change_status = if files.is_empty() {
+        None
+    } else if applied {
+        Some("Applied")
+    } else if approval.is_some() {
+        Some("Awaiting approval")
+    } else if props.pending_patch_id.is_some() {
+        Some("Preview")
+    } else {
+        Some("Not applied")
+    };
     let show_apply = props.pending_patch_id.is_some() && props.patch_apply_enabled;
     let plan_artifact = props.plan_artifact;
     let plan_available = props.plan_available || plan_artifact.is_some();
@@ -175,7 +186,7 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, width: f32) -> impl I
         .child(render_header(
             props.entity.clone(),
             active_tab,
-            plan_available,
+            change_status,
             total_add,
             total_del,
             applied,
@@ -428,7 +439,7 @@ fn render_empty_plan_state() -> impl IntoElement {
 fn render_header(
     entity: Entity<AgentWindow>,
     active_tab: ReviewPanelTab,
-    _plan_available: bool,
+    change_status: Option<&'static str>,
     total_add: usize,
     total_del: usize,
     applied: bool,
@@ -464,13 +475,17 @@ fn render_header(
                             .text_color(Tokens::danger())
                             .child(format!("−{total_del}")),
                     )
-                    .when(applied, |el| {
+                    .when_some(change_status, |el, status| {
                         el.child(
                             div()
                                 .text_size(Tokens::text_xs())
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(Tokens::success())
-                                .child("Applied"),
+                                .text_color(if applied {
+                                    Tokens::success()
+                                } else {
+                                    Tokens::text_secondary()
+                                })
+                                .child(status),
                         )
                     })
                 })

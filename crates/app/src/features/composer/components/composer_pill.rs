@@ -26,7 +26,6 @@ pub struct ComposerPillProps {
     pub codex: bool,
     pub selected_mode: AgentMode,
     pub has_text: bool,
-    pub input_expanded: bool,
     pub input_entity: Entity<InputState>,
     pub is_running: bool,
     pub on_send: Option<Box<dyn Fn(&mut Window, &mut gpui::App) + 'static>>,
@@ -51,7 +50,6 @@ pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
         codex,
         selected_mode,
         has_text,
-        input_expanded,
         input_entity,
         is_running,
         on_send,
@@ -63,21 +61,12 @@ pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
         composer_error,
         entity,
     } = props;
-    let has_attachments = !pending_image_attachments.is_empty();
-    let has_error = composer_error.is_some();
-
     let pill_min_height = px(Tokens::COMPOSER_MIN_HEIGHT);
-    let pill_max_height = px(if input_expanded {
-        Tokens::composer_pill_stacked_max_height(has_attachments, has_error)
-    } else {
-        Tokens::composer_pill_inline_max_height(has_attachments, has_error)
-    });
     let shell = div()
         .id("composer-pill")
         .w_full()
         .max_w(px(Tokens::COMPOSER_MAX_WIDTH))
         .min_h(pill_min_height)
-        .max_h(pill_max_height)
         .overflow_hidden()
         .rounded(Tokens::radius_composer())
         .bg(Tokens::composer_bg())

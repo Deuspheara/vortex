@@ -78,6 +78,7 @@ pub(crate) struct AssistantActionProjection {
 }
 
 mod caches;
+mod measurement;
 mod render;
 mod rows;
 mod scroll;
@@ -99,6 +100,8 @@ pub struct ThreadView {
     items: Vec<ThreadItem>,
     manifest: Vec<RowRef>,
     row_sizes: Rc<Vec<gpui::Size<gpui::Pixels>>>,
+    layout_width: gpui::Pixels,
+    measured_rows: HashMap<String, measurement::MeasuredRow>,
     item_index: HashMap<String, usize>,
     header_manifest_index: Vec<Option<usize>>,
     markdown_cache: HashMap<String, MarkdownCacheEntry>,
@@ -145,6 +148,8 @@ impl ThreadView {
             items: Vec::new(),
             manifest: Vec::new(),
             row_sizes: Rc::new(Vec::new()),
+            layout_width: px(0.0),
+            measured_rows: HashMap::new(),
             item_index: HashMap::new(),
             header_manifest_index: Vec::new(),
             markdown_cache: HashMap::new(),
@@ -195,6 +200,8 @@ impl ThreadView {
             items: Vec::new(),
             manifest: Vec::new(),
             row_sizes: Rc::new(Vec::new()),
+            layout_width: px(0.0),
+            measured_rows: HashMap::new(),
             item_index: HashMap::new(),
             header_manifest_index: Vec::new(),
             markdown_cache: HashMap::new(),

@@ -6,6 +6,7 @@ Default uses the installed Codex CLI and its existing authentication.
 """
 import argparse
 import os
+import re
 import pathlib
 import plistlib
 import shutil
@@ -14,17 +15,24 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--fixture", action="store_true")
+parser.add_argument("--window-size", help="Native debug window size, e.g. 1100x800")
 parser.add_argument("--signed-out", action="store_true")
 parser.add_argument("--missing-cli", action="store_true")
 args = parser.parse_args()
 if args.signed_out and not args.fixture:
     parser.error("--signed-out requires --fixture; real credentials are never changed")
+if args.window_size:
+    match = re.fullmatch(r"(\d+)x(\d+)", args.window_size)
+    if not match or int(match[1]) < 640 or int(match[2]) < 480:
+        parser.error("--window-size must be WIDTHxHEIGHT, at least 640x480")
 repo = pathlib.Path(__file__).resolve().parents[1]
 root = pathlib.Path(tempfile.mkdtemp(prefix="vortex-ui-"))
 workspace = root / "workspace"
 workspace.mkdir()
 env = {key: os.environ[key] for key in ("HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "SHELL", "LANG") if key in os.environ}
 env["VORTEX_DATA_DIR"] = str(root / "data")
+if args.window_size:
+    env["VORTEX_TEST_WINDOW_SIZE"] = args.window_size
 env["DYLD_LIBRARY_PATH"] = ":".join(str(p) for p in (repo / "target/debug/build").glob("libghostty-vt-sys-*/out/ghostty-install/lib"))
 if args.fixture:
     peer = root / "codex"

@@ -34,7 +34,6 @@ pub fn render_composer_fade(bottom_inset: f32) -> impl IntoElement {
 pub struct ComposerProps {
     pub codex: bool,
     pub has_text: bool,
-    pub input_expanded: bool,
     pub on_send: Option<Box<dyn Fn(&mut Window, &mut gpui::App) + 'static>>,
     pub is_running: bool,
     pub on_cancel: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
@@ -82,7 +81,6 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
                     codex: props.codex,
                     selected_mode: props.selected_mode,
                     has_text: props.has_text,
-                    input_expanded: props.input_expanded,
                     input_entity: props.input_entity.clone(),
                     is_running: props.is_running,
                     on_send: props.on_send,

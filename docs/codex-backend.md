@@ -106,5 +106,7 @@ and reuses the installed CLI's authentication without copying it. `--fixture`
 selects the deterministic protocol peer; `--fixture --signed-out` simulates missing
 authentication without changing the user's real account. `--missing-cli` tests
 installation guidance. The normal app also accepts an absolute `VORTEX_DATA_DIR`
-for an isolated store. Demo mode keeps its separate marker requirement and never
+for an isolated store. For reproducible native layout checks, add
+`--window-size 1100x800` to the QA launcher. This debug-only size override requires
+an isolated data directory and does not select demo mode. Demo mode keeps its separate marker requirement and never
 starts Codex. See [native verification results](codex-ui-verification.md).

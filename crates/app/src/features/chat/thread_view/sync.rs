@@ -16,6 +16,7 @@ impl ThreadView {
         self.pending_streaming_row_patches.clear();
         self.pending_mutated_item_patches.clear();
         self.markdown_cache.clear();
+        self.measured_rows.clear();
         self.tool_output_cache.clear();
         self.item_index.clear();
         self.header_manifest_index.clear();
@@ -202,6 +203,9 @@ impl ThreadView {
         let _profile = crate::shared::render_profile::span("row_height_with_collapsed");
         if matches!(row, RowRef::EndSpacer) {
             return self.end_spacer_height();
+        }
+        if let Some(height) = self.cached_measured_height(row) {
+            return f32::from(height) + row_top_gap(row, prev, &self.items);
         }
         if let RowRef::AssistantMessage { item_ix } = row {
             let assistant_data: Option<(String, String)> =
