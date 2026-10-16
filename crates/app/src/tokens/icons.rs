@@ -70,3 +70,17 @@ pub const CHEVRON_LEFT: IconName = IconName::ChevronLeft;
 pub const CLOSE: IconName = IconName::Close;
 pub const MOON: IconName = IconName::Moon;
 pub const SUN: IconName = IconName::Sun;
+
+/// Semantic glyphs absent from the component icon catalog.
+pub fn paperclip() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/paperclip.svg")
+}
+pub fn branch() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/branch.svg")
+}
+pub fn shield() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/shield.svg")
+}
+pub fn new_thread() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/new-thread.svg")
+}

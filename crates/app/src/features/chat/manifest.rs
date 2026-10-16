@@ -256,7 +256,6 @@ pub fn row_height_with_collapsed(
             } else {
                 f32::from(Tokens::spacing_1()) + Tokens::ATTACHMENT_PREVIEW_SIZE
             };
-            let label_h = f32::from(Tokens::text_sm_leading_compact());
             let stack_gap = f32::from(Tokens::spacing_1());
             // Match the user bubble's top and bottom padding.
             let vertical_padding = 2.0 * f32::from(Tokens::spacing_3());
@@ -265,13 +264,7 @@ pub fn row_height_with_collapsed(
             } else {
                 0.0
             };
-            vertical_padding
-                + label_h
-                + stack_gap
-                + lines as f32 * LINE_LEADING
-                + see_more
-                + attachments_h
-                + gap
+            vertical_padding + lines as f32 * LINE_LEADING + see_more + attachments_h + gap
         }
         RowRef::ReasoningHeader { .. }
         | RowRef::SubagentHeader { .. }

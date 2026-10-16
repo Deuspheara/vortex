@@ -37,7 +37,7 @@ pub fn metadata_row(props: MetadataRowProps) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_between()
-        .pb(px(6.0))
+        .mt(Tokens::spacing_1())
         .child(
             div()
                 .flex()
@@ -76,7 +76,7 @@ fn render_branch_dropdown(
         .iter()
         .map(|b| DropdownItem {
             label: b.clone(),
-            icon: Some(icons::GIT_BRANCH),
+            icon: None,
         })
         .collect();
 
@@ -85,9 +85,9 @@ fn render_branch_dropdown(
         label: selected.to_string(),
         items,
         selected: Some(selected.to_string()),
-        anchor: DropdownAnchor::Below,
+        anchor: DropdownAnchor::Above,
         menu_min_width: 140.0,
-        trigger_icon: Some(icons::GIT_BRANCH),
+        trigger_icon: Some(icons::branch()),
         searchable: false,
         search_texts: None,
         search_placeholder: None,

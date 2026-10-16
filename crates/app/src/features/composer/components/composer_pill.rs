@@ -1,20 +1,18 @@
-//! Composer pill — the primary thin input surface.
-//!
-//! A compact, pill-shaped text input with attach and send controls.
-//! Height is ~48 px when single-line; auto-grows on multi-line input.
-//! The model dropdown sits between the text input and the send button.
-//! When text wraps past the inline width, controls move to a row below the input.
-//! No mode, provider, or approval controls — those live in sibling rows.
+//! Stable text input with a single model, permissions, attachment, and send toolbar.
 
+use super::mode_chips::{ModeChipsProps, mode_chips};
+use agent_protocol::AgentMode;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    Entity, ExternalPaths, IntoElement, ObjectFit, StyledImage, Window, div, img, prelude::*, px,
+    Entity, ExternalPaths, Focusable, IntoElement, ObjectFit, StyledImage, Window, div, img,
+    prelude::*, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState, Paste};
 
+use crate::features::composer::model_selection::CodexModelSelection;
 use crate::features::composer::state::PendingImageAttachment;
 use crate::shared::components::buttons::{btn_disabled_icon, btn_primary_icon};
 use crate::shared::components::dropdown::{
@@ -25,6 +23,8 @@ use crate::tokens::icons;
 use crate::ui::agent_window::AgentWindow;
 
 pub struct ComposerPillProps {
+    pub codex: bool,
+    pub selected_mode: AgentMode,
     pub has_text: bool,
     pub input_expanded: bool,
     pub input_entity: Entity<InputState>,
@@ -45,9 +45,11 @@ pub fn composer_input_needs_stacked_layout(_text: &str) -> bool {
     true
 }
 
-/// The main input pill — thin, rounded, focused on typing.
+/// The main composer surface with stable text and toolbar regions.
 pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
     let ComposerPillProps {
+        codex,
+        selected_mode,
         has_text,
         input_expanded,
         input_entity,
@@ -84,8 +86,8 @@ pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap(Tokens::spacing_1())
-        .px(Tokens::spacing_1p5())
-        .py(Tokens::spacing_0p5());
+        .px(Tokens::spacing_3())
+        .py(Tokens::spacing_2());
 
     let drop_entity = entity.clone();
     let paste_entity = entity.clone();
@@ -119,67 +121,19 @@ pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
             )
         });
 
-    if input_expanded {
-        shell.child(stacked_pill_body(
-            &input_entity,
-            &selected_model,
-            &model_items,
-            &model_search_keys,
-            entity,
-            has_text,
-            is_running,
-            on_send,
-            on_cancel,
-        ))
-    } else {
-        shell.child(inline_pill_body(
-            &input_entity,
-            &selected_model,
-            &model_items,
-            &model_search_keys,
-            entity,
-            has_text,
-            is_running,
-            on_send,
-            on_cancel,
-        ))
-    }
-}
-
-fn inline_pill_body(
-    input_entity: &Entity<InputState>,
-    selected_model: &str,
-    model_items: &[String],
-    model_search_keys: &[Arc<str>],
-    entity: Entity<AgentWindow>,
-    has_text: bool,
-    is_running: bool,
-    on_send: Option<Box<dyn Fn(&mut Window, &mut gpui::App) + 'static>>,
-    on_cancel: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
-) -> impl IntoElement {
-    div()
-        .id("composer-pill-inline")
-        .w_full()
-        .flex()
-        .items_center()
-        .gap(Tokens::spacing_1())
-        .child(render_attach_button(entity.clone()))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.0))
-                .min_h(px(0.0))
-                .max_h(px(Tokens::composer_input_max_height()))
-                .overflow_hidden()
-                .child(render_input(input_entity)),
-        )
-        .child(render_model_picker(
-            selected_model,
-            model_items,
-            model_search_keys,
-            entity,
-        ))
-        .child(render_send_button(has_text, is_running, on_send, on_cancel))
+    shell.child(stacked_pill_body(
+        &input_entity,
+        &selected_model,
+        &model_items,
+        &model_search_keys,
+        entity,
+        has_text,
+        is_running,
+        on_send,
+        on_cancel,
+        codex,
+        selected_mode,
+    ))
 }
 
 fn stacked_pill_body(
@@ -192,6 +146,8 @@ fn stacked_pill_body(
     is_running: bool,
     on_send: Option<Box<dyn Fn(&mut Window, &mut gpui::App) + 'static>>,
     on_cancel: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
+    codex: bool,
+    selected_mode: AgentMode,
 ) -> impl IntoElement {
     div()
         .id("composer-pill-stacked")
@@ -212,6 +168,7 @@ fn stacked_pill_body(
         .child(
             div()
                 .id("composer-pill-toolbar")
+                .px(Tokens::spacing_2())
                 .w_full()
                 .flex_shrink_0()
                 .flex()
@@ -222,29 +179,53 @@ fn stacked_pill_body(
                     div()
                         .flex()
                         .items_center()
-                        .gap(Tokens::spacing_1())
+                        .gap(Tokens::spacing_2())
+                        .flex_wrap()
                         .min_w(px(0.0))
                         .flex_1()
-                        .child(render_attach_button(entity.clone()))
-                        .child(render_model_picker(
-                            selected_model,
-                            model_items,
-                            model_search_keys,
-                            entity,
-                        )),
+                        .child(if codex {
+                            render_codex_model_pickers(selected_model, model_items, entity.clone())
+                                .into_any_element()
+                        } else {
+                            render_model_picker(
+                                selected_model,
+                                model_items,
+                                model_search_keys,
+                                entity.clone(),
+                            )
+                            .into_any_element()
+                        })
+                        .child(mode_chips(ModeChipsProps {
+                            codex,
+                            selected_mode,
+                            on_select: Rc::new({
+                                let entity = entity.clone();
+                                move |mode, app| {
+                                    entity.update(app, |view, cx| view.set_safety_mode(mode, cx));
+                                }
+                            }),
+                        })),
                 )
-                .child(render_send_button(has_text, is_running, on_send, on_cancel)),
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(Tokens::spacing_2())
+                        .child(render_attach_button(entity))
+                        .child(render_send_button(has_text, is_running, on_send, on_cancel)),
+                ),
         )
 }
 
 fn render_attach_button(entity: Entity<AgentWindow>) -> impl IntoElement {
     div().flex_shrink_0().child(
         Button::new("composer-attach")
-            .icon(icons::PLUS)
+            .icon(icons::paperclip())
+            .tooltip("Attach images")
             .ghost()
             .compact()
-            .h(px(24.0))
-            .w(px(24.0))
+            .h(px(Tokens::ROW_HEIGHT_SM))
+            .w(px(Tokens::ROW_HEIGHT_SM))
             .rounded(Tokens::radius_full())
             .on_click(move |_, window, app: &mut gpui::App| {
                 entity.update(app, |view, cx| {
@@ -345,13 +326,81 @@ fn render_attachment_preview_fallback() -> gpui::AnyElement {
 }
 
 fn render_input(input_entity: &Entity<InputState>) -> impl IntoElement {
+    let focus_input = input_entity.clone();
     div()
         .id("composer-input")
         .min_h(px(Tokens::COMPOSER_INPUT_MIN_HEIGHT))
         .min_w(px(0.0))
         .w_full()
         .overflow_hidden()
+        .on_mouse_down(gpui::MouseButton::Left, move |_, window, app| {
+            focus_input.read(app).focus_handle(app).focus(window);
+        })
         .child(Input::new(input_entity).appearance(false))
+}
+
+fn render_codex_model_pickers(
+    selected: &str,
+    catalog: &[String],
+    entity: Entity<AgentWindow>,
+) -> impl IntoElement {
+    let choices = CodexModelSelection::new(selected, catalog);
+    div()
+        .flex()
+        .items_center()
+        .flex_wrap()
+        .gap(Tokens::spacing_2())
+        .child(render_catalog_picker(
+            "composer-codex-model",
+            choices.model,
+            choices.models,
+            Some(icons::BOT),
+            entity.clone(),
+            true,
+        ))
+        .when_some(choices.effort, |el, effort| {
+            el.child(render_catalog_picker(
+                "composer-codex-effort",
+                effort,
+                choices.efforts,
+                None,
+                entity,
+                false,
+            ))
+        })
+}
+
+fn render_catalog_picker(
+    id: &'static str,
+    selected: String,
+    values: Vec<(String, String)>,
+    icon: Option<gpui_component::IconName>,
+    entity: Entity<AgentWindow>,
+    searchable: bool,
+) -> impl IntoElement {
+    picker_dropdown(PickerDropdownProps {
+        id: id.into(),
+        label: selected.clone(),
+        items: values
+            .iter()
+            .map(|(label, _)| DropdownItem {
+                label: label.clone(),
+                icon: None,
+            })
+            .collect(),
+        selected: Some(selected),
+        anchor: DropdownAnchor::Above,
+        menu_min_width: Tokens::COMPOSER_MODEL_MAX_WIDTH,
+        trigger_icon: icon.map(Into::into),
+        searchable,
+        search_texts: None,
+        search_placeholder: Some("Search models…".into()),
+        on_select: Rc::new(move |index, _, app| {
+            if let Some((_, value)) = values.get(index) {
+                entity.update(app, |view, cx| view.on_model_selected(value.clone(), cx));
+            }
+        }),
+    })
 }
 
 fn render_model_picker(
@@ -377,7 +426,7 @@ fn render_model_picker(
 
     div()
         .flex_shrink_0()
-        .max_w(px(156.0))
+        .max_w(px(Tokens::COMPOSER_MODEL_MAX_WIDTH))
         .child(picker_dropdown(PickerDropdownProps {
             id: "composer-model".into(),
             label: selected.clone(),
@@ -385,7 +434,7 @@ fn render_model_picker(
             selected: Some(selected),
             anchor: DropdownAnchor::Above,
             menu_min_width: 220.0,
-            trigger_icon: Some(icons::BOT),
+            trigger_icon: Some(icons::BOT.into()),
             searchable: true,
             search_texts: Some(search_keys),
             search_placeholder: Some("Search models…".into()),

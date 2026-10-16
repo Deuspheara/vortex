@@ -5,6 +5,8 @@ pub use crate::features::diff_panel::layout::{DiffPanelProps, render_diff_panel_
 use std::rc::Rc;
 
 use gpui::{FontWeight, IntoElement, TextAlign, div, prelude::*, px};
+use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::popover::Popover;
 use gpui_component::scroll::ScrollableElement;
 
 use crate::features::android_simulator::render_android_simulator_panel;
@@ -36,7 +38,7 @@ pub struct DockedInspectorProps {
     pub android_session: agent_protocol::AndroidSessionState,
     pub on_select_tab: Option<Rc<dyn Fn(InspectorTabId, &mut gpui::App)>>,
     pub on_close_tab: Option<Rc<dyn Fn(InspectorTabId, &mut gpui::App)>>,
-    pub on_new_tab: Option<Rc<dyn Fn(&mut gpui::App)>>,
+    pub on_new_tab: Option<Rc<dyn Fn(InspectorTabKind, &mut gpui::App)>>,
     pub on_reorder_tab: Option<Rc<dyn Fn(InspectorTabId, InspectorTabId, &mut gpui::App)>>,
     pub on_move_tab_to_dock: Option<Rc<dyn Fn(InspectorTabId, DockPlacement, &mut gpui::App)>>,
     pub show_left_border: bool,
@@ -117,7 +119,7 @@ fn render_inspector_tabs(
     inspector_tabs: InspectorTabs,
     on_select: Option<Rc<dyn Fn(InspectorTabId, &mut gpui::App)>>,
     on_close: Option<Rc<dyn Fn(InspectorTabId, &mut gpui::App)>>,
-    on_add: Option<Rc<dyn Fn(&mut gpui::App)>>,
+    on_add: Option<Rc<dyn Fn(InspectorTabKind, &mut gpui::App)>>,
     on_reorder: Option<Rc<dyn Fn(InspectorTabId, InspectorTabId, &mut gpui::App)>>,
 ) -> impl IntoElement {
     let tabs: Vec<TabItem> = inspector_tabs
@@ -134,11 +136,16 @@ fn render_inspector_tabs(
         .id("inspector-tabs")
         .flex_shrink_0()
         .flex()
+        .items_center()
         .border_b_1()
         .border_color(Tokens::border_subtle())
         .child(
             div()
-                .h(px(Tokens::tab_bar_height()))
+                .h(px(if dock == DockPlacement::Right {
+                    Tokens::TOP_BAR_HEIGHT
+                } else {
+                    Tokens::tab_bar_height()
+                }))
                 .px(Tokens::spacing_2())
                 .flex()
                 .items_center()
@@ -158,8 +165,54 @@ fn render_inspector_tabs(
         )
         .when_some(on_add, |el, cb| {
             el.child(
-                btn_icon_sm("inspector-header-new-tab", icons::PLUS)
-                    .on_click(move |_, _, app| cb(app)),
+                Popover::new("inspector-add-surface")
+                    .trigger(
+                        btn_icon_sm("inspector-header-new-tab", icons::PLUS)
+                            .tooltip("Open a panel"),
+                    )
+                    .content(move |_, _, cx| {
+                        let popover = cx.entity().downgrade();
+                        div()
+                            .w(px(Tokens::SIDEBAR_MIN_WIDTH))
+                            .flex()
+                            .flex_col()
+                            .gap(Tokens::spacing_1())
+                            .children(
+                                [
+                                    ("Changes", InspectorTabKind::BuiltIn(InspectorView::Changes)),
+                                    ("Context", InspectorTabKind::BuiltIn(InspectorView::Context)),
+                                    ("Plan", InspectorTabKind::BuiltIn(InspectorView::Plan)),
+                                    (
+                                        "Terminal",
+                                        InspectorTabKind::BuiltIn(InspectorView::Terminal),
+                                    ),
+                                    (
+                                        "Android",
+                                        InspectorTabKind::Custom(
+                                            InspectorCustomSlot::AndroidSimulator,
+                                        ),
+                                    ),
+                                ]
+                                .into_iter()
+                                .map(|(label, kind)| {
+                                    let cb = cb.clone();
+                                    let popover = popover.clone();
+                                    Button::new(crate::tokens::element_key(
+                                        "open-inspector-surface",
+                                        label,
+                                    ))
+                                    .label(label)
+                                    .ghost()
+                                    .on_click(
+                                        move |_, window, app| {
+                                            let _ = popover
+                                                .update(app, |state, cx| state.dismiss(window, cx));
+                                            cb(kind.clone(), app);
+                                        },
+                                    )
+                                }),
+                            )
+                    }),
             )
         })
 }

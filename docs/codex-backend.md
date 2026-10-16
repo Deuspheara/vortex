@@ -19,8 +19,8 @@ NVM versions (newest version first). npm launchers also receive Node's directory
 on their child PATH, including when Vortex starts from Finder. Set
 `VORTEX_CODEX_BIN` to an executable path to override discovery; an invalid override
 fails visibly rather than silently selecting another CLI.
-Choose **Codex** under Settings → Models. The model picker includes the reasoning
-levels advertised by the installed CLI. Availability comes from `model/list`,
+Choose **Codex** under Settings → Models. The composer has separate model and reasoning selectors populated with the
+choices advertised by the installed CLI. Availability comes from `model/list`,
 not a hard-coded model catalog. New installations select Codex and show explicit
 installation/sign-in/connection guidance until ready;
 the last selected provider is saved. Demo builds never start Codex.

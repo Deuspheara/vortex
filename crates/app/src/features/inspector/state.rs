@@ -90,15 +90,7 @@ impl Default for InspectorTabs {
             next_id: 1,
         };
         tabs.ensure_builtin(InspectorView::Changes);
-        tabs.ensure_builtin(InspectorView::Context);
-        tabs.ensure_builtin(InspectorView::Plan);
         tabs.ensure_builtin(InspectorView::Terminal);
-        tabs.push_tab(
-            "Android",
-            InspectorTabKind::Custom(InspectorCustomSlot::AndroidSimulator),
-            DockPlacement::Right,
-            true,
-        );
         tabs.select_builtin(InspectorView::Changes);
         tabs.active_bottom_id = Some(tabs.ensure_builtin(InspectorView::Terminal));
         tabs
@@ -260,20 +252,21 @@ impl InspectorTabs {
         id
     }
 
-    pub fn open_empty(&mut self) -> InspectorTabId {
-        let ordinal = self
+    pub fn select_custom(&mut self, slot: InspectorCustomSlot, title: &str) -> InspectorTabId {
+        let existing = self
             .tabs
             .iter()
-            .filter(|tab| matches!(tab.kind, InspectorTabKind::Custom(_)))
-            .count()
-            + 1;
-        let id = self.push_tab(
-            format!("Panel {ordinal}"),
-            InspectorTabKind::Custom(InspectorCustomSlot::Empty),
-            DockPlacement::Right,
-            true,
-        );
-        self.set_active(DockPlacement::Right, Some(id));
+            .find(|tab| tab.kind == InspectorTabKind::Custom(slot.clone()))
+            .map(|tab| tab.id);
+        let id = existing.unwrap_or_else(|| {
+            self.push_tab(
+                title,
+                InspectorTabKind::Custom(slot),
+                DockPlacement::Right,
+                true,
+            )
+        });
+        self.select(id);
         id
     }
 
@@ -418,7 +411,20 @@ impl InspectorMode {
 
 #[cfg(test)]
 mod tests {
-    use super::{DockPlacement, InspectorTabKind, InspectorTabs, InspectorView};
+    use super::{
+        DockPlacement, InspectorCustomSlot, InspectorTabKind, InspectorTabs, InspectorView,
+    };
+
+    #[test]
+    fn reopening_custom_panel_reuses_its_identity_and_dock() {
+        let mut tabs = InspectorTabs::default();
+        let id = tabs.select_custom(InspectorCustomSlot::AndroidSimulator, "Android");
+        tabs.move_tab_to_dock(id, DockPlacement::Bottom);
+        let reopened = tabs.select_custom(InspectorCustomSlot::AndroidSimulator, "Android");
+        assert_eq!(reopened, id);
+        assert_eq!(tabs.active_id_for_dock(DockPlacement::Bottom), Some(id));
+        assert_eq!(tabs.tabs.iter().filter(|tab| tab.id == id).count(), 1);
+    }
 
     #[test]
     fn moves_terminal_between_docks_without_duplication() {

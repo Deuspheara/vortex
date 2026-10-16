@@ -1,15 +1,5 @@
-//! Composer layout — structured footer with input pill, mode chips, and metadata.
-//!
-//! Three visual layers anchored at the bottom of the chat column:
-//!   1. Metadata row (branch dropdown left + context usage ring right)
-//!   2. Input pill (thin, rounded, focused on typing — with model dropdown inside)
-//!   3. Mode chips (quiet row under the input)
-//!
-//! Blocking actions (approval, pending patch) overlay above the pill.
-//! A soft gradient fade separates the bottom of the thread from the footer.
-//! Provider is in the top bar, model is inside the input pill.
+//! Composer surface with model and permission controls inside, workspace metadata below.
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use agent_protocol::AgentMode;
@@ -22,7 +12,6 @@ use crate::features::agent_activity::components::pending_action_bar::{
 };
 use crate::features::composer::components::composer_pill::{ComposerPillProps, composer_pill};
 use crate::features::composer::components::metadata_row::{MetadataRowProps, metadata_row};
-use crate::features::composer::components::mode_chips::{ModeChipsProps, mode_chips};
 use crate::features::composer::state::PendingImageAttachment;
 use crate::shared::components::context_usage_ring::ContextUsageProps;
 use crate::tokens::Tokens;
@@ -66,17 +55,7 @@ pub struct ComposerProps {
     pub composer_error: Option<String>,
 }
 
-/// Structured composer footer.
-///
-/// Layout (inside a centered column matching message width):
-/// ┌─────────────────────────────────────┐
-/// │  [approval / pending overlay]       │  ← blocking actions (when present)
-/// │     ⌥ main    │              ◌      │  ← metadata (branch left, context right)
-/// │  ┌─────────────────────────────┐   │
-/// │  │ +  type your message...  ⌄ │   │  ← input pill (46–52px) with model dropdown
-/// │  └─────────────────────────────┘   │
-/// │     Plan  Ask  Edit  ●Apply Agent  │  ← mode chip row (8px below pill)
-/// └─────────────────────────────────────┘
+/// Centered composer and its blocking approval surface.
 pub fn render_composer(props: ComposerProps) -> impl IntoElement {
     div()
         .id("composer-container")
@@ -98,15 +77,10 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
                 } else {
                     pending_action_bar(props.pending_actions).into_any_element()
                 })
-                // ══ Layer 1: Metadata row (branch left, context right) ══
-                .child(metadata_row(MetadataRowProps {
-                    branch: props.selected_branch,
-                    branch_items: props.branch_items,
-                    context_usage: props.context_usage,
-                    entity: props.entity.clone(),
-                }))
                 // ══ Layer 2: Input pill (with model dropdown inside) ══
                 .child(composer_pill(ComposerPillProps {
+                    codex: props.codex,
+                    selected_mode: props.selected_mode,
                     has_text: props.has_text,
                     input_expanded: props.input_expanded,
                     input_entity: props.input_entity.clone(),
@@ -120,40 +94,13 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
                     composer_error: props.composer_error,
                     entity: props.entity.clone(),
                 }))
-                // ══ Layer 3: Mode chips (8px below pill) ══
-                .child(render_mode_row(
-                    &props.selected_mode,
-                    props.entity.clone(),
-                    props.codex,
-                )),
+                .child(metadata_row(MetadataRowProps {
+                    branch: props.selected_branch,
+                    branch_items: props.branch_items,
+                    context_usage: props.context_usage,
+                    entity: props.entity.clone(),
+                })),
         )
         .when(props.composer_dimmed, |el| el.opacity(0.72))
         .when(props.composer_disabled, |el| el.opacity(0.5))
-}
-
-// ── Mode chips row ──
-
-fn render_mode_row(
-    selected_mode: &AgentMode,
-    entity: Entity<AgentWindow>,
-    codex: bool,
-) -> impl IntoElement {
-    div()
-        .id("composer-mode-row")
-        .w_full()
-        .max_w(px(Tokens::COMPOSER_MAX_WIDTH))
-        .px(Tokens::composer_rail_inset_x())
-        .flex()
-        .items_center()
-        .justify_start()
-        .pt(Tokens::spacing_1p5())
-        .child(mode_chips(ModeChipsProps {
-            codex,
-            selected_mode: selected_mode.clone(),
-            on_select: Rc::new(move |mode, app| {
-                entity.update(app, |view, cx| {
-                    view.set_safety_mode(mode, cx);
-                });
-            }),
-        }))
 }

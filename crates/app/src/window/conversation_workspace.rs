@@ -23,6 +23,7 @@ use agent_protocol::AgentMode;
 #[derive(Clone)]
 pub(super) struct ConversationWorkspaceVm {
     pub title: String,
+    pub empty: bool,
     pub readiness: WorkspaceReadiness,
     pub thread_view: Entity<ThreadView>,
     pub active_todos: Vec<TodoEntry>,
@@ -184,6 +185,7 @@ impl AgentWindow {
         let inspector_tabs = self.inspector_tabs.clone();
 
         ConversationWorkspaceVm {
+            empty: selected_conversation.is_none_or(|c| c.thread_items.is_empty()),
             title,
             readiness,
             thread_view: self

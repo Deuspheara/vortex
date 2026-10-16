@@ -9,13 +9,14 @@ use gpui_component::Icon;
 use gpui_component::IconName;
 use gpui_component::popover::Popover;
 
-use crate::shared::components::buttons::{btn_ghost_icon, btn_icon_sm};
+use crate::shared::components::buttons::btn_icon_sm;
 use crate::shared::components::panel_controls::{PanelControlClusterProps, panel_control_cluster};
 use crate::tokens::Tokens;
 use crate::tokens::icons;
 
 pub struct TopBarProps {
     pub conversation_title: String,
+    pub project_name: Option<String>,
     pub sidebar_collapsed: bool,
     pub inspector_open: bool,
     pub terminal_panel_open: bool,
@@ -26,7 +27,6 @@ pub struct TopBarProps {
     pub on_toggle_terminal: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_new_chat: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_title_copy: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
-    pub on_new_terminal_tab: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_workspace_status: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_open_settings: Option<Rc<dyn Fn(&mut gpui::App)>>,
 }
@@ -36,29 +36,18 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
     div()
         .id("top-bar")
         .h(px(Tokens::TOP_BAR_HEIGHT))
+        .flex_shrink_0()
         .w_full()
         .flex()
         .items_center()
         .bg(Tokens::main_bg())
-        .border_b_1()
-        .border_color(Tokens::border_subtle())
-        .pl(px(Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET))
+        .pl(if props.sidebar_collapsed {
+            px(Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET)
+        } else {
+            Tokens::spacing_3()
+        })
         .pr(Tokens::spacing_2())
         .gap(Tokens::spacing_1())
-        .when(!props.sidebar_collapsed, |el| {
-            el.child(
-                div()
-                    .w(px(
-                        Tokens::SIDEBAR_WIDTH - Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET
-                    ))
-                    .flex_shrink_0()
-                    .px(Tokens::spacing_3())
-                    .text_size(Tokens::text_sm())
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(Tokens::text_primary())
-                    .child("Vortex"),
-            )
-        })
         .child(
             div()
                 .flex_1()
@@ -67,6 +56,28 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                 .items_center()
                 .gap(Tokens::spacing_1())
                 .px(Tokens::spacing_1())
+                .when_some(props.project_name, |el, project| {
+                    el.child(
+                        Icon::new(icons::FOLDER)
+                            .size(Tokens::spacing_4())
+                            .text_color(Tokens::text_tertiary()),
+                    )
+                    .child(
+                        div()
+                            .max_w(px(Tokens::SIDEBAR_WIDTH))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_size(Tokens::text_sm())
+                            .text_color(Tokens::text_secondary())
+                            .child(project),
+                    )
+                    .child(
+                        div()
+                            .px(Tokens::spacing_2())
+                            .text_color(Tokens::text_tertiary())
+                            .child("/"),
+                    )
+                })
                 .child(render_title_block(title))
                 .child(render_title_menu(
                     props.conversation_title,
@@ -92,16 +103,8 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                         on_toggle_terminal: props.on_toggle_terminal,
                     }))
                 })
-                .child(render_dock_actions(props.on_new_terminal_tab))
                 .when_some(props.workspace_readiness_label, |el, label| {
                     el.child(render_workspace_status(label, props.on_workspace_status))
-                })
-                .when_some(props.on_open_settings, |el, cb| {
-                    el.child(
-                        btn_ghost_icon("topbar-open-settings", icons::SETTINGS)
-                            .tooltip("Open settings")
-                            .on_click(move |_, _, app: &mut gpui::App| cb(app)),
-                    )
                 }),
         )
 }
@@ -244,20 +247,4 @@ fn render_workspace_status(
     } else {
         badge
     }
-}
-
-fn render_dock_actions(
-    on_new_terminal_tab: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(Tokens::spacing_0p5())
-        .child(
-            btn_ghost_icon("topbar-new-terminal-tab", icons::TERMINAL)
-                .tooltip("New terminal tab")
-                .when_some(on_new_terminal_tab, |button, cb| {
-                    button.on_click(move |_, _, app: &mut gpui::App| cb(app))
-                }),
-        )
 }

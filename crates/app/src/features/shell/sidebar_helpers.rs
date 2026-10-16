@@ -4,6 +4,8 @@
 
 use gpui::{Entity, FontWeight, IntoElement, div, prelude::*, px};
 use gpui_component::Icon;
+use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::input::{Input, InputState};
 
 use crate::features::shell::layout::SidebarView;
 use crate::features::shell::state::AppNavItem;
@@ -21,41 +23,34 @@ pub fn render_sidebar(sidebar_view: Entity<SidebarView>) -> impl IntoElement {
 
 pub(crate) fn render_app_nav(
     entity: Entity<AgentWindow>,
-    selected: AppNavItem,
+    _selected: AppNavItem,
+    search_input: Entity<InputState>,
 ) -> impl IntoElement {
     div()
-        .px(Tokens::spacing_2())
-        .pt(Tokens::spacing_2())
-        .pb(Tokens::spacing_1p5())
+        .px(Tokens::spacing_3())
+        .py(Tokens::spacing_3())
         .flex()
-        .flex_col()
-        .gap(Tokens::spacing_0p5())
-        .border_b_1()
-        .border_color(Tokens::sidebar_border())
-        .child(app_nav_row(
-            "sidebar-new-chat",
-            icons::PENCIL,
-            "New chat",
-            false,
-            {
-                let entity = entity.clone();
-                move |app| {
+        .items_center()
+        .gap(Tokens::spacing_2())
+        .child(
+            div().flex_1().min_w(px(0.0)).child(
+                Input::new(&search_input).appearance(false).prefix(
+                    Icon::new(icons::SEARCH)
+                        .size(Tokens::spacing_4())
+                        .text_color(Tokens::text_tertiary()),
+                ),
+            ),
+        )
+        .child(
+            Button::new("sidebar-new-chat")
+                .icon(icons::new_thread())
+                .ghost()
+                .compact()
+                .tooltip("New chat")
+                .on_click(move |_, _, app| {
                     entity.update(app, |view, cx| view.new_conversation_from_nav(cx));
-                }
-            },
-        ))
-        .child(app_nav_row(
-            "sidebar-nav-search",
-            icons::SEARCH,
-            "Search",
-            selected == AppNavItem::Search,
-            {
-                let entity = entity.clone();
-                move |app| {
-                    entity.update(app, |view, cx| view.open_search(cx));
-                }
-            },
-        ))
+                }),
+        )
 }
 
 pub(crate) fn render_projects_section_header(
@@ -163,47 +158,4 @@ pub(crate) fn render_sidebar_footer(
                     automations_entity.update(app, |view, cx| view.open_automations(cx))
                 }),
         )
-}
-
-fn app_nav_row(
-    id: &'static str,
-    icon: gpui_component::IconName,
-    label: &'static str,
-    selected: bool,
-    on_click: impl Fn(&mut gpui::App) + 'static,
-) -> gpui::AnyElement {
-    flat_list_row(
-        id,
-        Tokens::ROW_HEIGHT_MD,
-        Tokens::sidebar_padding(),
-        Tokens::sidebar_padding(),
-        selected,
-        true,
-        Some(move |app: &mut gpui::App| on_click(app)),
-        div()
-            .flex()
-            .items_center()
-            .gap(Tokens::spacing_2())
-            .child(Icon::new(icon).size(px(14.0)).text_color(if selected {
-                Tokens::sidebar_text_hover()
-            } else {
-                Tokens::sidebar_text()
-            }))
-            .child(
-                div()
-                    .text_size(Tokens::text_sm())
-                    .font_weight(if selected {
-                        FontWeight::MEDIUM
-                    } else {
-                        FontWeight::NORMAL
-                    })
-                    .text_color(if selected {
-                        Tokens::sidebar_text_hover()
-                    } else {
-                        Tokens::sidebar_text()
-                    })
-                    .child(label),
-            ),
-    )
-    .into_any_element()
 }

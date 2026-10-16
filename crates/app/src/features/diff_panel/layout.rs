@@ -594,11 +594,21 @@ fn render_file_diff(file: DiffFile, header_mode: DiffFileHeaderMode) -> impl Int
                         .collect()
                 },
             )
-            .size_full(),
+            .w_full()
+            .flex_1()
+            .min_h(px(0.0)),
         )
 }
 
 fn render_single_file_header(path: &str, added: usize, removed: usize) -> impl IntoElement {
+    let display_path = if std::path::Path::new(path).is_absolute() {
+        std::path::Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+    } else {
+        path
+    };
     div()
         .bg(Tokens::panel_bg())
         .h(px(Tokens::DIFF_PATH_HEIGHT))
@@ -623,7 +633,7 @@ fn render_single_file_header(path: &str, added: usize, removed: usize) -> impl I
                         .text_color(Tokens::text_secondary())
                         .overflow_hidden()
                         .text_ellipsis()
-                        .child(path.to_string()),
+                        .child(display_path.to_string()),
                 )
                 .child(
                     div()

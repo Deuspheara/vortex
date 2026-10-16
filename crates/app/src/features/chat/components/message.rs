@@ -15,21 +15,46 @@ pub fn user_message(
     text: &str,
     attachments: &[MessageAttachment],
     id: &str,
-    is_initial: bool,
+    _is_initial: bool,
     collapsed: bool,
     show_see_more: bool,
+    app: &App,
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
+    let max_width = px(Tokens::THREAD_MAX_WIDTH * 0.88);
+    let text_width = if text.len() > 128 {
+        max_width
+    } else {
+        let text_system = app.text_system();
+        let font = text_system.resolve_font(&gpui::font(Tokens::ui_font_family()));
+        text.lines()
+            .map(|line| {
+                line.chars().fold(px(0.0), |width, character| {
+                    width
+                        + text_system
+                            .advance(font, Tokens::text_md(), character)
+                            .map(|advance| advance.width)
+                            .unwrap_or(Tokens::text_md())
+                })
+            })
+            .max()
+            .unwrap_or_default()
+    };
+    let content_width = if attachments.is_empty() {
+        text_width
+    } else {
+        text_width.max(Tokens::attachment_preview_size())
+    };
+    let bubble_width =
+        (content_width + Tokens::spacing_3() * 2.0 + Tokens::spacing_6()).min(max_width);
     let text = text.to_string();
     let copy_text = std::sync::Arc::<str>::from(text.as_str());
     let preview_max_h = px(USER_MESSAGE_PREVIEW_LINES as f32 * LINE_LEADING);
     let hover_group = format!("user-message-hover-{id}");
-    let label = if is_initial { "Task" } else { "You asked" };
     div()
         .id(element_key("user-message", id))
-        .w_full()
-        .max_w(px(Tokens::THREAD_MAX_WIDTH * 0.88))
-        .ml_auto()
+        .w(bubble_width)
+        .max_w(gpui::relative(1.0))
         .relative()
         .flex()
         .flex_col()
@@ -37,20 +62,11 @@ pub fn user_message(
         .gap(Tokens::spacing_1())
         .p(Tokens::spacing_3())
         .rounded(Tokens::radius_md())
-        .bg(Tokens::surface())
+        .bg(Tokens::user_message_bg())
         .min_w(px(0.0))
         .group(hover_group.clone())
         .child(
             div()
-                .text_size(Tokens::text_xs())
-                .line_height(Tokens::text_sm_leading_compact())
-                .font_weight(gpui::FontWeight::MEDIUM)
-                .text_color(Tokens::text_tertiary())
-                .child(label),
-        )
-        .child(
-            div()
-                .w_full()
                 .pr(Tokens::spacing_6())
                 .text_size(Tokens::text_md())
                 .line_height(Tokens::text_md_leading())

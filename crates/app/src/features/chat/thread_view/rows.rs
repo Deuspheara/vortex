@@ -90,6 +90,7 @@ impl ThreadView {
                     is_initial,
                     collapsed,
                     truncatable,
+                    cx,
                     move |app: &mut gpui::App| {
                         agent_toggle.update(app, |view, cx| {
                             view.toggle_thread_item(&toggle_id, cx);
@@ -605,6 +606,9 @@ impl ThreadView {
             .flex()
             .flex_col()
             .justify_start()
+            .when(matches!(row_ref, RowRef::UserMessage { .. }), |el| {
+                el.items_end()
+            })
             .child(content)
             .into_any_element()
     }

@@ -203,7 +203,7 @@ impl VortexPalette {
             text_secondary: theme.muted_foreground,
             text_tertiary: caption_color(theme.muted_foreground, theme.background),
             text_faint: caption_color(theme.muted_foreground, theme.background).opacity(0.85),
-            text_bright: theme.primary_foreground,
+            text_bright: theme.foreground,
             sidebar_text: theme.sidebar_foreground,
             sidebar_text_hover: theme.foreground,
             sidebar_text_muted: caption_color(theme.sidebar_foreground, theme.sidebar),

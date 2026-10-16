@@ -15,7 +15,7 @@ use gpui_component::IconName;
 use gpui_component::StyledExt;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputEvent, InputState};
-use gpui_component::popover::Popover;
+use gpui_component::popover::{Popover, PopoverState};
 use gpui_component::{Icon as GpuiIcon, Sizable, Size};
 
 use crate::tokens::icons;
@@ -48,7 +48,7 @@ pub struct PickerDropdownProps {
     /// Minimum width of the popover menu (trigger sizes to label).
     pub menu_min_width: f32,
     /// Optional leading icon shown on the trigger button.
-    pub trigger_icon: Option<IconName>,
+    pub trigger_icon: Option<Icon>,
     /// When true, show a filter field above the list (requires parallel `search_texts`).
     pub searchable: bool,
     /// Lowercase search keys aligned with `items`; defaults to item labels when omitted.
@@ -90,6 +90,7 @@ fn default_search_keys(items: &[DropdownItem]) -> Vec<Arc<str>> {
 }
 
 struct PickerMenuView {
+    popover: Option<gpui::WeakEntity<PopoverState>>,
     items: Rc<[DropdownItem]>,
     search_keys: Rc<[Arc<str>]>,
     matched_indices: Vec<usize>,
@@ -118,6 +119,7 @@ impl PickerMenuView {
         .detach();
 
         Self {
+            popover: None,
             items: Rc::new([]),
             search_keys: Rc::new([]),
             matched_indices: Vec::new(),
@@ -199,6 +201,7 @@ impl PickerMenuView {
 
 impl Render for PickerMenuView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let popover = self.popover.clone();
         let count = self.matched_indices.len();
         let items = self.items.clone();
         let matched = self.matched_indices.clone();
@@ -256,12 +259,18 @@ impl Render for PickerMenuView {
                                         selected.as_deref() == Some(item.label.as_str());
                                     let item_label = item.label.clone();
                                     let on_select = on_select.clone();
+                                    let popover = popover.clone();
                                     dropdown_item(
                                         element_key("picker-item", &source_ix.to_string()),
                                         &item.label,
                                         item.icon.clone(),
                                         is_selected,
-                                        move |_, _, app| {
+                                        move |_, window, app| {
+                                            if let Some(popover) = &popover {
+                                                let _ = popover.update(app, |state, cx| {
+                                                    state.dismiss(window, cx)
+                                                });
+                                            }
                                             on_select(source_ix, item_label.clone(), app);
                                         },
                                     )
@@ -309,7 +318,7 @@ pub fn picker_dropdown(props: PickerDropdownProps) -> impl IntoElement {
     if let Some(icon) = trigger_icon {
         trigger = trigger.icon(icon).dropdown_caret(true);
     } else {
-        trigger = trigger.icon(icons::CHEVRON_DOWN);
+        trigger = trigger.dropdown_caret(true);
     }
 
     Popover::new(props.id)
@@ -322,7 +331,9 @@ pub fn picker_dropdown(props: PickerDropdownProps) -> impl IntoElement {
                 PickerMenuView::new(searchable, window, cx)
             });
 
+            let popover = cx.entity().downgrade();
             menu.update(cx, |view, cx| {
+                view.popover = Some(popover);
                 view.sync(
                     &items,
                     search_texts.as_deref(),

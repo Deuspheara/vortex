@@ -51,6 +51,9 @@ impl Tokens {
     pub fn popover() -> Hsla {
         Self::surface_overlay()
     }
+    pub fn user_message_bg() -> Hsla {
+        Self::accent().opacity(0.22)
+    }
     pub fn composer_bg() -> Hsla {
         Self::input_bg().alpha(1.0)
     }
@@ -420,7 +423,7 @@ impl Tokens {
         px(10.0)
     }
     pub fn radius_composer() -> gpui::Pixels {
-        px(14.0)
+        px(24.0)
     }
     /// Horizontal inset for rows above/below the composer pill.
     pub fn composer_rail_inset_x() -> gpui::Pixels {
@@ -436,7 +439,7 @@ impl Tokens {
 // ════════════════════════════════════════════════════════════
 
 impl Tokens {
-    pub const SIDEBAR_WIDTH: f32 = 256.0;
+    pub const SIDEBAR_WIDTH: f32 = 296.0;
     pub const SIDEBAR_MIN_WIDTH: f32 = 208.0;
     pub const SIDEBAR_MAX_WIDTH: f32 = 320.0;
     pub const SIDEBAR_COLLAPSED: f32 = 40.0;
@@ -447,7 +450,7 @@ impl Tokens {
     pub const DIFF_PANEL_MIN_WIDTH: f32 = 320.0;
     pub const DIFF_PANEL_MAX_WIDTH: f32 = 760.0;
     pub const CENTER_MIN_WIDTH: f32 = 400.0;
-    pub const TOP_BAR_HEIGHT: f32 = 44.0;
+    pub const TOP_BAR_HEIGHT: f32 = 52.0;
     /// Left inset clearing macOS traffic-light window controls.
     pub const TOP_BAR_TRAFFIC_LIGHT_INSET: f32 = 78.0;
     pub const BOTTOM_PANEL_HEIGHT: f32 = 220.0;
@@ -541,14 +544,15 @@ impl Tokens {
         }
     }
     pub const STATUS_BAR_HEIGHT: f32 = 24.0;
-    pub const THREAD_MAX_WIDTH: f32 = 792.0;
+    pub const THREAD_MAX_WIDTH: f32 = 736.0;
     pub const THREAD_EMPTY_COPY_WIDTH: f32 = 456.0;
     pub const COMPOSER_MAX_WIDTH: f32 = Self::THREAD_MAX_WIDTH;
+    pub const COMPOSER_MODEL_MAX_WIDTH: f32 = 232.0;
     pub const ATTACHMENT_PREVIEW_SIZE: f32 = 56.0;
     pub const ATTACHMENT_PREVIEW_GAP: f32 = 4.0;
     pub const COMPOSER_ERROR_ROW_HEIGHT: f32 = Self::ROW_HEIGHT_XS;
     /// Compact input pill height (empty state — grows with content).
-    pub const COMPOSER_INPUT_MIN_HEIGHT: f32 = 64.0;
+    pub const COMPOSER_INPUT_MIN_HEIGHT: f32 = 88.0;
     /// Compact mode/strip row above the pill (legacy alias — mode chips sit below the pill now).
     pub const COMPOSER_RUN_STRIP_HEIGHT: f32 = Self::ROW_HEIGHT_SM;
     /// Mode chip row height (`mode_chips.rs`).
@@ -569,7 +573,7 @@ impl Tokens {
     pub const COMPOSER_INPUT_AREA_HEIGHT: f32 = 40.0;
     /// Visible composer lines before the input scrolls internally.
     pub const COMPOSER_INPUT_MIN_ROWS: usize = 1;
-    pub const COMPOSER_INPUT_MAX_ROWS: usize = 4;
+    pub const COMPOSER_INPUT_MAX_ROWS: usize = 6;
     /// Line height for composer auto-grow (14 px text + leading).
     pub const COMPOSER_INPUT_LINE_HEIGHT: f32 = 20.0;
     /// Toolbar row height inside the stacked composer pill (+ / model / send).
@@ -600,7 +604,7 @@ impl Tokens {
     pub fn composer_pill_stacked_max_height(has_attachments: bool, has_error: bool) -> f32 {
         Self::composer_input_max_height()
             + Self::COMPOSER_PILL_TOOLBAR_HEIGHT
-            + 12.0
+            + 24.0
             + Self::composer_attachment_extra_height(has_attachments, has_error)
     }
 
@@ -629,8 +633,6 @@ impl Tokens {
             + Self::ROW_HEIGHT_SM
             + Self::COMPOSER_METADATA_PB
             + pill_h
-            + Self::COMPOSER_MODE_ROW_PT
-            + Self::COMPOSER_MODE_CHIP_HEIGHT
             + Self::COMPOSER_CONTAINER_PB
     }
 
@@ -638,9 +640,9 @@ impl Tokens {
     pub const COMPOSER_STACK_HEIGHT: f32 = Self::COMPOSER_CONTAINER_PT
         + Self::ROW_HEIGHT_SM
         + Self::COMPOSER_METADATA_PB
-        + (Self::COMPOSER_INPUT_MIN_HEIGHT + 8.0)
-        + Self::COMPOSER_MODE_ROW_PT
-        + Self::COMPOSER_MODE_CHIP_HEIGHT
+        + Self::COMPOSER_INPUT_MIN_HEIGHT
+        + Self::COMPOSER_PILL_TOOLBAR_HEIGHT
+        + 24.0
         + Self::COMPOSER_CONTAINER_PB;
     /// Bottom scroll inset so thread content can pass under the composer fade.
     pub const COMPOSER_THREAD_INSET: f32 = Self::COMPOSER_STACK_HEIGHT - Self::COMPOSER_FADE_HEIGHT;
@@ -747,13 +749,13 @@ impl Tokens {
     pub fn text_base() -> gpui::Pixels {
         px(14.0)
     }
-    /// 14 px — thread body
+    /// 16 px — comfortable thread body
     pub fn text_md() -> gpui::Pixels {
-        px(14.0)
+        px(16.0)
     }
-    /// 15 px thread body line height (~1.55)
+    /// Thread body line height, shared with the manifest.
     pub fn text_md_leading() -> gpui::Pixels {
-        px(22.0)
+        px(23.0)
     }
     /// 13 px tool row line height
     pub fn text_sm_leading() -> gpui::Pixels {

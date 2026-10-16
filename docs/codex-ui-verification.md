@@ -60,20 +60,61 @@ peer for controlled failure states. Demo mode was used only for its fixture test
 | Failure/unsupported | Isolated peer requested unsupported permissions; UI displayed a wrapped error, returned to an idle composer, and could accept another turn. |
 | Peer reconnect | Peer exited after a partial response; UI showed recovery then one reconciled `hello world`, without duplicate text or automatic resubmission. |
 
-The reference application website and its published
-[desktop reference](https://t3.codes/_astro/app-desktop.BOCg1ktw.webp) were inspected.
-Native screenshots at 1440×900 were compared with its 2880×1800 reference at 2×.
-The revision uses a branded sidebar header, fewer primary navigation rows,
-compact neutral typography, flat activity controls, a taller bottom composer,
-and an adjacent review panel. Extensions and Automations remain reachable in the
-sidebar footer. This is visual alignment, not a claim of pixel-identical output.
+## Native UI refinement
+
+The website reference alone was insufficient. The installed **reference application**
+was inspected directly, including an existing conversation, the empty draft,
+Appearance settings, the right-panel surface chooser, and General → Legacy
+features. It supports both the flat sidebar and per-project thread trees; the
+latter is exposed as “Sidebar (legacy)”. Vortex's project tree remains intact.
+The installed reference uses Catppuccin Frappé, SF Pro at 16 px, and Comfortable
+chat width. The bundled Vortex dark palette and layout now follow that visible
+setup while retaining Vortex branding and its stricter execution defaults.
+
+The follow-up revision adds:
+
+- A 296 px project sidebar with a working inline conversation filter and compact
+  new-thread action, plus headers owned by their actual resizable panes.
+- A project/thread breadcrumb, 52 px headers, 736 px chat width, flat activity
+  rows, and compact right-aligned user bubbles with font-metric sizing.
+- A centered empty-thread composer that moves to the bottom for existing chats.
+  Model, advertised reasoning effort, permissions, attachments, and send/stop
+  controls share one rounded surface; branch/context metadata sits below it.
+- Separate Codex model/effort controls that preserve the exact advertised routing
+  values. Codex still offers only read-only Plan and approval-required execution.
+- A panel chooser for Changes, Context, Plan, Terminal, and Android. Tabs open on
+  demand; selecting an existing surface preserves its identity and dock.
+- Semantic attachment, branch, permission, and new-thread glyphs; readable
+  animated activity text; menus that dismiss on selection; full-input-area focus.
+- A long-path approval footer that keeps the complete path and its buttons
+  visible, readable diff filenames, a diff list constrained below its header,
+  and a single-line diff summary matching its virtualized row height.
+
+Normal native-app checks in this follow-up used both the isolated deterministic
+peer and the real installed Codex CLI with existing authentication:
+
+| Check | Observed result |
+| --- | --- |
+| Real inference | `gpt-6.1-sol` completed a tiny marker prompt through the native composer. |
+| Effort routing | Selecting Medium in the separate control dismissed the menu; the next real edit ran with the selected advertised effort. |
+| Real edits | Two `apply_patch` requests displayed native approvals and previews. Allow once produced the exact disposable file contents, then the expected `+1/−1` replacement diff. |
+| Approval layout | Long absolute path, risk label, and both review-panel buttons remained visible together. |
+| Rejection | The controlled peer's approval was denied through the native card; the UI settled and remained usable. |
+| Replay | Reopening the same isolated store retained real replies and the applied diff without duplicated text or resubmission. |
+| Navigation | Inline sidebar filtering removed nonmatching threads in place; the panel chooser opened Context and dismissed correctly. |
+| Responsive controls | Opening the changes panel preserved input, model/effort, permission, and attachment controls; controls wrap instead of being hidden. |
+
+Native reference screenshots and QA artifacts remain outside the repository.
+This is a substantial visual follow-up, not a claim of pixel-identical output.
+Further narrow-pane transcript sizing and matching-window comparisons remain
+part of the ongoing UI verification.
 
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.
 - `cargo clippy --workspace --all-targets` — passed with repository warnings.
 - `cargo check -p app` — passed with repository warnings.
-- `cargo test --workspace` — 234 passed, 2 opt-in live tests ignored.
+- `cargo test --workspace` — 236 passed, 2 opt-in live tests ignored.
 - `cargo test -p app --features demo_mode fixture_is_isolated_idempotent_and_replayable`
   — passed.
 - `VORTEX_TEST_CODEX_MODEL=gpt-6-astra cargo test -p agent_codex --test backend -- --ignored --nocapture --test-threads=1`

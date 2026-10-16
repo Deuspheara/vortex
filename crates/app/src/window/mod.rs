@@ -314,7 +314,7 @@ impl AgentWindow {
     ) -> Self {
         let input_state = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Ask anything, @ to mention, / for actions")
+                .placeholder("Ask for changes, send follow-ups, or attach images")
                 .auto_grow(
                     Tokens::COMPOSER_INPUT_MIN_ROWS,
                     Tokens::COMPOSER_INPUT_MAX_ROWS,
@@ -364,8 +364,7 @@ impl AgentWindow {
         })
         .detach();
 
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Search conversations…"));
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
 
         apply_theme(DEFAULT_DARK_THEME, Some(window), cx);
         sync_palette(cx);

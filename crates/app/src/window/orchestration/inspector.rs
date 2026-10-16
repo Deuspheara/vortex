@@ -86,11 +86,17 @@ impl AgentWindow {
         cx.notify();
     }
 
-    pub fn new_inspector_tab(&mut self, cx: &mut Context<Self>) {
-        let id = self.inspector_tabs.open_empty();
-        self.sync_inspector_tab_in_workspace_layout(id, Some(DockPlacement::Right));
-        self.apply_inspector_tab_by_id(id);
-        self.set_inspector_mode(InspectorMode::Review, cx);
+    pub fn new_inspector_tab(&mut self, kind: InspectorTabKind, cx: &mut Context<Self>) {
+        match kind {
+            InspectorTabKind::BuiltIn(view) => self.select_inspector_view(view, cx),
+            InspectorTabKind::Custom(slot) => {
+                let id = self.inspector_tabs.select_custom(slot, "Android");
+                self.sync_inspector_tab_in_workspace_layout(id, None);
+                self.apply_inspector_tab_by_id(id);
+                self.reveal_dock_for_tab(id, cx);
+            }
+            _ => {}
+        }
     }
 
     pub fn select_artifact(&mut self, artifact_id: ArtifactId, cx: &mut Context<Self>) {

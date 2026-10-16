@@ -15,30 +15,34 @@ pub fn render_diff_header_row(
     on_toggle: impl Fn(&mut App) + 'static,
     on_review: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
-    let stats = format!(
-        "{files_changed} file{} changed · +{additions} −{deletions}",
-        if files_changed == 1 { "" } else { "s" }
-    );
-
     activity_group_wrap(
         timeline_row(
             element_key("diff-header", item_id),
             div()
                 .flex()
-                .flex_col()
-                .gap(Tokens::spacing_0p5())
+                .items_center()
+                .gap(Tokens::spacing_2())
                 .child(
                     div()
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(Tokens::text_primary())
-                        .child("Changes ready"),
+                        .child(format!(
+                            "{files_changed} file{} changed",
+                            if files_changed == 1 { "" } else { "s" }
+                        )),
                 )
                 .child(
                     div()
                         .text_size(Tokens::text_xs())
-                        .text_color(Tokens::text_secondary())
-                        .child(stats),
+                        .text_color(Tokens::success())
+                        .child(format!("+{additions}")),
+                )
+                .child(
+                    div()
+                        .text_size(Tokens::text_xs())
+                        .text_color(Tokens::danger())
+                        .child(format!("−{deletions}")),
                 )
                 .into_any_element(),
             div()

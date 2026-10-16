@@ -250,6 +250,7 @@ impl SidebarView {
             .child(render_app_nav(
                 self.agent.clone(),
                 screen_to_nav(self.screen),
+                self.search_input.clone(),
             ))
             .child(
                 div()

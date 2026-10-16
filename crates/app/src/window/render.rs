@@ -18,7 +18,7 @@ use crate::features::inspector::layout::{self as artifact_inspector, DockedInspe
 use crate::features::settings::layout::{self as settings_ui, SettingsProps};
 use crate::features::settings::state::SettingsSection;
 use crate::features::shell::sidebar_helpers::{self as sidebar};
-use crate::features::shell::state::{DockPlacement, InspectorTabId};
+use crate::features::shell::state::{DockPlacement, InspectorTabId, InspectorTabKind};
 use crate::features::terminal::layout::TerminalPanelProps;
 use crate::features::todos::components::todo_list::todo_progress_header;
 use crate::features::top_bar::layout::{self as top_bar_ui, TopBarProps};
@@ -36,6 +36,7 @@ use agent_protocol::AgentMode;
 // ── ViewState (cheap, cloneable) ──────────────────────────────────────────
 
 struct ViewState {
+    project_name: Option<String>,
     dragging: bool,
     entity: Entity<AgentWindow>,
     screen: AppScreen,
@@ -67,7 +68,7 @@ struct Cbs {
     select_inspector_tab: Rc<dyn Fn(InspectorTabId, &mut gpui::App)>,
     close_inspector_tab: Rc<dyn Fn(InspectorTabId, &mut gpui::App)>,
     reorder_inspector_tab: Rc<dyn Fn(InspectorTabId, InspectorTabId, &mut gpui::App)>,
-    new_inspector_tab: Rc<dyn Fn(&mut gpui::App)>,
+    new_inspector_tab: Rc<dyn Fn(InspectorTabKind, &mut gpui::App)>,
     transcript_mode: Rc<dyn Fn(TranscriptMode, &mut gpui::App)>,
     open_project: Rc<dyn Fn(&mut Window, &mut gpui::App)>,
     new_chat: Rc<dyn Fn(&mut gpui::App)>,
@@ -122,6 +123,7 @@ impl AgentWindow {
         let (model_items, model_search_keys) = self.model_picker_items_for_selected_provider();
 
         ViewState {
+            project_name: self.selected_project().map(|project| project.name.clone()),
             dragging: cx.has_active_drag(),
             entity: cx.entity().clone(),
             screen: self.screen,
@@ -178,7 +180,12 @@ impl AgentWindow {
                     })
                 }
             }),
-            new_inspector_tab: rc1(e.clone(), |v, cx| v.new_inspector_tab(cx)),
+            new_inspector_tab: Rc::new({
+                let entity = e.clone();
+                move |kind, app| {
+                    entity.update(app, |view, cx| view.new_inspector_tab(kind, cx));
+                }
+            }),
             transcript_mode: Rc::new({
                 let e = e.clone();
                 move |mode: TranscriptMode, app: &mut gpui::App| {
@@ -281,7 +288,6 @@ fn root(agent: &AgentWindow, vs: ViewState, cbs: Cbs) -> impl IntoElement {
         .overflow_hidden()
         .bg(Tokens::app_bg())
         .text_color(Tokens::text_primary())
-        .child(top_bar(&vs, &cbs))
         .child(
             div()
                 .id("agent-body")
@@ -300,6 +306,7 @@ fn top_bar(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
     let title_copy = title.clone();
     top_bar_ui::render_top_bar(TopBarProps {
         conversation_title: title,
+        project_name: vs.project_name.clone(),
         sidebar_collapsed: vs.sidebar_collapsed,
         inspector_open: vs.conversation_workspace.inspector.open,
         terminal_panel_open: vs.conversation_workspace.terminal.open,
@@ -318,7 +325,6 @@ fn top_bar(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
                 }
             }
         })),
-        on_new_terminal_tab: Some(to_boxed(cbs.new_terminal_tab.clone())),
         on_workspace_status: Some(to_boxed(cbs.open_settings.clone())),
         on_open_settings: Some(cbs.open_settings.clone()),
     })
@@ -348,7 +354,27 @@ fn body(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
                         .min_w(px(0.0))
                         .min_h(px(0.0))
                         .overflow_hidden()
-                        .child(sidebar::render_sidebar(vs.sidebar_view.clone()))
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .h(px(Tokens::TOP_BAR_HEIGHT))
+                                .flex_shrink_0()
+                                .w_full()
+                                .pl(px(Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET))
+                                .bg(Tokens::sidebar_bg())
+                                .flex()
+                                .items_center()
+                                .text_size(Tokens::text_sm())
+                                .text_color(Tokens::text_primary())
+                                .child("Vortex"),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_h(px(0.0))
+                                .child(sidebar::render_sidebar(vs.sidebar_view.clone())),
+                        )
                         .with_animation("sidebar-fade", Motion::fade_in(), |el, d| el.opacity(d)),
                 ),
         )
@@ -488,7 +514,15 @@ fn center_panel(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoElem
             .child(
                 resizable_panel()
                     .size_range(px(Tokens::CENTER_MIN_WIDTH)..px(6000.0))
-                    .child(column(agent, vs, cbs)),
+                    .child(
+                        div()
+                            .size_full()
+                            .flex()
+                            .flex_col()
+                            .overflow_hidden()
+                            .child(top_bar(vs, cbs))
+                            .child(div().flex_1().min_h(px(0.0)).child(column(agent, vs, cbs))),
+                    ),
             )
             .child(
                 resizable_panel()
@@ -623,8 +657,33 @@ fn chat_column(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEleme
                 to_boxed(cbs.toggle_todo_strip.clone()),
             ))
         })
-        .child(thread_layer(vs))
-        .child(composer_layer(agent, vs, cbs))
+        .when(vs.conversation_workspace.empty, |col| {
+            col.child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .gap(Tokens::spacing_5())
+                    .child(
+                        div()
+                            .w_full()
+                            .text_center()
+                            .text_size(Tokens::text_xl())
+                            .text_color(Tokens::text_primary())
+                            .child(vs.project_name.as_ref().map_or_else(
+                                || "What should we build?".to_string(),
+                                |name| format!("What should we build in {name}?"),
+                            )),
+                    )
+                    .child(composer_layer(agent, vs, cbs)),
+            )
+        })
+        .when(!vs.conversation_workspace.empty, |col| {
+            col.child(thread_layer(vs))
+                .child(composer_layer(agent, vs, cbs))
+        })
 }
 
 // ── Thread layer ──────────────────────────────────────────────────────────
@@ -744,7 +803,7 @@ fn docked_inspector_props(
         context_recap: inspector.context_recap.clone(),
         on_select_tab: Some(cbs.select_inspector_tab.clone()),
         on_close_tab: Some(cbs.close_inspector_tab.clone()),
-        on_new_tab: None,
+        on_new_tab: Some(cbs.new_inspector_tab.clone()),
         on_reorder_tab: Some(cbs.reorder_inspector_tab.clone()),
         on_move_tab_to_dock: Some(cbs.move_inspector_tab_to_dock.clone()),
         terminal_panel: Some(TerminalPanelProps {

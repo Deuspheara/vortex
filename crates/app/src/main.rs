@@ -1,4 +1,5 @@
 mod agent;
+mod assets;
 mod features;
 mod shared;
 mod tokens;
@@ -21,7 +22,7 @@ gpui::actions!(vortex, [Quit, CloseWindow]);
 
 fn main() {
     tracing_subscriber::fmt::init();
-    let app = Application::new().with_assets(gpui_component_assets::Assets);
+    let app = Application::new().with_assets(assets::AppAssets);
 
     app.run(move |cx: &mut App| {
         gpui_component::init(cx);
