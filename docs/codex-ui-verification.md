@@ -36,6 +36,9 @@ peer for controlled failure states. Demo mode was used only for its fixture test
   selected session's approval or Stop controls.
 - Error text wraps within the thread, the changes panel keeps its review width,
   and its approval footer fits below the inspector tabs.
+- Closing the last native window previously left a headless application alive.
+  Last-window shutdown, standard Quit/Close Window menus and shortcuts, and
+  foreground activation now follow the normal desktop lifecycle.
 
 ## Native application checks
 
@@ -50,6 +53,7 @@ peer for controlled failure states. Demo mode was used only for its fixture test
 | Output/cancellation | Approved a harmless `printf; sleep; printf` command, then clicked Stop; cancellation completed and the stopped notice survived reopening. |
 | Real reconnect | Terminated only Vortex's owned app-server while an edit awaited permission. It reconnected, expired the approval, stopped the uncertain turn, and left the unapproved file absent. Manually submitted follow-ups completed. |
 | Persistence | Reopened Vortex repeatedly; earlier replies, denied edit, applied diff, and stopped turns remained, using the same Vortex sessions and Codex thread. No interrupted turn was automatically resent. |
+| Normal quit/close | Invoked Quit Vortex from the native menu, reopened, then closed the final native window. Both paths exited successfully and process inspection found no remaining Vortex-owned app-server. |
 | Sign-in recovery | Normal UI with isolated peer showed `codex login` guidance, then populated models after simulated sign-in without restarting. Real credentials were untouched. |
 | Missing CLI | Isolated normal launch with an invalid executable showed installation/`VORTEX_CODEX_BIN` guidance and an unavailable model state, without silently using Mock. |
 | Concurrent approvals | Isolated peer sent two requests together; native card presented `echo 1`, then `echo 2` after the first decision, then returned to an idle composer with one completed reply. |

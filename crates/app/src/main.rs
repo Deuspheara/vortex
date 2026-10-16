@@ -17,12 +17,43 @@ use gpui::{
 use tokens::{fonts, init_themes};
 use ui::agent_window::AgentWindow;
 
+gpui::actions!(vortex, [Quit, CloseWindow]);
+
 fn main() {
     tracing_subscriber::fmt::init();
     let app = Application::new().with_assets(gpui_component_assets::Assets);
 
     app.run(move |cx: &mut App| {
         gpui_component::init(cx);
+        cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.on_action(|_: &CloseWindow, cx| {
+            if let Some(window) = cx
+                .active_window()
+                .or_else(|| cx.windows().into_iter().next())
+            {
+                let _ = window.update(cx, |_, window, _| window.remove_window());
+            }
+        });
+        cx.bind_keys([
+            gpui::KeyBinding::new("cmd-q", Quit, None),
+            gpui::KeyBinding::new("cmd-w", CloseWindow, None),
+        ]);
+        cx.set_menus(vec![
+            gpui::Menu {
+                name: "Vortex".into(),
+                items: vec![gpui::MenuItem::action("Quit Vortex", Quit)],
+            },
+            gpui::Menu {
+                name: "File".into(),
+                items: vec![gpui::MenuItem::action("Close Window", CloseWindow)],
+            },
+        ]);
+        cx.on_window_closed(|cx| {
+            if cx.windows().is_empty() {
+                cx.quit();
+            }
+        })
+        .detach();
         fonts::register_bundled_fonts(cx);
         init_themes(cx);
 
@@ -61,6 +92,7 @@ fn main() {
                 },
             )
             .expect("Failed to open window");
+            cx.update(|cx| cx.activate(true)).ok();
         })
         .detach();
     });
