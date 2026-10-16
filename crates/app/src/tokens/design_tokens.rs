@@ -351,7 +351,7 @@ impl Tokens {
         Self::spacing_2()
     }
     pub fn thread_padding_x() -> gpui::Pixels {
-        Self::spacing_7()
+        Self::spacing_6()
     }
     pub fn thread_padding_top() -> gpui::Pixels {
         Self::spacing_6()
@@ -436,7 +436,7 @@ impl Tokens {
 // ════════════════════════════════════════════════════════════
 
 impl Tokens {
-    pub const SIDEBAR_WIDTH: f32 = 252.0;
+    pub const SIDEBAR_WIDTH: f32 = 256.0;
     pub const SIDEBAR_MIN_WIDTH: f32 = 208.0;
     pub const SIDEBAR_MAX_WIDTH: f32 = 320.0;
     pub const SIDEBAR_COLLAPSED: f32 = 40.0;
@@ -447,7 +447,7 @@ impl Tokens {
     pub const DIFF_PANEL_MIN_WIDTH: f32 = 440.0;
     pub const DIFF_PANEL_MAX_WIDTH: f32 = 760.0;
     pub const CENTER_MIN_WIDTH: f32 = 520.0;
-    pub const TOP_BAR_HEIGHT: f32 = 38.0;
+    pub const TOP_BAR_HEIGHT: f32 = 44.0;
     /// Left inset clearing macOS traffic-light window controls.
     pub const TOP_BAR_TRAFFIC_LIGHT_INSET: f32 = 78.0;
     pub const BOTTOM_PANEL_HEIGHT: f32 = 220.0;
@@ -543,7 +543,7 @@ impl Tokens {
     pub const STATUS_BAR_HEIGHT: f32 = 24.0;
     pub const THREAD_MAX_WIDTH: f32 = 792.0;
     pub const THREAD_EMPTY_COPY_WIDTH: f32 = 456.0;
-    pub const COMPOSER_MAX_WIDTH: f32 = 760.0;
+    pub const COMPOSER_MAX_WIDTH: f32 = Self::THREAD_MAX_WIDTH;
     pub const ATTACHMENT_PREVIEW_SIZE: f32 = 56.0;
     pub const ATTACHMENT_PREVIEW_GAP: f32 = 4.0;
     pub const COMPOSER_ERROR_ROW_HEIGHT: f32 = Self::ROW_HEIGHT_XS;
@@ -612,7 +612,7 @@ impl Tokens {
     }
     /// Height of the fade scrim above the composer (thread content shows through at top).
     /// Must be tall enough to avoid a hard horizontal band.
-    pub const COMPOSER_FADE_HEIGHT: f32 = 120.0;
+    pub const COMPOSER_FADE_HEIGHT: f32 = 48.0;
 
     /// Composer footer content height (metadata + pill + mode chips + container padding).
     pub fn composer_footer_height(

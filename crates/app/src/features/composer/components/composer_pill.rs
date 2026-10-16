@@ -40,15 +40,9 @@ pub struct ComposerPillProps {
 }
 
 /// True when the input should use the stacked layout (text above, toolbar below).
-pub fn composer_input_needs_stacked_layout(text: &str) -> bool {
-    if text.trim().is_empty() {
-        return false;
-    }
-    if text.contains('\n') {
-        return true;
-    }
-    let limit = Tokens::COMPOSER_INLINE_CHARS_PER_LINE;
-    text.lines().any(|line| line.chars().count() > limit)
+pub fn composer_input_needs_stacked_layout(_text: &str) -> bool {
+    // A stable text-above-toolbar layout avoids controls moving as the user types.
+    true
 }
 
 /// The main input pill — thin, rounded, focused on typing.
@@ -70,7 +64,7 @@ pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
     let has_attachments = !pending_image_attachments.is_empty();
     let has_error = composer_error.is_some();
 
-    let pill_min_height = px(Tokens::COMPOSER_INPUT_MIN_HEIGHT);
+    let pill_min_height = px(Tokens::COMPOSER_MIN_HEIGHT);
     let pill_max_height = px(if input_expanded {
         Tokens::composer_pill_stacked_max_height(has_attachments, has_error)
     } else {
@@ -432,27 +426,5 @@ fn render_send_button(
         }
     } else {
         btn_disabled_icon("send-message-disabled", icons::ARROW_UP).into_any_element()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stacked_when_text_wraps_inline_width() {
-        let long = "a".repeat(Tokens::COMPOSER_INLINE_CHARS_PER_LINE + 1);
-        assert!(composer_input_needs_stacked_layout(&long));
-    }
-
-    #[test]
-    fn inline_when_short_text() {
-        assert!(!composer_input_needs_stacked_layout("hello"));
-        assert!(!composer_input_needs_stacked_layout(""));
-    }
-
-    #[test]
-    fn stacked_on_explicit_newline() {
-        assert!(composer_input_needs_stacked_layout("line one\nline two"));
     }
 }

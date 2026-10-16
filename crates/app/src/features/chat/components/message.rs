@@ -34,7 +34,9 @@ pub fn user_message(
         .flex_col()
         .items_start()
         .gap(Tokens::spacing_1())
-        .pt(Tokens::spacing_1())
+        .p(Tokens::spacing_3())
+        .rounded(Tokens::radius_md())
+        .bg(Tokens::surface())
         .min_w(px(0.0))
         .group(hover_group.clone())
         .child(

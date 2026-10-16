@@ -39,7 +39,7 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
         .w_full()
         .flex()
         .items_center()
-        .bg(Tokens::panel_bg())
+        .bg(Tokens::main_bg())
         .border_b_1()
         .border_color(Tokens::border_subtle())
         .pl(px(Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET))
