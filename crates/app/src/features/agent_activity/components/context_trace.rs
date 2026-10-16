@@ -28,14 +28,7 @@ pub fn render_context_trace_header_row(
         },
         "Used context".to_string(),
         Some(context_trace_summary(entries)),
-        div()
-            .flex_shrink_0()
-            .text_size(Tokens::text_sm())
-            .line_height(Tokens::text_sm_leading_compact())
-            .text_color(Tokens::text_tertiary())
-            .opacity(0.78)
-            .child(if expanded { "⌄" } else { "›" })
-            .into_any_element(),
+        crate::shared::components::collapsible_row::disclosure_chevron(expanded).into_any_element(),
         on_toggle,
     )
 }

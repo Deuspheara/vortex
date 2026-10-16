@@ -11,6 +11,7 @@ pub fn render_diff_header_row(
     files_changed: usize,
     additions: usize,
     deletions: usize,
+    expanded: bool,
     group_pos: Option<ActivityGroupPos>,
     on_toggle: impl Fn(&mut App) + 'static,
     on_review: impl Fn(&mut App) + 'static,
@@ -47,17 +48,24 @@ pub fn render_diff_header_row(
                 )
                 .into_any_element(),
             div()
-                .id(element_key("review", item_id))
-                .flex_shrink_0()
-                .cursor_pointer()
-                .px(Tokens::spacing_1())
-                .py(Tokens::spacing_0p5())
-                .rounded(Tokens::radius_xs())
-                .text_size(Tokens::text_xs())
-                .text_color(Tokens::text_tertiary())
-                .hover(|s| s.text_color(Tokens::text_primary()))
-                .on_click(move |_, _, app: &mut App| on_review(app))
-                .child("Open diff")
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_1p5())
+                .child(
+                    div()
+                        .id(element_key("review", item_id))
+                        .flex_shrink_0()
+                        .cursor_pointer()
+                        .px(Tokens::spacing_1())
+                        .py(Tokens::spacing_0p5())
+                        .rounded(Tokens::radius_xs())
+                        .text_size(Tokens::text_xs())
+                        .text_color(Tokens::text_tertiary())
+                        .hover(|s| s.text_color(Tokens::text_primary()))
+                        .on_click(move |_, _, app: &mut App| on_review(app))
+                        .child("Open diff"),
+                )
+                .child(crate::shared::components::collapsible_row::disclosure_chevron(expanded))
                 .into_any_element(),
             move |_, _, app: &mut App| on_toggle(app),
         ),
@@ -74,7 +82,7 @@ pub fn render_diff_file_line_row(
     div()
         .id(element_key("diff-file-line", item_id))
         .w_full()
-        .pl(Tokens::spacing_1())
+        .pl(Tokens::spacing_7())
         .child(file_stat_line(path, additions, deletions))
 }
 
@@ -86,8 +94,8 @@ fn file_stat_line(path: &str, additions: usize, deletions: usize) -> impl IntoEl
         .gap(Tokens::spacing_2())
         .child(
             div()
-                .text_size(Tokens::text_code())
-                .font_family(Tokens::code_font_family())
+                .text_size(Tokens::text_sm())
+                .font_family(Tokens::ui_font_family())
                 .text_color(Tokens::text_faint())
                 .child(path),
         )

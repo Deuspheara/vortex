@@ -51,6 +51,43 @@ impl AgentWindow {
         }
     }
 
+    pub fn toggle_diff_file(&mut self, path: String, cx: &mut Context<Self>) {
+        if !self.diff_panel.presentation.collapsed.remove(&path) {
+            self.diff_panel.presentation.collapsed.insert(path);
+        }
+        cx.notify();
+    }
+    pub fn toggle_diff_collapse_all(&mut self, cx: &mut Context<Self>) {
+        if self
+            .diff_panel
+            .files
+            .iter()
+            .all(|file| self.diff_panel.presentation.collapsed.contains(&file.path))
+        {
+            self.diff_panel.presentation.collapsed.clear();
+        } else {
+            self.diff_panel.presentation.collapsed = self
+                .diff_panel
+                .files
+                .iter()
+                .map(|file| file.path.clone())
+                .collect();
+        }
+        cx.notify();
+    }
+    pub fn set_diff_split(&mut self, split: bool, cx: &mut Context<Self>) {
+        self.diff_panel.presentation.split = split;
+        cx.notify();
+    }
+    pub fn toggle_diff_wrap(&mut self, cx: &mut Context<Self>) {
+        self.diff_panel.presentation.wrap = !self.diff_panel.presentation.wrap;
+        cx.notify();
+    }
+    pub fn toggle_diff_tree(&mut self, cx: &mut Context<Self>) {
+        self.diff_panel.presentation.show_tree = !self.diff_panel.presentation.show_tree;
+        cx.notify();
+    }
+
     pub(crate) fn apply_diff_panel_now(&mut self, unified_diff: &str, cx: &mut Context<Self>) {
         self.diff_preview_pending = None;
         self.diff_preview_parse_scheduled = false;

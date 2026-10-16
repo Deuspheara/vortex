@@ -148,7 +148,7 @@ pub fn activity_truncated_row_with_trailing(
 }
 
 /// One fixed icon column for every transcript activity row.
-pub fn activity_icon(name: &str) -> gpui_component::Icon {
+pub fn activity_icon(name: &str) -> impl IntoElement {
     use crate::tokens::icons;
     use gpui_component::Icon;
     let icon = match name {
@@ -160,6 +160,14 @@ pub fn activity_icon(name: &str) -> gpui_component::Icon {
         "web_search" | "web_fetch" | "codex_web_search" => Icon::new(icons::GLOBE),
         _ => Icon::new(icons::FILE_TEXT),
     };
-    icon.size(Tokens::spacing_4())
-        .text_color(Tokens::text_tertiary())
+    div()
+        .size(Tokens::spacing_6())
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            icon.size(Tokens::spacing_4())
+                .text_color(Tokens::text_tertiary()),
+        )
 }

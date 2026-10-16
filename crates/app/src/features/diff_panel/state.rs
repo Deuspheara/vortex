@@ -70,3 +70,22 @@ impl SessionRunState {
         matches!(self, Self::BlockedError)
     }
 }
+
+/// Review-only preferences. They never change patch contents or approval policy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffPresentation {
+    pub split: bool,
+    pub wrap: bool,
+    pub show_tree: bool,
+    pub collapsed: std::collections::HashSet<String>,
+}
+impl Default for DiffPresentation {
+    fn default() -> Self {
+        Self {
+            split: false,
+            wrap: true,
+            show_tree: false,
+            collapsed: Default::default(),
+        }
+    }
+}

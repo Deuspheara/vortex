@@ -76,6 +76,9 @@ fn top_gap(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) -> f32 {
         return 0.0;
     }
 
+    if matches!(item, ThreadItem::UserMessage { .. }) {
+        return layout::turn_gap();
+    }
     if item.is_agent_activity() {
         if let Some(prev) = prev_row {
             if prev.item_ix() == Some(item_ix as u32) {
@@ -90,13 +93,10 @@ fn top_gap(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) -> f32 {
         }
         return layout::activity_band_gap();
     }
-
-    if let Some(prev) = prev_row {
-        if prev_row_item_is_activity(prev, items) {
-            return layout::turn_gap();
-        }
+    if prev_row.is_some_and(|prev| prev_row_item_is_activity(prev, items)) {
+        return f32::from(Tokens::spacing_3());
     }
-    layout::turn_gap()
+    f32::from(Tokens::spacing_4())
 }
 
 fn prev_row_item_is_activity(prev: RowRef, items: &[ThreadItem]) -> bool {
@@ -124,7 +124,7 @@ pub enum RowRef {
     ReasoningBody { item_ix: u32 },
     ToolHeader { item_ix: u32 },
     ToolDetailLine { item_ix: u32, line_ix: u16 },
-    ToolOutputLine { item_ix: u32, line_ix: u16 },
+    ToolOutputBody { item_ix: u32 },
     ToolOutputTruncated { item_ix: u32 },
     DiffHeader { item_ix: u32 },
     DiffFileLine { item_ix: u32, file_ix: u16 },
@@ -150,7 +150,7 @@ impl RowRef {
             | RowRef::ReasoningBody { item_ix }
             | RowRef::ToolHeader { item_ix }
             | RowRef::ToolDetailLine { item_ix, .. }
-            | RowRef::ToolOutputLine { item_ix, .. }
+            | RowRef::ToolOutputBody { item_ix }
             | RowRef::ToolOutputTruncated { item_ix }
             | RowRef::DiffHeader { item_ix }
             | RowRef::DiffFileLine { item_ix, .. }
@@ -289,9 +289,18 @@ pub fn row_height_with_collapsed(
                 + gap
         }
         RowRef::ToolDetailLine { .. } => Tokens::ROW_HEIGHT_SM,
-        RowRef::ReasoningPreviewLine { item_ix, line_ix }
-        | RowRef::ToolOutputLine { item_ix, line_ix } => {
+        RowRef::ReasoningPreviewLine { item_ix, line_ix } => {
             line_height_for(items, item_ix, line_ix as usize)
+        }
+        RowRef::ToolOutputBody { item_ix } => {
+            let count = match items.get(item_ix as usize) {
+                Some(ThreadItem::ToolCall {
+                    output: Some(output),
+                    ..
+                }) => build_tool_output_preview(output).0.len(),
+                _ => 1,
+            };
+            tool_output_body_height(count)
         }
         RowRef::ToolOutputTruncated { .. } => TRUNCATED_H,
         RowRef::DiffFileLine { .. } => DIFF_FILE_H,
@@ -341,6 +350,14 @@ pub fn row_height(row: RowRef, prev_row: Option<RowRef>, items: &[ThreadItem]) -
     row_height_with_collapsed(row, prev_row, items, &HashSet::new())
 }
 
+pub fn tool_output_body_height(lines: usize) -> f32 {
+    (lines.max(1) as f32 * Tokens::DIFF_LINE_HEIGHT
+        + Tokens::TOOL_OUTPUT_HEADER_HEIGHT
+        + f32::from(Tokens::spacing_3()) * 2.0
+        + 2.0)
+        .min(Tokens::TOOL_OUTPUT_MAX_HEIGHT)
+}
+
 fn line_height_for(items: &[ThreadItem], item_ix: u32, line_ix: usize) -> f32 {
     let Some(item) = items.get(item_ix as usize) else {
         return LINE_H;
@@ -359,11 +376,6 @@ fn line_height_for(items: &[ThreadItem], item_ix: u32, line_ix: usize) -> f32 {
     }
 
     match item {
-        ThreadItem::ToolCall {
-            output: Some(_),
-            expanded: true,
-            ..
-        } if line_ix < TOOL_OUTPUT_PREVIEW_LINES => LINE_H,
         ThreadItem::ReasoningStep { expanded: true, .. }
             if line_ix < REASONING_OUTPUT_PREVIEW_LINES =>
         {
@@ -822,11 +834,8 @@ fn tool_output_rows(
     match output {
         Some(out) => {
             let (preview_lines, _, truncated, _) = build_tool_output_preview(out);
-            for line_ix in 0..preview_lines.len() {
-                rows.push(RowRef::ToolOutputLine {
-                    item_ix,
-                    line_ix: line_ix as u16,
-                });
+            if !preview_lines.is_empty() {
+                rows.push(RowRef::ToolOutputBody { item_ix });
             }
             if truncated {
                 rows.push(RowRef::ToolOutputTruncated { item_ix });
@@ -1159,6 +1168,19 @@ document.querySelector("#year").textContent = year;
         );
         assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
         assert!(refs.contains(&RowRef::ToolOutputTruncated { item_ix: 0 }));
+        assert!(refs.contains(&RowRef::ToolOutputBody { item_ix: 0 }));
+        assert_eq!(
+            refs.len(),
+            3,
+            "large output stays one bounded virtual-history row"
+        );
+        assert!(
+            row_height(
+                RowRef::ToolOutputBody { item_ix: 0 },
+                None,
+                std::slice::from_ref(&item)
+            ) <= Tokens::TOOL_OUTPUT_MAX_HEIGHT
+        );
         assert_eq!(
             row_height(RowRef::ToolOutputTruncated { item_ix: 0 }, None, &[item]),
             TRUNCATED_H
@@ -1186,9 +1208,6 @@ document.querySelector("#year").textContent = year;
         );
 
         assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
-        assert!(refs.contains(&RowRef::ToolOutputLine {
-            item_ix: 0,
-            line_ix: 0
-        }));
+        assert!(refs.contains(&RowRef::ToolOutputBody { item_ix: 0 }));
     }
 }

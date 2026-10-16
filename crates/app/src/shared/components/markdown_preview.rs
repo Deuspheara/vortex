@@ -639,7 +639,7 @@ fn prev_char_boundary(text: &str, mut index: usize) -> usize {
     index
 }
 
-fn sanitize_highlights(
+pub(crate) fn sanitize_highlights(
     text: &str,
     highlights: Vec<(std::ops::Range<usize>, HighlightStyle)>,
 ) -> Vec<(std::ops::Range<usize>, HighlightStyle)> {
@@ -964,7 +964,7 @@ fn render_ordered_list_marker(index: usize, checked: Option<bool>) -> gpui::AnyE
         .into_any_element()
 }
 
-fn split_highlights_by_line(
+pub(crate) fn split_highlights_by_line(
     body: &str,
     highlights: &[(std::ops::Range<usize>, HighlightStyle)],
 ) -> Vec<Vec<(std::ops::Range<usize>, HighlightStyle)>> {

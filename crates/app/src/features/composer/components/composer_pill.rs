@@ -343,7 +343,7 @@ fn render_codex_model_pickers(
             "composer-codex-model",
             choices.model,
             choices.models,
-            Some(icons::BOT),
+            Some(icons::BOT.into()),
             entity.clone(),
             true,
         ))
@@ -352,7 +352,7 @@ fn render_codex_model_pickers(
                 "composer-codex-effort",
                 effort,
                 choices.efforts,
-                None,
+                Some(icons::brain()),
                 entity,
                 false,
             ))
@@ -363,24 +363,46 @@ fn render_catalog_picker(
     id: &'static str,
     selected: String,
     values: Vec<(String, String)>,
-    icon: Option<gpui_component::IconName>,
+    icon: Option<gpui_component::Icon>,
     entity: Entity<AgentWindow>,
     searchable: bool,
 ) -> impl IntoElement {
+    let reasoning = id == "composer-codex-effort";
+    let display_label = |value: &str| {
+        if reasoning {
+            match value {
+                "low" => "Low",
+                "medium" => "Medium",
+                "high" => "High",
+                "xhigh" => "Extra high",
+                "max" => "Max",
+                "ultra" => "Ultra",
+                other => other,
+            }
+            .to_string()
+        } else {
+            value.to_string()
+        }
+    };
+    let selected_label = display_label(&selected);
     picker_dropdown(PickerDropdownProps {
         id: id.into(),
-        label: selected.clone(),
+        label: selected_label.clone(),
         items: values
             .iter()
             .map(|(label, _)| DropdownItem {
-                label: label.clone(),
+                label: display_label(label),
                 icon: None,
             })
             .collect(),
-        selected: Some(selected),
+        selected: Some(selected_label),
         anchor: DropdownAnchor::Above,
-        menu_min_width: Tokens::COMPOSER_MODEL_MAX_WIDTH,
-        trigger_icon: icon.map(Into::into),
+        menu_min_width: if reasoning {
+            Tokens::PICKER_REASONING_WIDTH
+        } else {
+            Tokens::COMPOSER_MODEL_MAX_WIDTH
+        },
+        trigger_icon: icon,
         searchable,
         search_texts: None,
         search_placeholder: Some("Search models…".into()),

@@ -105,6 +105,8 @@ pub fn render_docked_inspector(props: DockedInspectorProps) -> impl IntoElement 
         ))
         .child(
             div()
+                .flex()
+                .flex_col()
                 .flex_1()
                 .min_h(px(0.0))
                 .w_full()

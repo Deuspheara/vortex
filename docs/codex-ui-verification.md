@@ -174,12 +174,56 @@ The controlled scenarios are part of the normal QA peer (`--fixture`), not live
 provider inferences; they execute no commands and edit no files. Screenshots and
 QA stores remain outside the repository.
 
+## Component spacing and diff-review follow-up
+
+Compared the installed reference application work log, reasoning picker, and stacked/split diff
+panel at matching native sizes. Shared activity rows now reserve a 24 px icon
+column and a 16 px trailing disclosure slot with 12 px chevrons. Expanded content
+uses the same 28 px inset. Consecutive work rows have no extra inter-row gap;
+turn boundaries and prose transitions have separate spacing roles.
+
+Command output is one bounded, independently scrolling inset pane with a copy
+header, rather than dozens of virtual-history rows. The full output remains
+available for copying and existing preview limits remain enforced. Composer
+picker rows, search, selected backgrounds, and check marks fill their menu width;
+reasoning labels use readable casing without changing backend routing values.
+
+The changes panel now stacks all files with collapsible path/count headers,
+syntax colors, old/new gutters, replacement pairing in split mode, wrapping,
+fixed-gutter horizontal navigation, and an optional file navigator. It measures
+the actual viewport: a requested 560 px inspector can shrink to about 404 px in
+a 1100 px window without clipping a column or wrapping against the wrong width.
+Stable diff content is virtualized; the main transcript retains its existing
+virtual history and streaming hot-tail architecture.
+
+Native checks used 1305×964 and 1100×800 windows:
+
+- Real Codex created two disposable Rust/JSON files after Allow once. Both stayed
+  absent before approval; the completed review showed the exact eight added lines.
+  Reopening retained the reply and Applied review, using the valid local login.
+- Expanded the real `printf` command to read `alpha` and `beta` in its output pane.
+  Its chevron, code preview, and following response shared the revised alignment.
+- Selected reasoning effort at the far right of a full-width menu row. Model
+  search displayed and recovered from No matches; permission choices fit the
+  narrow composer and menus dismissed correctly.
+- Controlled `ui-thinking` displayed a single reasoning delta immediately,
+  expanded at the shared inset, wrapped within a 400 px chat pane, and stopped.
+- Controlled `ui-diff` exercised replacement, added/deleted files, a long code
+  line, and 40 additional configuration lines. Checked stacked/split modes,
+  wrapping, horizontal endpoint access, file navigation, collapse-all, and
+  individual deleted-file disclosure. This peer emits protocol observations;
+  it does not write those fixture files to disk.
+
+The horizontal track is inset from the native window resize edge so its hit area
+remains usable. Screenshots and QA runtime data remain outside the repository.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.
 - `cargo clippy --workspace --all-targets` — passed with repository warnings.
 - `cargo check -p app` — passed with repository warnings.
-- `cargo test --workspace` — 237 passed, 2 opt-in live tests ignored.
+- `cargo build -p app` — passed; the normal build was exercised natively.
+- `cargo test --workspace` — 239 passed, 2 opt-in live tests ignored.
 - `cargo test -p app --features demo_mode fixture_is_isolated_idempotent_and_replayable`
   — passed.
 - `VORTEX_TEST_CODEX_MODEL=gpt-6-astra cargo test -p agent_codex --test backend -- --ignored --nocapture --test-threads=1`

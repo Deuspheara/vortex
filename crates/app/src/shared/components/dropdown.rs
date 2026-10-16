@@ -189,9 +189,9 @@ impl PickerMenuView {
 
     fn list_height(&self) -> f32 {
         let chrome = if self.searchable {
-            PICKER_SEARCH_HEIGHT + 4.0
+            PICKER_SEARCH_HEIGHT + 8.0
         } else {
-            4.0
+            8.0
         };
         let visible_rows = self.matched_indices.len().max(1) as f32;
         let fit_height = visible_rows * Tokens::ROW_HEIGHT_MD;
@@ -212,6 +212,9 @@ impl Render for PickerMenuView {
         let row_height = px(Tokens::ROW_HEIGHT_MD);
 
         div()
+            .w_full()
+            .min_w(px(0.0))
+            .p(Tokens::spacing_1())
             .flex()
             .flex_col()
             .when(self.searchable, |menu| {
@@ -279,6 +282,7 @@ impl Render for PickerMenuView {
                                 .collect()
                         },
                     )
+                    .w_full()
                     .h(list_height)
                     .track_scroll(scroll_handle),
                 )
@@ -346,6 +350,8 @@ pub fn picker_dropdown(props: PickerDropdownProps) -> impl IntoElement {
                 );
             });
 
+            let menu_width = menu_width
+                .min(f32::from(window.viewport_size().width) - f32::from(Tokens::spacing_6()));
             fade_in(
                 div()
                     .w(px(menu_width))
@@ -373,6 +379,8 @@ fn dropdown_item(
     let label = label.to_string();
     div()
         .id(id)
+        .w_full()
+        .min_w(px(0.0))
         .h(px(Tokens::ROW_HEIGHT_MD))
         .px(Tokens::spacing_2())
         .rounded(Tokens::radius_sm())
@@ -408,8 +416,10 @@ fn dropdown_item(
                     div()
                         .text_size(Tokens::text_sm())
                         .font_weight(FontWeight::NORMAL)
+                        .min_w(px(0.0))
+                        .flex_1()
                         .overflow_hidden()
-                        .text_ellipsis()
+                        .whitespace_nowrap()
                         .child(label),
                 ),
         )

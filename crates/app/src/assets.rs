@@ -11,6 +11,7 @@ impl AssetSource for AppAssets {
             "vortex/new-thread.svg" => Some(include_bytes!("../assets/icons/new-thread.svg")),
             "vortex/brain.svg" => Some(include_bytes!("../assets/icons/brain.svg")),
             "vortex/file-edit.svg" => Some(include_bytes!("../assets/icons/file-edit.svg")),
+            "vortex/wrap-lines.svg" => Some(include_bytes!("../assets/icons/wrap-lines.svg")),
             _ => None,
         };
         match bytes {
@@ -21,6 +22,7 @@ impl AssetSource for AppAssets {
     fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
         let mut entries = gpui_component_assets::Assets.list(path)?;
         if path == "vortex" {
+            entries.push("vortex/wrap-lines.svg".into());
             entries.push("vortex/brain.svg".into());
             entries.push("vortex/file-edit.svg".into());
 

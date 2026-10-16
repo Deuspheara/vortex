@@ -400,7 +400,7 @@ impl ThreadView {
                 )
                 .into_any_element()
             }
-            RowRef::ToolOutputLine { line_ix, .. } => {
+            RowRef::ToolOutputBody { .. } => {
                 let (id, out) = {
                     let Some(ThreadItem::ToolCall {
                         id,
@@ -414,13 +414,8 @@ impl ThreadView {
                     (id.clone(), out.clone())
                 };
                 let preview = self.cached_tool_output_preview(&id, &out);
-                let text = preview
-                    .lines
-                    .get(line_ix as usize)
-                    .cloned()
-                    .unwrap_or_else(|| Arc::from(""));
                 activity_group_wrap(
-                    render_tool_output_line_row(&format!("tool-{item_ix}-line-{line_ix}"), &text),
+                    render_tool_output_body(&id, preview.lines.clone(), preview.full.clone()),
                     group_pos,
                 )
                 .into_any_element()
@@ -450,6 +445,7 @@ impl ThreadView {
                     files_changed,
                     additions,
                     deletions,
+                    expanded,
                     ..
                 }) = item
                 else {
@@ -463,6 +459,7 @@ impl ThreadView {
                     *files_changed,
                     *additions,
                     *deletions,
+                    *expanded,
                     group_pos,
                     move |app: &mut gpui::App| {
                         agent_toggle.update(app, |view, cx| {
@@ -1119,7 +1116,7 @@ pub(crate) fn stable_row_id(row_ref: RowRef, item: Option<&ThreadItem>) -> Strin
         RowRef::ReasoningBody { .. } => format!("reasoning-body-{item_id}"),
         RowRef::ToolHeader { .. } => format!("tool-header-{item_id}"),
         RowRef::ToolDetailLine { line_ix, .. } => format!("tool-detail-{item_id}-{line_ix}"),
-        RowRef::ToolOutputLine { line_ix, .. } => format!("tool-line-{item_id}-{line_ix}"),
+        RowRef::ToolOutputBody { .. } => format!("tool-output-{item_id}"),
         RowRef::ToolOutputTruncated { .. } => format!("tool-truncated-{item_id}"),
         RowRef::DiffHeader { .. } => format!("diff-header-{item_id}"),
         RowRef::DiffFileLine { file_ix, .. } => format!("diff-file-{item_id}-{file_ix}"),

@@ -2,20 +2,18 @@
 
 use std::rc::Rc;
 
-use gpui::{Entity, FontWeight, Hsla, IntoElement, div, prelude::*, px, uniform_list};
-use gpui_component::Icon;
+use gpui::{Entity, FontWeight, IntoElement, div, prelude::*, px};
+use gpui_component::Selectable;
 use gpui_component::button::{Button, ButtonVariants};
 
 use crate::features::agent_activity::components::approval::diff_approval_bar;
 use crate::features::shell::state::{
-    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, PlanExecutionState,
-    ReviewPanelTab,
+    DiffFile, DiffHunk, DiffPanelState, DiffRow, PlanArtifact, PlanExecutionState, ReviewPanelTab,
 };
 use crate::features::todos::components::todo_list;
 use crate::shared::components::buttons::{btn_approve, btn_ghost_label};
-use crate::shared::components::tab_bar::{TabBarProps, TabItem, tab_bar};
+use crate::tokens::Tokens;
 use crate::tokens::icons;
-use crate::tokens::{Tokens, element_key};
 use crate::ui::agent_window::AgentWindow;
 
 /// Demo diff content for the active thread.
@@ -148,8 +146,7 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, width: f32) -> impl I
 
     let files = props.state.files;
     let active_tab = props.state.active_tab;
-    let selected = props.state.selected_file.min(files.len().saturating_sub(1));
-    let selected_file = files.get(selected).cloned();
+    let presentation = props.state.presentation.clone();
     let (total_add, total_del) = count_totals(&files);
     let approval = props.state.pending_approval.clone();
     let applied = props.state.applied;
@@ -192,28 +189,34 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, width: f32) -> impl I
             applied,
             show_apply,
             props.show_close_button,
+            &presentation,
         ));
 
     if active_tab == ReviewPanelTab::Changes {
-        let is_single = files.len() == 1;
-        if files.len() > 1 {
-            panel = panel.child(render_file_tabs(&files, selected, props.entity.clone()));
-        }
+        let entity = props.entity.clone();
+        let empty = files.is_empty();
+        let review = super::review::DiffReview(super::review::ReviewConfig {
+            selected_file: props.state.selected_file,
+            files: Rc::new(files),
+            presentation: presentation.clone(),
+            width,
+            on_toggle: Rc::new(move |path, app| {
+                entity.update(app, |view, cx| view.toggle_diff_file(path, cx))
+            }),
+        });
         panel = panel.child(
             div()
                 .id("diff-panel-body")
+                .flex()
+                .flex_col()
                 .flex_1()
                 .min_h(px(0.0))
+                .min_w(px(0.0))
                 .overflow_hidden()
-                .child(if let Some(file) = selected_file {
-                    if is_single {
-                        render_file_diff(file, DiffFileHeaderMode::SingleFileCompact)
-                            .into_any_element()
-                    } else {
-                        render_file_diff(file, DiffFileHeaderMode::MultiFileTab).into_any_element()
-                    }
-                } else {
+                .child(if empty {
                     render_empty_changes_state().into_any_element()
+                } else {
+                    review.into_any_element()
                 }),
         );
     } else if let Some(artifact) = plan_artifact {
@@ -421,7 +424,7 @@ fn render_empty_changes_state() -> impl IntoElement {
         .p(Tokens::spacing_6())
         .text_size(Tokens::text_sm())
         .text_color(Tokens::text_tertiary())
-        .child("Select a file to review changes")
+        .child("No changes yet")
 }
 
 fn render_empty_plan_state() -> impl IntoElement {
@@ -445,9 +448,13 @@ fn render_header(
     applied: bool,
     show_apply: bool,
     show_close_button: bool,
+    presentation: &super::state::DiffPresentation,
 ) -> impl IntoElement {
     let apply_entity = entity.clone();
     let changes_selected = active_tab == ReviewPanelTab::Changes;
+    let split = presentation.split;
+    let wrap = presentation.wrap;
+    let tree = presentation.show_tree;
 
     div()
         .h(px(Tokens::DIFF_HEADER_HEIGHT))
@@ -504,6 +511,67 @@ fn render_header(
                 .flex()
                 .items_center()
                 .gap(Tokens::spacing_1())
+                .when(changes_selected, |el| {
+                    let fold = entity.clone();
+                    let unified = entity.clone();
+                    let side = entity.clone();
+                    let wrapping = entity.clone();
+                    let files = entity.clone();
+                    el.child(
+                        Button::new("diff-collapse-all")
+                            .icon(gpui_component::IconName::ChevronsUpDown)
+                            .ghost()
+                            .compact()
+                            .tooltip("Collapse or expand all files")
+                            .on_click(move |_, _, app| {
+                                fold.update(app, |view, cx| view.toggle_diff_collapse_all(cx))
+                            }),
+                    )
+                    .child(
+                        Button::new("diff-stacked")
+                            .icon(icons::PANEL_BOTTOM)
+                            .ghost()
+                            .compact()
+                            .selected(!split)
+                            .tooltip("Stacked diff view")
+                            .on_click(move |_, _, app| {
+                                unified.update(app, |view, cx| view.set_diff_split(false, cx))
+                            }),
+                    )
+                    .child(
+                        Button::new("diff-split")
+                            .icon(icons::PANEL_RIGHT)
+                            .ghost()
+                            .compact()
+                            .selected(split)
+                            .tooltip("Split diff view")
+                            .on_click(move |_, _, app| {
+                                side.update(app, |view, cx| view.set_diff_split(true, cx))
+                            }),
+                    )
+                    .child(
+                        Button::new("diff-wrap")
+                            .icon(crate::tokens::icons::wrap_lines())
+                            .ghost()
+                            .compact()
+                            .selected(wrap)
+                            .tooltip("Toggle line wrapping")
+                            .on_click(move |_, _, app| {
+                                wrapping.update(app, |view, cx| view.toggle_diff_wrap(cx))
+                            }),
+                    )
+                    .child(
+                        Button::new("diff-tree")
+                            .icon(icons::PANEL_LEFT)
+                            .ghost()
+                            .compact()
+                            .selected(tree)
+                            .tooltip("Toggle file tree")
+                            .on_click(move |_, _, app| {
+                                files.update(app, |view, cx| view.toggle_diff_tree(cx))
+                            }),
+                    )
+                })
                 .when(show_apply && !applied && changes_selected, |el| {
                     el.child(
                         btn_approve("apply-patch", "Apply").on_click(move |_, _, cx| {
@@ -527,266 +595,6 @@ fn render_header(
         )
 }
 
-#[derive(Clone, Copy)]
-enum DiffFileHeaderMode {
-    SingleFileCompact,
-    MultiFileTab,
-}
-
-fn render_file_tabs(
-    files: &[DiffFile],
-    selected: usize,
-    entity: Entity<AgentWindow>,
-) -> impl IntoElement {
-    let entity = entity.clone();
-    let tabs: Vec<TabItem> = files
-        .iter()
-        .enumerate()
-        .map(|(index, file)| {
-            let file_name = file
-                .path
-                .rsplit('/')
-                .next()
-                .unwrap_or(&file.path)
-                .to_string();
-            TabItem {
-                id: index as u64,
-                label: file_name,
-                icon: Some(icons::FILE_CODE),
-            }
-        })
-        .collect();
-
-    div()
-        .flex()
-        .flex_nowrap()
-        .overflow_hidden()
-        .gap(Tokens::spacing_1())
-        .px(Tokens::spacing_2())
-        .border_b_1()
-        .border_color(Tokens::border_subtle())
-        .child(tab_bar(TabBarProps {
-            id: "diff-file",
-            tabs,
-            selected_id: selected as u64,
-            on_select: Some(Rc::new(move |index, app| {
-                entity.update(app, |view, cx| {
-                    view.select_diff_file(index as usize, cx);
-                });
-            })),
-            on_close: None,
-            on_add: None,
-            on_reorder: None,
-            drag_kind: None,
-        }))
-}
-
-fn render_file_diff(file: DiffFile, header_mode: DiffFileHeaderMode) -> impl IntoElement {
-    let path = Rc::new(file.path);
-    let rows = Rc::new(file.flat_rows);
-    let row_count = rows.len();
-    let list_rows = rows.clone();
-    let added = file.added;
-    let removed = file.removed;
-
-    div()
-        .flex()
-        .flex_col()
-        .flex_1()
-        .min_h(px(0.0))
-        .size_full()
-        .when(
-            matches!(header_mode, DiffFileHeaderMode::SingleFileCompact),
-            |el| el.child(render_single_file_header(path.as_ref(), added, removed)),
-        )
-        .child(
-            uniform_list(
-                element_key("diff-rows", path.as_str()),
-                row_count,
-                move |range, _window, _cx| {
-                    range
-                        .map(|i| render_diff_row(&list_rows[i], i).into_any_element())
-                        .collect()
-                },
-            )
-            .w_full()
-            .flex_1()
-            .min_h(px(0.0)),
-        )
-}
-
-fn render_single_file_header(path: &str, added: usize, removed: usize) -> impl IntoElement {
-    let display_path = if std::path::Path::new(path).is_absolute() {
-        std::path::Path::new(path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(path)
-    } else {
-        path
-    };
-    div()
-        .bg(Tokens::panel_bg())
-        .h(px(Tokens::DIFF_PATH_HEIGHT))
-        .flex_shrink_0()
-        .px(Tokens::spacing_3())
-        .flex()
-        .items_center()
-        .justify_between()
-        .border_b_1()
-        .border_color(Tokens::border_subtle())
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(Tokens::spacing_2())
-                .min_w(px(0.0))
-                .overflow_hidden()
-                .child(
-                    div()
-                        .text_size(Tokens::text_code())
-                        .font_family(Tokens::code_font_family())
-                        .text_color(Tokens::text_secondary())
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .child(display_path.to_string()),
-                )
-                .child(
-                    div()
-                        .text_size(Tokens::text_code())
-                        .text_color(Tokens::success())
-                        .flex_shrink_0()
-                        .child(format!("+{added}")),
-                )
-                .child(
-                    div()
-                        .text_size(Tokens::text_code())
-                        .text_color(Tokens::danger())
-                        .flex_shrink_0()
-                        .child(format!("−{removed}")),
-                ),
-        )
-        .child(
-            div().flex().items_center().gap(Tokens::spacing_2()).child(
-                btn_ghost_label("open-file", "Open")
-                    .compact()
-                    .h(px(Tokens::ROW_HEIGHT_XS)),
-            ),
-        )
-}
-
-fn render_diff_row(row: &DiffRow, index: usize) -> impl IntoElement {
-    match row {
-        DiffRow::Collapsed { count } => return render_collapsed_row(*count).into_any_element(),
-        DiffRow::HunkHeader { label } => return render_hunk_row(label).into_any_element(),
-        _ => {}
-    }
-
-    let kind = row.kind();
-    let (bg, indicator, default_fg) = row_style(&kind);
-    let (line_num, content) = match row {
-        DiffRow::Context { new_line, text, .. } => (format!("{new_line}"), text.as_str()),
-        DiffRow::Added { new_line, text } => (format!("{new_line}"), text.as_str()),
-        DiffRow::Removed { old_line, text } => (format!("{old_line}"), text.as_str()),
-        _ => (String::new(), ""),
-    };
-
-    div()
-        .id(element_key("diff-row", &index.to_string()))
-        .w_full()
-        .h(px(Tokens::DIFF_LINE_HEIGHT))
-        .bg(bg)
-        .flex()
-        .items_center()
-        .font_family(Tokens::code_font_family())
-        .overflow_x_scroll()
-        .child(
-            div()
-                .w(px(2.0))
-                .h_full()
-                .flex_shrink_0()
-                .when(indicator.is_some(), |el| el.bg(indicator.unwrap())),
-        )
-        .child(
-            div()
-                .w(px(Tokens::DIFF_GUTTER_WIDTH))
-                .h_full()
-                .flex()
-                .items_center()
-                .justify_end()
-                .pr(Tokens::spacing_2())
-                .flex_shrink_0()
-                .text_size(Tokens::text_code())
-                .text_color(Tokens::diff_line_number())
-                .child(line_num),
-        )
-        .child(
-            div()
-                .flex_1()
-                .h_full()
-                .flex()
-                .items_center()
-                .pl(Tokens::spacing_1())
-                .pr(Tokens::spacing_4())
-                .text_size(Tokens::text_code())
-                .whitespace_nowrap()
-                .text_color(default_fg)
-                .child(content.to_string()),
-        )
-        .into_any_element()
-}
-
-fn render_collapsed_row(count: usize) -> impl IntoElement {
-    div()
-        .w_full()
-        .h(px(Tokens::DIFF_LINE_HEIGHT))
-        .flex()
-        .items_center()
-        .gap(Tokens::spacing_2())
-        .px(Tokens::spacing_3())
-        .text_size(Tokens::text_code())
-        .text_color(Tokens::text_tertiary())
-        .child(
-            Icon::new(icons::CHEVRON_RIGHT)
-                .size(px(10.0))
-                .text_color(Tokens::text_faint()),
-        )
-        .child(format!("{count} unchanged lines"))
-}
-
-fn render_hunk_row(label: &str) -> impl IntoElement {
-    div()
-        .w_full()
-        .h(px(Tokens::DIFF_LINE_HEIGHT))
-        .border_t_1()
-        .border_color(Tokens::border_subtle())
-        .flex()
-        .items_center()
-        .px(Tokens::spacing_3())
-        .font_family(Tokens::code_font_family())
-        .text_size(Tokens::text_xs())
-        .text_color(Tokens::text_faint())
-        .child(label.to_string())
-}
-
-fn row_style(kind: &DiffRowKind) -> (Hsla, Option<Hsla>, Hsla) {
-    let code_fg = Tokens::diff_code_normal();
-    match kind {
-        DiffRowKind::Add => (
-            Tokens::diff_add_bg(),
-            Some(Tokens::diff_add_indicator()),
-            code_fg,
-        ),
-        DiffRowKind::Remove => (
-            Tokens::diff_del_bg(),
-            Some(Tokens::diff_del_indicator()),
-            code_fg,
-        ),
-        DiffRowKind::Context => (Tokens::diff_bg(), None, code_fg),
-        _ => (Tokens::diff_bg(), None, code_fg),
-    }
-}
-
-/// Parse a unified diff string into diff panel files.
 pub fn parse_unified_diff(unified_diff: &str) -> Vec<DiffFile> {
     let mut files = Vec::new();
     let mut current_path: Option<String> = None;

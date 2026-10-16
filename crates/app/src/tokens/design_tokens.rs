@@ -692,7 +692,14 @@ impl Tokens {
     pub const THREAD_HEADING_2: f32 = 18.0;
     pub const THREAD_HEADING_3: f32 = 16.0;
     pub const DIFF_GUTTER_WIDTH: f32 = 38.0;
-    pub const DIFF_SIGN_WIDTH: f32 = 18.0;
+    pub const DIFF_SIGN_WIDTH: f32 = 12.0;
+    pub const DIFF_NUMBER_WIDTH: f32 = 24.0;
+    pub const DIFF_REVIEW_GUTTER: f32 = 60.0;
+    pub const DIFF_TREE_WIDTH: f32 = 160.0;
+    pub const DIFF_REVIEW_MIN_WIDTH: f32 = 160.0;
+    pub const PICKER_REASONING_WIDTH: f32 = 180.0;
+    pub const TOOL_OUTPUT_HEADER_HEIGHT: f32 = 28.0;
+    pub const TOOL_OUTPUT_MAX_HEIGHT: f32 = 256.0;
 
     pub const TREE_INDENT: f32 = 12.0;
 

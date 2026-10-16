@@ -40,9 +40,8 @@ pub fn render_reasoning_header_row(
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
     use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
-    use crate::tokens::{Tokens, element_key, icons};
+    use crate::tokens::{Tokens, element_key};
     use gpui::{div, prelude::*, px};
-    use gpui_component::Icon;
     let running = is_running(status);
     let label = if running { "Thinking" } else { "Thought" };
     let preview = reasoning_preview(summary).map(|s| s.replace("**", ""));
@@ -54,7 +53,7 @@ pub fn render_reasoning_header_row(
                 .min_w(px(0.0))
                 .flex()
                 .items_center()
-                .gap(Tokens::spacing_2())
+                .gap(Tokens::spacing_1p5())
                 .child(super::activity_icon("reasoning"))
                 .child(
                     div()
@@ -76,14 +75,8 @@ pub fn render_reasoning_header_row(
                     )
                 })
                 .into_any_element(),
-            Icon::new(if expanded {
-                icons::CHEVRON_DOWN
-            } else {
-                icons::CHEVRON_RIGHT
-            })
-            .size(Tokens::spacing_3())
-            .text_color(Tokens::text_tertiary())
-            .into_any_element(),
+            crate::shared::components::collapsible_row::disclosure_chevron(expanded)
+                .into_any_element(),
             move |_, _, app| on_toggle(app),
         ),
         group_pos,

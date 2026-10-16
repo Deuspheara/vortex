@@ -3,11 +3,8 @@
 use std::sync::Arc;
 
 use gpui::{App, FontWeight, IntoElement, MouseButton, div, prelude::*, px};
-use gpui_component::Icon;
 
-use crate::features::agent_activity::components::{
-    activity_output_line_row, activity_truncated_row_with_trailing,
-};
+use crate::features::agent_activity::components::activity_truncated_row_with_trailing;
 use crate::shared::components::buttons::btn_copy_icon_arc;
 use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
 
@@ -242,6 +239,25 @@ pub fn tool_call_receipt_text(
 
 fn file_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
     let raw = command.unwrap_or_else(|| label_remainder(display_label).unwrap_or("file"));
+    if raw.contains(", ") {
+        let paths: Vec<_> = raw
+            .split(", ")
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .collect();
+        return ToolCallSummary::new(verb, format!("{} files", paths.len()), None, false)
+            .with_detail_rows(
+                paths
+                    .into_iter()
+                    .map(|path| ToolCallDetailRow::File {
+                        verb: verb.into(),
+                        path: path.into(),
+                        line_range: None,
+                        metadata: None,
+                    })
+                    .collect(),
+            );
+    }
     let (path, line_range, range_label) = split_line_range(raw);
     let primary = file_name(path).unwrap_or(path).to_string();
     let mut secondary = Vec::new();
@@ -541,7 +557,13 @@ pub fn render_tool_header_row(
                     on_open_file,
                 )
                 .into_any_element(),
-                change_counts_badge(item_id, change_counts).into_any_element(),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(Tokens::spacing_1p5())
+                    .child(change_counts_badge(item_id, change_counts))
+                    .child(crate::shared::components::collapsible_row::disclosure_chevron(expanded))
+                    .into_any_element(),
                 move |_, _, app: &mut App| on_toggle(app),
             )),
         group_pos,
@@ -551,7 +573,7 @@ pub fn render_tool_header_row(
 fn render_tool_summary(
     item_id: &str,
     summary: ToolCallSummary,
-    expanded: bool,
+    _expanded: bool,
     _running: bool,
     _animate: bool,
     tool_name: &str,
@@ -566,7 +588,7 @@ fn render_tool_summary(
         .h(px(Tokens::TOOL_ROW_HEIGHT))
         .flex()
         .items_center()
-        .gap(Tokens::spacing_2())
+        .gap(Tokens::spacing_1p5())
         .child(super::activity_icon(tool_name))
         .child(
             div()
@@ -605,24 +627,6 @@ fn render_tool_summary(
                 )
             },
         )
-        .when(summary.expandable, |el| {
-            el.child(
-                div()
-                    .flex_shrink_0()
-                    .text_size(Tokens::text_sm())
-                    .line_height(Tokens::text_sm_leading_compact())
-                    .text_color(Tokens::text_tertiary())
-                    .opacity(0.78)
-                    .child(
-                        Icon::new(if expanded {
-                            crate::tokens::icons::CHEVRON_DOWN
-                        } else {
-                            crate::tokens::icons::CHEVRON_RIGHT
-                        })
-                        .size(Tokens::spacing_3()),
-                    ),
-            )
-        })
 }
 
 fn render_tool_primary(
@@ -869,8 +873,74 @@ fn change_counts_badge(item_id: &str, change_counts: Option<(usize, usize)>) -> 
         .into_any_element()
 }
 
-pub fn render_tool_output_line_row(item_id: &str, text: &str) -> impl IntoElement {
-    activity_output_line_row(item_id, text, true)
+pub fn render_tool_output_body(
+    item_id: &str,
+    lines: Arc<[Arc<str>]>,
+    full: Arc<str>,
+) -> impl IntoElement {
+    let height = crate::features::chat::manifest::tool_output_body_height(lines.len());
+    div()
+        .id(element_key("tool-output", item_id))
+        .w_full()
+        .h(px(height))
+        .pl(Tokens::spacing_7())
+        .child(
+            div()
+                .w_full()
+                .h_full()
+                .min_w(px(0.0))
+                .bg(Tokens::code_bg())
+                .rounded(Tokens::radius_md())
+                .border_1()
+                .border_color(Tokens::border_subtle())
+                .flex()
+                .flex_col()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .h(px(Tokens::TOOL_OUTPUT_HEADER_HEIGHT))
+                        .flex_shrink_0()
+                        .px(Tokens::spacing_3())
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .text_size(Tokens::text_label())
+                        .text_color(Tokens::text_tertiary())
+                        .child("Output")
+                        .child(btn_copy_icon_arc(
+                            element_key("copy-tool-output", item_id),
+                            full,
+                            "Copy output",
+                        )),
+                )
+                .child(
+                    div()
+                        .id(element_key("tool-output-scroll", item_id))
+                        .w_full()
+                        .flex_1()
+                        .min_h(px(0.0))
+                        .overflow_scroll()
+                        .p(Tokens::spacing_3())
+                        .flex()
+                        .flex_col()
+                        .items_start()
+                        .children(lines.iter().map(|line| {
+                            div()
+                                .h(px(Tokens::DIFF_LINE_HEIGHT))
+                                .flex_shrink_0()
+                                .whitespace_nowrap()
+                                .font_family(Tokens::code_font_family())
+                                .text_size(Tokens::text_code())
+                                .line_height(px(Tokens::DIFF_LINE_HEIGHT))
+                                .text_color(Tokens::text_secondary())
+                                .child(if line.is_empty() {
+                                    " ".to_string()
+                                } else {
+                                    line.to_string()
+                                })
+                        })),
+                ),
+        )
 }
 
 pub fn render_tool_output_truncated_row(

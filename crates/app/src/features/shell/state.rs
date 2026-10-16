@@ -859,6 +859,7 @@ pub enum ReviewPanelTab {
 
 #[derive(Clone, Debug)]
 pub struct DiffPanelState {
+    pub presentation: crate::features::diff_panel::state::DiffPresentation,
     pub open: bool,
     /// User closed the panel; suppress auto-open on streaming preview updates.
     pub suppress_auto_open: bool,
@@ -887,6 +888,7 @@ pub struct PendingThreadApproval {
 impl Default for DiffPanelState {
     fn default() -> Self {
         Self {
+            presentation: Default::default(),
             open: false,
             suppress_auto_open: false,
             active_tab: ReviewPanelTab::Changes,

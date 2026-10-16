@@ -18,8 +18,10 @@ pub fn timeline_row(
         .w_full()
         .flex()
         .items_center()
-        .px(Tokens::spacing_1())
-        .gap(Tokens::spacing_2())
+        .px(Tokens::spacing_0p5())
+        .gap(Tokens::spacing_1p5())
+        .rounded(Tokens::radius_xs())
+        .hover(|s| s.bg(Tokens::surface_hover().opacity(0.35)))
         .cursor_pointer()
         .text_color(Tokens::text_secondary())
         .on_click(on_click)
@@ -51,12 +53,31 @@ pub fn timeline_body(
 ) -> impl IntoElement {
     div()
         .w_full()
-        .ml(Tokens::spacing_7())
-        .pl(Tokens::spacing_3())
+        .pl(Tokens::spacing_7())
+        .pr(Tokens::spacing_0p5())
         .pt(Tokens::spacing_1())
         .pb(Tokens::spacing_2())
-        .border_l_1()
-        .border_color(Tokens::activity_detail_border())
         .font_family(Tokens::ui_font_family())
         .child(content)
+}
+
+/// Every transcript disclosure reserves the same trailing slot.
+pub fn disclosure_chevron(expanded: bool) -> impl IntoElement {
+    use crate::tokens::icons;
+    use gpui_component::Icon;
+    div()
+        .size(Tokens::spacing_4())
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            Icon::new(if expanded {
+                icons::CHEVRON_DOWN
+            } else {
+                icons::CHEVRON_RIGHT
+            })
+            .size(Tokens::spacing_3())
+            .text_color(Tokens::text_tertiary()),
+        )
 }

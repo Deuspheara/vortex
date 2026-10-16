@@ -10,12 +10,12 @@ fn px(v: gpui::Pixels) -> f32 {
 
 /// Space before a new conversational turn — compact but readable.
 pub fn turn_gap() -> f32 {
-    px(Tokens::spacing_6())
+    px(Tokens::spacing_8())
 }
 
 /// Space before the first row in an agent activity band.
 pub fn activity_band_gap() -> f32 {
-    px(Tokens::spacing_4())
+    px(Tokens::spacing_6())
 }
 
 /// Consecutive activity headers form one uninterrupted 24 px rhythm.

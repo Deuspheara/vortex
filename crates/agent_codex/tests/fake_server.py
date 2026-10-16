@@ -64,6 +64,10 @@ for line in sys.stdin:
     cmd.update(status='completed',exitCode=0,aggregatedOutput='alpha\nbeta\n')
     notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':cmd})
     finish('The command output stays in the activity log.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n}\n```\n\nTHREAD-STYLE-END')
+  elif text=='ui-diff':
+   # Observed protocol fixture only: no workspace file is changed.
+   notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'ui-file-changes','type':'fileChange','status':'completed','changes':[{'path': 'src/main.rs', 'diff': '@@ -1,3 +1,4 @@\n fn main() {\n-    let message = "old";\n+    let message = "Review layout";\n+    println!("{message}");\n }\n'}, {'path': 'src/config.ts', 'kind': {'type': 'add'}, 'diff': 'export const configuration = {\n  theme: "frappe",\n  description: "A long line for checking readable wrapping and horizontal scrolling in a narrow review panel, without losing content or misaligning the corresponding old and new code lines.",\n  enabled: true,\n' + ''.join(f'  option_{i}: true,\n' for i in range(40)) + '};\n'}, {'path': 'src/legacy.rs', 'kind': {'type': 'delete'}, 'diff': 'pub fn legacy() {}\n// Replaced by the new entry point.\n'}]}})
+   finish('Updated the entry point and configuration, and removed the old helper.\n\nReview the three files in Changes. The code view preserves the old and new line numbers, syntax colors, and long lines.')
   elif text=='wait':pass
   elif text=='unknown-request':
    send({'id':'unknown-1','method':'item/permissions/requestApproval','params':{'threadId':'thread-1','turnId':active['id']}})
