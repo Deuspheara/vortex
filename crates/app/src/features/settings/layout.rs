@@ -447,14 +447,22 @@ fn render_agent_mode_section(
         ),
         (
             AgentMode::AutoSafe,
-            "Auto safe",
-            "Auto-run low-risk tools; approval for the rest",
+            if codex { "AI review" } else { "Auto safe" },
+            if codex {
+                "Codex reviews eligible approvals automatically; sandbox stays restricted. Uses extra model calls."
+            } else {
+                "Auto-run low-risk tools; approval for the rest"
+            },
         ),
     ];
     let modes = modes
         .into_iter()
         .filter(|(mode, _, _)| {
-            !codex || matches!(mode, AgentMode::ApplyWithApproval | AgentMode::PlanOnly)
+            !codex
+                || matches!(
+                    mode,
+                    AgentMode::ApplyWithApproval | AgentMode::PlanOnly | AgentMode::AutoSafe
+                )
         })
         .collect::<Vec<_>>();
     let mode_count = modes.len();

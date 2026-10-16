@@ -73,11 +73,13 @@ impl AgentWindow {
         if self.selected_provider == "Codex"
             && !matches!(
                 mode,
-                agent_protocol::AgentMode::PlanOnly | agent_protocol::AgentMode::ApplyWithApproval
+                agent_protocol::AgentMode::PlanOnly
+                    | agent_protocol::AgentMode::ApplyWithApproval
+                    | agent_protocol::AgentMode::AutoSafe
             )
         {
             self.composer_error =
-                Some("Codex supports Plan and Apply with approval in Vortex.".into());
+                Some("Codex supports Plan, Approval required, and AI review in Vortex.".into());
             cx.notify();
             return;
         }

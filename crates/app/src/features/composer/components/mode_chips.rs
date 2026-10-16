@@ -19,11 +19,17 @@ pub fn mode_chips(props: ModeChipsProps) -> impl IntoElement {
         (AgentMode::ChatOnly, "Ask · no tools"),
         (AgentMode::SuggestPatch, "Suggest edits"),
         (AgentMode::ApplyWithApproval, "Approval required"),
+        (AgentMode::AutoSafe, "AI review"),
         (AgentMode::FullAccessDangerous, "Full access"),
     ]
     .into_iter()
     .filter(|(mode, _)| {
-        !props.codex || matches!(mode, AgentMode::PlanOnly | AgentMode::ApplyWithApproval)
+        (props.codex || *mode != AgentMode::AutoSafe)
+            && (!props.codex
+                || matches!(
+                    mode,
+                    AgentMode::PlanOnly | AgentMode::ApplyWithApproval | AgentMode::AutoSafe
+                ))
     })
     .collect::<Vec<_>>();
     let selected = modes

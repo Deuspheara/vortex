@@ -19,6 +19,7 @@ use crate::ui::agent_window::AgentWindow;
 pub struct ReducerState {
     pub stream_runs: std::collections::HashMap<RunId, RunStreamState>,
     pub tool_items: std::collections::HashMap<String, String>,
+    pub approval_calls: std::collections::HashMap<String, String>,
     /// Maps a stable tool-owned dedupe key → thread item id.
     pub tool_dedupe_keys: std::collections::HashMap<String, String>,
     pub run_conversations: std::collections::HashMap<RunId, ConversationId>,
@@ -40,6 +41,14 @@ pub struct RunStreamState {
 }
 
 impl ReducerState {
+    fn tool_finishes_pending_approval(&self, pending: Option<&str>, call_id: &str) -> bool {
+        pending.is_some_and(|id| {
+            self.approval_calls
+                .get(id)
+                .is_some_and(|call| call == call_id)
+        })
+    }
+
     fn stream_state_mut(
         &mut self,
         run_id: &RunId,
@@ -888,12 +897,17 @@ impl AgentWindow {
                         |item| {
                             if let ThreadItem::ToolCall {
                                 status: s,
+                                tool_name,
+                                command,
                                 output,
                                 expanded,
                                 ..
                             } = item
                             {
                                 *s = agent_status.clone();
+                                if tool_name == "codex_approval_review" {
+                                    *command = Some(summary_text.clone());
+                                }
                                 if let Some(full) = body {
                                     *output = Some(full);
                                 } else if output.is_none() && !summary.is_empty() {
@@ -905,7 +919,10 @@ impl AgentWindow {
                         cx,
                     );
                 }
-                if self.pending_approval_id.is_some() {
+                if self
+                    .reducer_state
+                    .tool_finishes_pending_approval(self.pending_approval_id.as_deref(), &call_id.0)
+                {
                     self.clear_pending_approval_ui(&conv_id, cx);
                 }
                 if let Some(item_id) = self.reducer_state.tool_items.get(&call_id.0) {
@@ -1366,6 +1383,7 @@ impl AgentWindow {
                     },
                     cx,
                 );
+                self.reducer_state.approval_calls.remove(&approval_id.0);
                 if self.pending_approval_id.as_deref() == Some(&approval_id.0) {
                     self.clear_pending_approval_ui(&cid, cx);
                 }
@@ -1398,6 +1416,9 @@ impl AgentWindow {
                 let Some(conv_id) = conv_id else {
                     return;
                 };
+                self.reducer_state
+                    .approval_calls
+                    .insert(approval_id.0.clone(), call_id.0.clone());
                 self.pending_approval_id = Some(approval_id.0.clone());
                 self.sync_thread_approval_state(cx);
                 self.mark_plan_execution_waiting_approval(&conv_id);
@@ -1791,6 +1812,20 @@ fn uuid_simple() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unrelated_review_completion_does_not_dismiss_manual_approval() {
+        let mut state = ReducerState::default();
+        state
+            .approval_calls
+            .insert("manual-approval".into(), "command".into());
+        assert!(
+            !state
+                .tool_finishes_pending_approval(Some("manual-approval"), "approval-review/review")
+        );
+        assert!(state.tool_finishes_pending_approval(Some("manual-approval"), "command"));
+        assert!(!state.tool_finishes_pending_approval(None, "command"));
+    }
 
     #[test]
     fn stream_state_is_scoped_per_run() {

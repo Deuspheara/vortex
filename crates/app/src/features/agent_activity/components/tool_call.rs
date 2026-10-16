@@ -138,6 +138,19 @@ fn tool_call_summary(
             command,
             Some("virtual shell"),
         ),
+        "codex_approval_review" => ToolCallSummary::new(
+            "AI review",
+            trim_to_chars(
+                &command
+                    .unwrap_or("Review unavailable")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                140,
+            ),
+            None,
+            false,
+        ),
         "run_real_command" | "codex_command" => command_summary(
             if running {
                 "Running"
@@ -317,7 +330,7 @@ fn search_summary(verb: &str, command: Option<&str>, display_label: &str) -> Too
 
 fn command_summary(verb: &str, command: Option<&str>, context: Option<&str>) -> ToolCallSummary {
     let command_preview = command
-        .map(|cmd| trim_to_chars(cmd, 140))
+        .map(|cmd| trim_to_chars(&cmd.split_whitespace().collect::<Vec<_>>().join(" "), 140))
         .unwrap_or_else(|| "command".to_string());
     ToolCallSummary::new(
         verb,
@@ -1209,6 +1222,18 @@ mod tests {
             tool_call_detail_row_count("bash_virtual", Some("cargo test"), &completed()),
             1
         );
+    }
+
+    #[test]
+    fn multiline_command_preview_cannot_overflow_a_fixed_height_row() {
+        let summary = tool_call_summary(
+            "bash_virtual",
+            "Ran command",
+            Some("python3 - <<'PY'\nprint('hello')\nPY"),
+            &completed(),
+        );
+        assert!(!summary.primary.contains('\n'));
+        assert_eq!(summary.primary, "python3 - <<'PY' print('hello') PY");
     }
 
     #[test]

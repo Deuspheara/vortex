@@ -373,3 +373,54 @@ Vortex's native universal patch-before-write or crash rollback guarantees.
 
 Native screenshots and runtime stores were kept outside the repository; no
 credentials, logs, local SQLite data, or generated binaries are committed.
+
+## Long approvals and opt-in AI review — 2026-10-16
+
+Normal debug application, not demo mode, tested with Codex CLI 0.163.0.
+Controlled protocol scenarios used an isolated store/workspace; the real-account
+check used a second fresh disposable workspace and the existing local login.
+No credentials or generated screenshots/databases/logs are committed.
+
+- At 1100×800 and 900×600, a 123-line Python heredoc remained fully scrollable
+  through `# COMMAND-END` and its closing delimiter. Allow once and Deny stayed
+  visible and were exercised; the composer draft is retained behind a compact
+  review/Stop run footer. The fixture never executes the displayed command.
+- The Changes-panel preview uses the same bounded request widget and full-text
+  copy action. At 900×600 both approval footers remained reachable. Narrow review
+  layouts temporarily hide the sidebar and cap the adjacent panel width; closing
+  Changes restores the sidebar. Reject from Changes and Stop run both worked.
+- Content clicks previously could begin Cocoa's transparent-titlebar dragging
+  behavior. Preventing that default below the titlebar restored reliable native
+  control/input clicks; titlebar dragging remains available.
+- The Codex permission picker exposes AI review alongside Plan and Approval
+  required. Settings explains the restricted sandbox and extra model usage.
+  Native backend behavior is unchanged; Codex's default remains Approval required.
+- Controlled native runs exercised Reviewing, Approved, Denied, Timed out, and
+  cancellation. Expanded review activity disclosed risk, authorization, and
+  rationale. Stopping an unfinished review showed “no approval decision was
+  confirmed.” These outcomes survived quitting/reopening without a new turn.
+- A real native conversation using `gpt-6.1-sol`, Low effort, and AI review asked
+  for one harmless local write. The installed Codex reviewer approved the exact
+  command and reported low risk/high authorization with a rationale. Vortex
+  displayed the review separately from command execution. Independent file
+  inspection confirmed the disposable workspace contained only
+  `vortex-native-review.txt` with the exact bytes `after\n`. No manual approval
+  response was sent. A separate opt-in backend test also exercised a real review.
+- Review event normalization deduplicates completions, persists its cursor,
+  handles completed-only notifications, and fails unknown statuses visibly.
+  Unrelated review/tool completions cannot dismiss a pending manual approval.
+
+Verification: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets`,
+`cargo check -p app`, `cargo build -p app`, `cargo test --workspace` (253 passed,
+3 opt-in account tests ignored), and
+`cargo test -p app --features demo_mode fixture_is_isolated_idempotent_and_replayable`
+all passed. Existing workspace warnings remain. The opt-in
+`live_codex_automatic_review_keeps_restricted_execution` test was additionally
+run and passed against the installed account.
+
+Limits: AI review depends on the installed Codex version/account and uses extra
+model calls. It is a risk assessment, not a safety guarantee. Denial, timeout,
+and interrupted review were exercised with deterministic protocol fixtures;
+only successful approval was induced against the real account. Unsupported
+interactions still fail closed. Codex-owned changes retain the limitations
+explained in [Codex backend](codex-backend.md).

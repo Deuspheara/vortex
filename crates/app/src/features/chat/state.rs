@@ -386,6 +386,7 @@ fn is_focus_tool_receipt(tool_name: &str, status: &AgentStatus) -> bool {
                 | "copy_path"
                 | "create_directory"
                 | "delete_path"
+                | "codex_approval_review"
                 | "codex_command"
                 | "codex_file_change"
         ),

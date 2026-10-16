@@ -1,9 +1,71 @@
 //! Approval UI — diff panel bar and thread hint row.
 
 use crate::features::shell::state::ApprovalRisk;
+use crate::shared::components::buttons::btn_copy_icon_arc;
 use crate::shared::components::buttons::{btn_approve, btn_deny};
+use crate::tokens::element_key;
 use crate::tokens::{Tokens, activity_action_line_with_loading};
-use gpui::{App, FontWeight, IntoElement, div, prelude::*, px};
+use gpui::{App, FontWeight, IntoElement, RenderOnce, Window, div, prelude::*, px};
+
+/// Full command text is bounded independently from the always-visible decision row.
+#[derive(IntoElement)]
+pub struct ApprovalCommandPreview {
+    pub id: &'static str,
+    pub command: String,
+}
+
+impl RenderOnce for ApprovalCommandPreview {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        let max_height = Tokens::approval_command_height(f32::from(window.viewport_size().height));
+        let copy = std::sync::Arc::<str>::from(self.command.as_str());
+        div()
+            .w_full()
+            .min_w(px(0.0))
+            .flex_shrink_0()
+            .rounded(Tokens::radius_sm())
+            .border_1()
+            .border_color(Tokens::border_subtle())
+            .bg(Tokens::code_bg())
+            .overflow_hidden()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .w_full()
+                    .h(px(Tokens::ROW_HEIGHT_XS))
+                    .px(Tokens::spacing_2())
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_size(Tokens::text_xs())
+                    .text_color(Tokens::text_secondary())
+                    .child("Command / request")
+                    .child(
+                        btn_copy_icon_arc(
+                            element_key("copy-approval-command", self.id),
+                            copy,
+                            "Copy full request",
+                        )
+                        .size(Tokens::spacing_6()),
+                    ),
+            )
+            .child(
+                div()
+                    .id(element_key("approval-command-scroll", self.id))
+                    .w_full()
+                    .min_w(px(0.0))
+                    .max_h(px(max_height))
+                    .overflow_y_scroll()
+                    .px(Tokens::spacing_2())
+                    .pb(Tokens::spacing_2())
+                    .font_family(Tokens::code_font_family())
+                    .text_size(Tokens::text_code())
+                    .line_height(Tokens::text_sm_leading())
+                    .text_color(Tokens::text_primary())
+                    .child(self.command),
+            )
+    }
+}
 
 /// Sticky elevated approval card — primary blocking action surface near composer.
 pub struct ApprovalCardProps {
@@ -47,13 +109,10 @@ pub fn approval_card(props: ApprovalCardProps) -> impl IntoElement {
                         .flex()
                         .flex_col()
                         .gap(Tokens::spacing_0p5())
-                        .child(
-                            div()
-                                .text_size(Tokens::text_sm())
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(Tokens::text_primary())
-                                .child(title),
-                        )
+                        .child(ApprovalCommandPreview {
+                            id: "composer",
+                            command: title,
+                        })
                         .child(
                             div()
                                 .text_size(Tokens::text_xs())
@@ -120,8 +179,6 @@ pub fn thread_approval_row(
 }
 
 /// Bottom bar inside the diff panel — title, risk, Reject / Approve.
-
-/// Bottom bar inside the diff panel — title, risk, Reject / Approve.
 pub fn diff_approval_bar(
     title: &str,
     risk: &ApprovalRisk,
@@ -162,15 +219,10 @@ pub fn diff_approval_bar(
                         .flex()
                         .flex_col()
                         .gap(Tokens::spacing_0p5())
-                        .child(
-                            div()
-                                .w_full()
-                                .whitespace_normal()
-                                .text_size(Tokens::text_sm())
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(Tokens::text_primary())
-                                .child(title),
-                        )
+                        .child(ApprovalCommandPreview {
+                            id: "diff",
+                            command: title,
+                        })
                         .child(
                             div()
                                 .text_size(Tokens::text_xs())

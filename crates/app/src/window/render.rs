@@ -41,6 +41,7 @@ struct ViewState {
     entity: Entity<AgentWindow>,
     screen: AppScreen,
     sidebar_collapsed: bool,
+    inspector_max_width: f32,
     dark_mode: bool,
     active_theme: String,
     theme_list: Vec<SharedString>,
@@ -98,7 +99,28 @@ impl Render for AgentWindow {
         let _profile = crate::shared::render_profile::span("AgentWindow::render");
         self.prepare_render(window, cx);
         let cbs = self.build_cbs(cx);
-        let vs = self.build_view_state(cx);
+        let mut vs = self.build_view_state(cx);
+        let width = f32::from(window.viewport_size().width);
+        if vs.conversation_workspace.inspector.open {
+            // Keep both decision surfaces inside the window; restore the user's
+            // sidebar preference automatically when the review panel closes.
+            vs.sidebar_collapsed |= width
+                < Tokens::SIDEBAR_MAX_WIDTH
+                    + Tokens::CENTER_MIN_WIDTH
+                    + Tokens::DIFF_PANEL_MIN_WIDTH;
+            let sidebar_width = if vs.sidebar_collapsed {
+                0.0
+            } else {
+                Tokens::SIDEBAR_MAX_WIDTH
+            };
+            vs.inspector_max_width = (width - sidebar_width - Tokens::CENTER_MIN_WIDTH)
+                .clamp(Tokens::DIFF_PANEL_MIN_WIDTH, Tokens::DIFF_PANEL_MAX_WIDTH);
+            vs.conversation_workspace.inspector.right_dock_width = vs
+                .conversation_workspace
+                .inspector
+                .right_dock_width
+                .min(vs.inspector_max_width);
+        }
         root(self, vs, cbs)
     }
 }
@@ -128,6 +150,7 @@ impl AgentWindow {
             entity: cx.entity().clone(),
             screen: self.screen,
             sidebar_collapsed: self.sidebar_collapsed,
+            inspector_max_width: Tokens::DIFF_PANEL_MAX_WIDTH,
             dark_mode,
             active_theme,
             theme_list,
@@ -282,6 +305,12 @@ fn root(agent: &AgentWindow, vs: ViewState, cbs: Cbs) -> impl IntoElement {
 
     div()
         .id("agent-window")
+        // Content clicks must not begin a native transparent-titlebar window drag.
+        .on_mouse_down(gpui::MouseButton::Left, |event, window, _| {
+            if event.position.y >= px(Tokens::TOP_BAR_HEIGHT) {
+                window.prevent_default();
+            }
+        })
         .size_full()
         .flex()
         .flex_col()
@@ -545,7 +574,7 @@ fn center_panel(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoElem
                         vs.screen == AppScreen::Chat && vs.conversation_workspace.inspector.open,
                     )
                     .size(px(vs.conversation_workspace.inspector.right_dock_width))
-                    .size_range(px(Tokens::DIFF_PANEL_MIN_WIDTH)..px(Tokens::DIFF_PANEL_MAX_WIDTH))
+                    .size_range(px(Tokens::DIFF_PANEL_MIN_WIDTH)..px(vs.inspector_max_width))
                     .child(inspector_content(agent, vs, cbs)),
             ),
         )

@@ -153,6 +153,7 @@ pub fn activity_icon(name: &str) -> impl IntoElement {
     use gpui_component::Icon;
     let icon = match name {
         "reasoning" => icons::brain(),
+        "codex_approval_review" => icons::shield(),
         "codex_file_change" | "write_file" | "apply_patch" | "edit_file" => icons::file_edit(),
         "run_real_command" | "codex_command" | "bash_virtual" => icons::command(),
         "search_project" | "find_symbol" => Icon::new(icons::SEARCH),

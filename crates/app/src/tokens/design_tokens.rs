@@ -716,6 +716,9 @@ impl Tokens {
     pub const PICKER_REASONING_WIDTH: f32 = 180.0;
     pub const TOOL_OUTPUT_HEADER_HEIGHT: f32 = 28.0;
     pub const TOOL_OUTPUT_MAX_HEIGHT: f32 = 256.0;
+    pub fn approval_command_height(viewport_height: f32) -> f32 {
+        (viewport_height * 0.25).clamp(64.0, 200.0)
+    }
 
     pub const TREE_INDENT: f32 = 12.0;
 
