@@ -415,7 +415,11 @@ impl AgentWindow {
             expanded_items: ExpandedItems::new(),
             drawer: DrawerState::default(),
             diff_panel: DiffPanelState::default(),
-            transcript_mode: TranscriptMode::default(),
+            transcript_mode: if cfg!(all(feature = "demo_mode", debug_assertions)) {
+                TranscriptMode::Activity
+            } else {
+                TranscriptMode::default()
+            },
             inspector_mode: InspectorMode::default(),
             inspector_tabs: InspectorTabs::default(),
             inspector_view: InspectorView::default(),

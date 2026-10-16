@@ -1048,19 +1048,19 @@ fn render_transcript_mode_section(
         on_select.map(|f| std::rc::Rc::from(f));
     let modes = [
         (
-            TranscriptMode::Summary,
-            "Summary",
-            "Minimal journal: user turns, final summaries, errors, approvals",
+            TranscriptMode::Focus,
+            "Focus",
+            "Default work log: goal, plan, current action, important receipts, blockers, final answer",
         ),
         (
-            TranscriptMode::Normal,
-            "Normal",
-            "Default work journal: compact tool rows with expandable thinking summaries",
+            TranscriptMode::Activity,
+            "Activity",
+            "Semantic activity log: tool receipts, context summary, diff and plan surfaces",
         ),
         (
-            TranscriptMode::Verbose,
-            "Verbose",
-            "Debug-friendly: raw tool I/O and full reasoning steps",
+            TranscriptMode::Debug,
+            "Debug",
+            "Full debug stream: raw tool output, detailed reasoning, expanded execution traces",
         ),
     ];
     let mode_count = modes.len();

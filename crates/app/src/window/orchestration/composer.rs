@@ -8,10 +8,15 @@ use super::super::AgentWindow;
 use crate::agent::paths::git_branch_info;
 use crate::features::agent_activity::components::approval::ApprovalCardProps;
 use crate::features::agent_activity::components::pending_action_bar::{
-    PatchActionProps, PendingActionBarProps,
+    CurrentActionProps, PatchActionProps, PendingActionBarProps, PlanReviewActionProps,
 };
+use crate::features::agent_activity::components::tool_call::tool_call_receipt_text;
 use crate::features::composer::state::{PendingImageAttachment, PendingImageSource};
-use crate::features::shell::state::{ChipKind, Project, ProjectId};
+use crate::features::shell::state::{
+    AgentStatus, ChipKind, InspectorMode, PlanExecutionState, PlanProgressCounts, Project,
+    ProjectId, ReviewPanelTab, ThreadItem,
+};
+use crate::shared::state::TranscriptMode;
 
 const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
 
@@ -20,8 +25,10 @@ impl AgentWindow {
         let patch = self.diff_panel.pending_patch_id.is_some()
             && !self.diff_panel.applied
             && !self.safety_mode.auto_applies_patches();
+        let current_action = self.composer_current_action_content().is_some();
         let approval = false;
-        (patch as u8) + (approval as u8)
+        let plan_review = self.composer_has_plan_review_action();
+        (patch as u8) + (current_action as u8) + (approval as u8) + (plan_review as u8)
     }
 
     pub(crate) fn pending_composer_actions(
@@ -55,6 +62,7 @@ impl AgentWindow {
             }
         });
 
+        let current_action = self.current_composer_action(entity.clone());
         let approval = None;
 
         let patch = if self.diff_panel.pending_patch_id.is_some()
@@ -70,11 +78,9 @@ impl AgentWindow {
                     (a + file.added, d + file.removed)
                 });
             let open_entity = entity.clone();
-            let cancel_entity = entity;
+            let cancel_entity = entity.clone();
             Some(PatchActionProps {
-                summary: format!(
-                    "Pending changes · {files_changed} files · +{additions} −{deletions}"
-                ),
+                summary: format!("{files_changed} files changed · +{additions} −{deletions}"),
                 on_open: Box::new(move |app| {
                     open_entity.update(app, |view, cx| {
                         view.open_diff_panel(cx);
@@ -90,7 +96,158 @@ impl AgentWindow {
             None
         };
 
-        (PendingActionBarProps { approval, patch }, sticky_approval)
+        let plan_review =
+            if sticky_approval.is_none() && current_action.is_none() && patch.is_none() {
+                self.composer_plan_review_action(entity.clone())
+            } else {
+                None
+            };
+
+        (
+            PendingActionBarProps {
+                current_action,
+                approval,
+                patch,
+                plan_review,
+            },
+            sticky_approval,
+        )
+    }
+
+    fn composer_has_plan_review_action(&self) -> bool {
+        if self.pending_thread_approval.is_some() || self.selected_conversation_has_active_work() {
+            return false;
+        }
+        if self.diff_panel.pending_patch_id.is_some() && !self.diff_panel.applied {
+            return false;
+        }
+        let Some(conv_id) = self.selected_conversation_id.as_ref() else {
+            return false;
+        };
+        let Some(plan) = self
+            .conversations
+            .iter()
+            .find(|conv| &conv.id == conv_id)
+            .and_then(|conv| conv.plan_artifact.as_ref())
+        else {
+            return false;
+        };
+        !plan.execution_state.is_active()
+    }
+
+    fn composer_plan_review_action(&self, entity: Entity<Self>) -> Option<PlanReviewActionProps> {
+        if !self.composer_has_plan_review_action() {
+            return None;
+        }
+
+        let conv_id = self.selected_conversation_id.as_ref()?;
+        let conv = self.conversations.iter().find(|conv| &conv.id == conv_id)?;
+        let plan = conv.plan_artifact.as_ref()?;
+        let summary = conv
+            .thread_items
+            .iter()
+            .rev()
+            .find_map(|item| match item {
+                ThreadItem::PlanStatus { summary, .. } => Some(summary.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| "Reviewed plan ready".to_string());
+
+        let review_entity = entity.clone();
+        let implement_entity = entity;
+
+        Some(PlanReviewActionProps {
+            title: "Review plan".to_string(),
+            detail: composer_plan_review_detail(plan.execution_state, &summary),
+            primary_label: composer_plan_primary_label(plan.execution_state).to_string(),
+            on_review: Box::new(move |app| {
+                review_entity.update(app, |view, cx| {
+                    view.set_review_tab(ReviewPanelTab::Plan, cx);
+                    view.set_inspector_mode(InspectorMode::Review, cx);
+                });
+            }),
+            on_implement: Box::new(move |app| {
+                implement_entity.update(app, |view, cx| {
+                    view.set_review_tab(ReviewPanelTab::Plan, cx);
+                    view.set_inspector_mode(InspectorMode::Review, cx);
+                    view.show_plan_implementation_choice(cx);
+                });
+            }),
+        })
+    }
+
+    fn current_composer_action(&self, entity: Entity<Self>) -> Option<CurrentActionProps> {
+        let (label, detail) = self.composer_current_action_content()?;
+        let view_activity = entity.clone();
+        let stop_run = entity;
+        Some(CurrentActionProps {
+            label,
+            detail,
+            on_view_activity: Box::new(move |app| {
+                view_activity.update(app, |view, cx| {
+                    view.set_transcript_mode(TranscriptMode::Activity, cx);
+                });
+            }),
+            on_stop: Box::new(move |app| {
+                stop_run.update(app, |view, cx| {
+                    view.cancel_active_run(cx);
+                });
+            }),
+        })
+    }
+
+    fn composer_current_action_content(&self) -> Option<(String, Option<String>)> {
+        if self.pending_thread_approval.is_some() {
+            return None;
+        }
+        if self.diff_panel.pending_patch_id.is_some() && !self.diff_panel.applied {
+            return None;
+        }
+
+        let conv_id = self.selected_conversation_id.as_ref()?;
+        if !self.running_conversations.contains(conv_id) && self.active_run_id.is_none() {
+            return None;
+        }
+
+        let conv = self.conversations.iter().find(|c| &c.id == conv_id)?;
+        conv.thread_items.iter().rev().find_map(|item| match item {
+            ThreadItem::ToolCall {
+                tool_name,
+                command,
+                status: AgentStatus::RunningTool,
+                ..
+            } => {
+                let display_label = self.tool_row_label(tool_name, command.as_deref(), true);
+                let (label, detail) = tool_call_receipt_text(
+                    tool_name,
+                    &display_label,
+                    command.as_deref(),
+                    &AgentStatus::RunningTool,
+                );
+                Some((label, detail))
+            }
+            ThreadItem::ReasoningStep {
+                title,
+                summary,
+                status: AgentStatus::Thinking,
+                ..
+            } => Some(reasoning_current_action(title, summary)),
+            ThreadItem::SubagentRun {
+                task,
+                status: AgentStatus::RunningTool,
+                ..
+            } => Some(("Subagent working".into(), Some(task.clone()))),
+            ThreadItem::AssistantMessage {
+                streaming: true, ..
+            } => Some(("Writing reply".into(), None)),
+            ThreadItem::PlanStatus {
+                state,
+                summary,
+                counts,
+                ..
+            } if state.is_active() => Some(plan_current_action(*state, summary, *counts)),
+            _ => None,
+        })
     }
 
     pub fn composer_scope(&self) -> (String, String, Option<ProjectId>) {
@@ -332,6 +489,83 @@ impl AgentWindow {
         self.sync_branch_chips_for_project(&project_id, &branch);
 
         cx.notify();
+    }
+}
+
+fn reasoning_current_action(title: &str, summary: &str) -> (String, Option<String>) {
+    let detail = summary
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(trim_action_detail);
+    match detail {
+        Some(detail) => ("Current step".into(), Some(detail)),
+        None if matches!(title, "Thinking" | "thinking" | "Current step") => {
+            ("Planning".into(), None)
+        }
+        None => (title.to_string(), None),
+    }
+}
+
+fn composer_plan_primary_label(state: PlanExecutionState) -> &'static str {
+    match state {
+        PlanExecutionState::Completed => "Implement again",
+        PlanExecutionState::Failed | PlanExecutionState::Cancelled | PlanExecutionState::Stale => {
+            "Retry plan"
+        }
+        _ => "Implement plan",
+    }
+}
+
+fn composer_plan_review_detail(state: PlanExecutionState, summary: &str) -> String {
+    let prefix = match state {
+        PlanExecutionState::Completed => "Last run completed",
+        PlanExecutionState::Failed => "Last run failed",
+        PlanExecutionState::Cancelled => "Last run cancelled",
+        PlanExecutionState::Stale => "Plan updated",
+        _ => "Reviewed plan ready",
+    };
+    let summary = trim_action_detail(summary.trim());
+    if summary.is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{prefix} · {summary}")
+    }
+}
+
+fn plan_current_action(
+    state: PlanExecutionState,
+    summary: &str,
+    counts: PlanProgressCounts,
+) -> (String, Option<String>) {
+    let label = match state {
+        PlanExecutionState::Starting => "Plan starting".to_string(),
+        PlanExecutionState::Implementing => {
+            let total = counts.total();
+            if total > 0 {
+                format!("Plan · {}/{} complete", counts.completed, total)
+            } else {
+                "Plan in progress".to_string()
+            }
+        }
+        PlanExecutionState::WaitingApproval => "Plan blocked".to_string(),
+        PlanExecutionState::Completed => "Plan completed".to_string(),
+        PlanExecutionState::Failed => "Plan failed".to_string(),
+        PlanExecutionState::Cancelled => "Plan cancelled".to_string(),
+        PlanExecutionState::Stale => "Plan needs review".to_string(),
+        PlanExecutionState::NotStarted => "Plan ready".to_string(),
+    };
+    let detail = (!summary.trim().is_empty()).then(|| trim_action_detail(summary.trim()));
+    (label, detail)
+}
+
+fn trim_action_detail(value: &str) -> String {
+    let mut chars = value.chars();
+    let trimmed = chars.by_ref().take(96).collect::<String>();
+    if chars.next().is_some() {
+        format!("{trimmed}…")
+    } else {
+        trimmed
     }
 }
 

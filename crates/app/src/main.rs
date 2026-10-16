@@ -40,6 +40,9 @@ fn main() {
         let bridge_for_window = bridge.clone();
 
         // Compute bounds before spawn (cx is &App here)
+        #[cfg(all(feature = "demo_mode", debug_assertions))]
+        let bounds = Bounds::centered(None, size(px(1440.), px(1000.)), cx);
+        #[cfg(not(all(feature = "demo_mode", debug_assertions)))]
         let bounds = Bounds::centered(None, size(px(1400.), px(900.)), cx);
 
         cx.spawn(async move |cx| {

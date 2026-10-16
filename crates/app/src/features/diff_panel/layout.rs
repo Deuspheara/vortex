@@ -8,7 +8,8 @@ use gpui_component::button::{Button, ButtonVariants};
 
 use crate::features::agent_activity::components::approval::diff_approval_bar;
 use crate::features::shell::state::{
-    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, ReviewPanelTab,
+    DiffFile, DiffHunk, DiffPanelState, DiffRow, DiffRowKind, PlanArtifact, PlanExecutionState,
+    ReviewPanelTab,
 };
 use crate::features::todos::components::todo_list;
 use crate::shared::components::buttons::{btn_approve, btn_ghost_label};
@@ -136,7 +137,7 @@ pub fn render_diff_panel(props: DiffPanelProps) -> impl IntoElement {
     render_diff_panel_with_width(props, Tokens::DIFF_PANEL_WIDTH)
 }
 
-pub fn render_diff_panel_with_width(props: DiffPanelProps, _width: f32) -> impl IntoElement {
+pub fn render_diff_panel_with_width(props: DiffPanelProps, width: f32) -> impl IntoElement {
     if !props.state.open {
         return div()
             .id("diff-panel-closed")
@@ -215,13 +216,6 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, _width: f32) -> impl 
                 .overflow_hidden()
                 .flex()
                 .flex_col()
-                .child(render_plan_action_strip(
-                    props.entity.clone(),
-                    &action_artifact,
-                    props.can_implement_plan,
-                    props.show_implement_choice,
-                    props.recommend_fresh_context,
-                ))
                 .child(
                     div()
                         .id("review-plan-body")
@@ -230,7 +224,15 @@ pub fn render_diff_panel_with_width(props: DiffPanelProps, _width: f32) -> impl 
                         .overflow_y_scroll()
                         .p(Tokens::spacing_3())
                         .child(todo_list::plan_artifact(body_artifact).into_any_element()),
-                ),
+                )
+                .child(render_plan_action_strip(
+                    props.entity.clone(),
+                    &action_artifact,
+                    props.can_implement_plan,
+                    props.show_implement_choice,
+                    props.recommend_fresh_context,
+                    width,
+                )),
         );
     } else {
         panel = panel.child(render_empty_plan_state());
@@ -267,9 +269,13 @@ fn render_plan_action_strip(
     can_implement: bool,
     show_choice: bool,
     recommend_fresh_context: bool,
+    width: f32,
 ) -> impl IntoElement {
-    let can_start = can_implement && artifact.execution_state.can_start();
+    let can_restart = matches!(artifact.execution_state, PlanExecutionState::Completed);
+    let can_start = can_implement && (artifact.execution_state.can_start() || can_restart);
+    let stacked = width < 520.0 || show_choice;
     let state_label = artifact.execution_state.label();
+    let primary_label = plan_primary_action_label(artifact.execution_state);
     let show_entity = entity.clone();
     let fresh_entity = entity.clone();
     let continue_entity = entity.clone();
@@ -279,21 +285,27 @@ fn render_plan_action_strip(
         .flex_shrink_0()
         .px(Tokens::spacing_3())
         .py(Tokens::spacing_2())
-        .border_b_1()
+        .border_t_1()
         .border_color(Tokens::border_subtle())
         .bg(Tokens::panel_bg())
         .child(
             div()
                 .w_full()
+                .px(Tokens::spacing_3())
+                .py(Tokens::spacing_2())
+                .rounded(Tokens::radius_md())
+                .bg(Tokens::surface())
+                .border_1()
+                .border_color(Tokens::border_subtle())
                 .flex()
                 .flex_col()
                 .gap(Tokens::spacing_2())
                 .child(
                     div()
                         .flex()
-                        .items_center()
-                        .justify_between()
                         .gap(Tokens::spacing_3())
+                        .when(stacked, |el| el.flex_col().items_start())
+                        .when(!stacked, |el| el.items_center().justify_between())
                         .child(
                             div()
                                 .min_w(px(0.0))
@@ -305,18 +317,28 @@ fn render_plan_action_strip(
                                         .text_size(Tokens::text_sm())
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(Tokens::text_primary())
-                                        .child("Plan review"),
+                                        .child("Review plan"),
                                 )
                                 .child(
                                     div()
                                         .text_size(Tokens::text_xs())
                                         .text_color(Tokens::text_secondary())
-                                        .child(format!("Status · {state_label}")),
+                                        .child(if show_choice {
+                                            if recommend_fresh_context {
+                                                "Choose where to implement this plan · Fresh context recommended"
+                                                    .to_string()
+                                            } else {
+                                                "Choose where to implement this plan · Continuing here is recommended"
+                                                    .to_string()
+                                            }
+                                        } else {
+                                            format!("Status · {state_label}")
+                                        }),
                                 ),
                         )
                         .when(can_start && !show_choice, |el| {
                             el.child(
-                                btn_approve("show-implement-plan-choice", "Implement Plan")
+                                btn_approve("show-implement-plan-choice", primary_label)
                                     .on_click(move |_, _, app: &mut gpui::App| {
                                         show_entity.update(app, |view, cx| {
                                             view.show_plan_implementation_choice(cx);
@@ -324,13 +346,13 @@ fn render_plan_action_strip(
                                     }),
                             )
                         })
-                        .when(!can_start, |el| {
+                        .when(!can_start && !show_choice, |el| {
                             el.child(
                                 div()
                                     .text_size(Tokens::text_xs())
                                     .text_color(Tokens::text_faint())
                                     .child(if can_implement {
-                                        "No implementation action available"
+                                        "Implementation is already in progress or waiting on approval"
                                     } else {
                                         "Agent is running"
                                     }),
@@ -341,41 +363,35 @@ fn render_plan_action_strip(
                     el.child(
                         div()
                             .flex()
-                            .flex_col()
+                            .flex_wrap()
                             .gap(Tokens::spacing_2())
-                            .child(
-                                div()
-                                    .text_size(Tokens::text_xs())
-                                    .text_color(Tokens::text_faint())
-                                    .child(if recommend_fresh_context {
-                                        "Recommended: start fresh because the current context is getting large."
-                                    } else {
-                                        "Recommended: continue here because the current context is still useful."
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .gap(Tokens::spacing_2())
-                                    .child(btn_approve("implement-plan-fresh", "Start fresh").on_click(
-                                        move |_, _, app: &mut gpui::App| {
-                                            fresh_entity.update(app, |view, cx| {
-                                                view.implement_plan_fresh(cx);
-                                            });
-                                        },
-                                    ))
-                                    .child(btn_ghost_label("implement-plan-here", "Continue here").on_click(
-                                        move |_, _, app: &mut gpui::App| {
-                                            continue_entity.update(app, |view, cx| {
-                                                view.implement_plan_here(cx);
-                                            });
-                                        },
-                                    )),
-                            ),
+                            .child(btn_approve("implement-plan-fresh", "Start fresh").on_click(
+                                move |_, _, app: &mut gpui::App| {
+                                    fresh_entity.update(app, |view, cx| {
+                                        view.implement_plan_fresh(cx);
+                                    });
+                                },
+                            ))
+                            .child(btn_ghost_label("implement-plan-here", "Continue here").on_click(
+                                move |_, _, app: &mut gpui::App| {
+                                    continue_entity.update(app, |view, cx| {
+                                        view.implement_plan_here(cx);
+                                    });
+                                },
+                            )),
                     )
                 }),
         )
+}
+
+fn plan_primary_action_label(state: PlanExecutionState) -> &'static str {
+    match state {
+        PlanExecutionState::Completed => "Implement again",
+        PlanExecutionState::Failed | PlanExecutionState::Cancelled | PlanExecutionState::Stale => {
+            "Retry plan"
+        }
+        _ => "Implement plan",
+    }
 }
 
 fn count_totals(files: &[DiffFile]) -> (usize, usize) {

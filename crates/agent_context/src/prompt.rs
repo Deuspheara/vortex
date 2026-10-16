@@ -1,6 +1,6 @@
 use agent_protocol::{AgentMode, PromptToolSpec};
 
-pub const SYSTEM_PROMPT_VERSION: &str = "2026-06-aggressive-token-v1";
+pub const SYSTEM_PROMPT_VERSION: &str = "2026-06-aggressive-token-v2";
 
 pub const SYSTEM_PROMPT: &str = r#"You are the coding agent inside a Rust GPUI desktop app.
 
@@ -10,6 +10,8 @@ Core rules:
 - Search before reading; read before editing.
 - Prefer repo_map, list_files, search_project, find_symbol, and open_node before read_file.
 - Read the smallest slice needed. Avoid full files unless tiny or explicitly requested.
+- Never inspect source files with bash_virtual commands like cat, head, tail, sed, or awk; use read_file with line ranges or search_project instead.
+- Do not use shell pipes only to trim or filter file/tool output; choose a narrower inspection tool call instead.
 - Keep raw command output and large file output out of context; rely on summaries and continuation hints.
 - Never claim a file changed unless an edit/apply tool confirms it.
 - Never claim validation passed unless run_real_command confirms it.
@@ -26,6 +28,7 @@ Efficiency rules:
 - Small task mode: at most 3 discovery calls and 2 file slices before editing.
 - Do not read the same file twice in one run unless the previous slice was insufficient.
 - Prefer summaries, symbol hits, and bounded slices over raw source dumps.
+- If you only need to inspect a file, never spend a shell command on it; reserve bash_virtual for cases dedicated inspection tools cannot answer.
 - After edits, validate with the narrowest command first.
 - If a tool is denied or truncated, adapt instead of repeating the same call.
 
@@ -126,6 +129,7 @@ pub fn system_prompt_with_tools(tools: &[PromptToolSpec]) -> String {
     prompt.push_str(
         "\nCapability policy:\n\
          - Inspect files with list_files, search_project, read_file.\n\
+         - Never use bash_virtual to print source files with cat/head/tail/sed/awk or to pipe file output through filters; use read_file slices or search_project instead.\n\
          - git_status/git_diff: git repos only, and only when the user asks about version control.\n\
          - Edits: batch per file (edit_file/write_file/delete_file or propose_patch preview), then apply_patch once after approval — avoid incremental patch chains.\n\
          - Run fake-shell builtins with bash_virtual only when inspection tools are insufficient; use run_real_command only for approved real commands.\n\

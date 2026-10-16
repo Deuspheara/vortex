@@ -56,7 +56,24 @@ pub fn activity_header_row_with_visual(
     )
 }
 
-/// Indented preview or output line under an activity header.
+/// Flat preview line shown under a collapsed activity header.
+pub fn activity_preview_line_row(line_id: &str, text: &str) -> impl IntoElement {
+    div()
+        .id(element_key("activity-preview-line", line_id))
+        .w_full()
+        .min_w(px(0.0))
+        .px(Tokens::spacing_2())
+        .font_family(Tokens::ui_font_family())
+        .text_size(Tokens::text_sm())
+        .line_height(Tokens::text_sm_leading())
+        .opacity(0.76)
+        .text_color(Tokens::activity_detail_text())
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .child(text.to_string())
+}
+
+/// Indented output line inside an expanded activity body.
 pub fn activity_output_line_row(line_id: &str, text: &str, mono: bool) -> impl IntoElement {
     div()
         .id(element_key("activity-output-line", line_id))

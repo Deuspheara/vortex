@@ -87,6 +87,7 @@ impl ThreadView {
                     text,
                     attachments,
                     id,
+                    is_initial,
                     collapsed,
                     truncatable,
                     move |app: &mut gpui::App| {
@@ -653,16 +654,6 @@ impl ThreadView {
 
             let sealed = self.sealed_blocks.get(&id).cloned().unwrap_or_default();
             let show_cursor = markdown.len() > 2;
-            let actions_projection = self.assistant_actions;
-            let actions = assistant_action_row(
-                &id,
-                true,
-                cx.entity().clone(),
-                self.agent.clone(),
-                actions_projection.can_retry,
-                actions_projection.can_open_diff,
-                actions_projection.can_approve,
-            );
             return div()
                 .id(element_key("assistant-segment", &id))
                 .w_full()
@@ -676,7 +667,6 @@ impl ThreadView {
                     show_cursor,
                 ))
                 .when_some(jump_to_latest, |el, button| el.child(button))
-                .child(actions)
                 .into_any_element();
         }
 
@@ -685,10 +675,13 @@ impl ThreadView {
         self.sealed_blocks.remove(&id);
 
         let blocks = self.cached_markdown_blocks(&id, &markdown, false);
+        let show_actions = crate::features::chat::state::is_final_assistant(item_ix, &self.items);
+        let hover_group = format!("assistant-hover-{id}");
         let actions_projection = self.assistant_actions;
         let actions = assistant_action_row(
             &id,
             false,
+            hover_group.clone(),
             cx.entity().clone(),
             self.agent.clone(),
             actions_projection.can_retry,
@@ -703,8 +696,9 @@ impl ThreadView {
             .gap(Tokens::spacing_0p5())
             .text_size(Tokens::text_md())
             .line_height(Tokens::text_md_leading())
+            .group(hover_group)
             .child(markdown_preview_blocks_thread_shared(blocks, false))
-            .child(actions)
+            .when(show_actions, |el| el.child(actions))
             .into_any_element()
     }
 }
@@ -712,6 +706,7 @@ impl ThreadView {
 fn assistant_action_row(
     item_id: &str,
     streaming: bool,
+    hover_group: String,
     thread: Entity<ThreadView>,
     agent: Entity<AgentWindow>,
     can_retry: bool,
@@ -728,8 +723,10 @@ fn assistant_action_row(
         .flex()
         .items_center()
         .gap(Tokens::spacing_1())
-        .opacity(if streaming { 0.40 } else { 0.20 })
-        .hover(|s| s.opacity(0.58))
+        .opacity(if streaming { 0.40 } else { 0.0 })
+        .when(!streaming, |el| {
+            el.group_hover(hover_group, |s| s.opacity(0.82))
+        })
         .child({
             let copy_thread = thread.clone();
             let copy_item_id = item_id.to_string();
@@ -749,13 +746,6 @@ fn assistant_action_row(
                     });
                 })
         })
-        .child(
-            btn_icon_sm(element_key("assistant-helpful", item_id), icons::CHECK).tooltip("Helpful"),
-        )
-        .child(
-            btn_icon_sm(element_key("assistant-unhelpful", item_id), icons::X_MARK)
-                .tooltip("Needs work"),
-        )
         .when(can_retry, |el| {
             let retry_agent = agent.clone();
             el.child(
@@ -984,6 +974,24 @@ fn render_plan_status_row(
     use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
     use crate::tokens::activity_action_line_with_loading;
 
+    let title = match state {
+        crate::features::shell::state::PlanExecutionState::NotStarted => "Plan ready".to_string(),
+        crate::features::shell::state::PlanExecutionState::Starting => "Plan starting".to_string(),
+        crate::features::shell::state::PlanExecutionState::Implementing => {
+            "Plan in progress".to_string()
+        }
+        crate::features::shell::state::PlanExecutionState::WaitingApproval => {
+            "Plan blocked".to_string()
+        }
+        crate::features::shell::state::PlanExecutionState::Completed => {
+            "Plan completed".to_string()
+        }
+        crate::features::shell::state::PlanExecutionState::Failed => "Plan failed".to_string(),
+        crate::features::shell::state::PlanExecutionState::Cancelled => {
+            "Plan cancelled".to_string()
+        }
+        crate::features::shell::state::PlanExecutionState::Stale => "Plan needs review".to_string(),
+    };
     let meta = match source_conversation_id {
         Some(source) => format!("{counts_summary} · Source: {source}"),
         None => counts_summary,
@@ -995,9 +1003,9 @@ fn render_plan_status_row(
             .child(timeline_row(
                 element_key("plan-status-header", item_id),
                 activity_action_line_with_loading(
-                    &format!("Plan · {}", state.label()),
+                    &title,
                     (!summary.trim().is_empty()).then_some(summary),
-                    false,
+                    state.is_active(),
                     false,
                     false,
                     item_id,

@@ -107,7 +107,7 @@ pub fn tab_bar(props: TabBarProps) -> impl IntoElement {
                 .flex()
                 .items_center()
                 .gap(Tokens::spacing_0p5())
-                .py(Tokens::spacing_1())
+                .py(Tokens::spacing_0p5())
                 .min_w(px(0.0))
                 .flex_nowrap()
                 .children(props.tabs.iter().map(|tab| {
@@ -144,11 +144,13 @@ fn render_tab(
     let label = tab.label.clone();
     let icon = tab.icon.clone();
     let hover_bar_id = SharedString::from(bar_id);
+    let tab_group = SharedString::from(format!("{bar_id}-tab-{tab_id}"));
 
     let mut tab_div = div()
         .id(element_key(bar_id, &tab_id.to_string()))
+        .group(tab_group.clone())
         .h(px(Tokens::ROW_HEIGHT_SM))
-        .px(Tokens::spacing_2())
+        .px(Tokens::spacing_1p5())
         .max_w(px(180.0))
         .flex()
         .items_center()
@@ -156,10 +158,10 @@ fn render_tab(
         .flex_shrink_0()
         .cursor_pointer()
         .rounded(Tokens::radius_xs())
-        .when(is_selected, |el| el.bg(Tokens::surface_active()))
+        .when(is_selected, |el| el.bg(Tokens::surface_hover()))
         .when(is_selected, |el| el.text_color(Tokens::text_primary()))
         .when(!is_selected, |el| {
-            el.hover(|s| s.bg(Tokens::surface_hover().opacity(0.6)))
+            el.hover(|s| s.bg(Tokens::surface_hover().opacity(0.5)))
         })
         .when_some(on_select, |el, cb| {
             el.on_click(move |_, _, app: &mut gpui::App| cb(tab_id, app))
@@ -212,6 +214,7 @@ fn render_tab(
             } else {
                 FontWeight::NORMAL
             })
+            .opacity(if is_selected { 1.0 } else { 0.9 })
             .text_color(if is_selected {
                 Tokens::text_primary()
             } else {
@@ -226,6 +229,8 @@ fn render_tab(
                 element_key(bar_id, &format!("close-{tab_id}")),
                 icons::X_MARK,
             )
+            .opacity(if is_selected { 0.72 } else { 0.0 })
+            .group_hover(tab_group, |s| s.opacity(0.9))
             .on_click({
                 let on_close = on_close.clone();
                 move |_, _, app: &mut gpui::App| {

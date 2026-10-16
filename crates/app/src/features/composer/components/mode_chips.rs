@@ -1,8 +1,8 @@
 //! Mode chip row — compact action mode selector under the composer pill.
 //!
-//! Renders a row of lightweight chips: Plan, Ask, Edit, Apply, Agent.
-//! The selected chip is text-first: subtle background, clear text weight,
-//! and red-accented Apply/Agent states without decorative icons.
+//! Renders a row of lightweight mode labels: Plan, Ask, Edit, Apply, Agent.
+//! The selected mode uses a restrained surface/background treatment rather than
+//! semantic color fills, so the composer stays calm and editor-like.
 //! Hover tooltips explain what each mode does.
 
 use std::rc::Rc;
@@ -19,7 +19,7 @@ struct ModeChip {
     label: &'static str,
     tooltip_title: &'static str,
     tooltip_body: &'static str,
-    /// Color used for the selected chip's bg, border, and text.
+    /// Reserved for future per-mode emphasis without changing the flat row style.
     selected_color: fn() -> Hsla,
 }
 
@@ -77,7 +77,7 @@ pub fn mode_chips(props: ModeChipsProps) -> impl IntoElement {
             .id("mode-chips-row")
             .flex()
             .items_center()
-            .gap(Tokens::spacing_1p5())
+            .gap(Tokens::spacing_1())
             .children(MODE_CHIPS.iter().map(|chip| {
                 let is_selected = props.selected_mode == chip.mode;
                 let mode = chip.mode.clone();
@@ -93,33 +93,21 @@ fn render_chip(
     mode: AgentMode,
     on_select: Rc<dyn Fn(AgentMode, &mut gpui::App) + 'static>,
 ) -> impl IntoElement {
-    let accent = (chip.selected_color)();
+    let _accent = (chip.selected_color)();
     let bg = if is_selected {
-        accent.opacity(if chip.label == "Apply" || chip.label == "Agent" {
-            0.12
-        } else {
-            0.08
-        })
+        Tokens::surface_hover().opacity(0.9)
     } else {
         Hsla::default()
     };
     let border = if is_selected {
-        accent.opacity(if chip.label == "Apply" || chip.label == "Agent" {
-            0.22
-        } else {
-            0.14
-        })
-    } else {
         Tokens::border_subtle()
+    } else {
+        Tokens::border_subtle().opacity(0.0)
     };
     let text_color = if is_selected {
-        if chip.label == "Apply" || chip.label == "Agent" {
-            Tokens::text_primary()
-        } else {
-            accent
-        }
+        Tokens::text_primary()
     } else {
-        Tokens::text_tertiary()
+        Tokens::text_secondary()
     };
 
     div()
@@ -128,8 +116,8 @@ fn render_chip(
             chip.label.to_lowercase()
         )))
         .h(px(Tokens::COMPOSER_MODE_CHIP_HEIGHT))
-        .px(Tokens::spacing_2())
-        .rounded(Tokens::radius_full())
+        .px(Tokens::spacing_1p5())
+        .rounded(Tokens::radius_sm())
         .bg(bg)
         .border_1()
         .border_color(border)
@@ -145,7 +133,8 @@ fn render_chip(
             if is_selected {
                 s
             } else {
-                s.bg(Tokens::surface_hover()).border_color(Tokens::border())
+                s.bg(Tokens::surface_hover().opacity(0.72))
+                    .border_color(Tokens::border_subtle())
             }
         })
         .on_click(move |_, _, app: &mut gpui::App| {
@@ -157,7 +146,7 @@ fn render_chip(
                 .font_weight(if is_selected {
                     FontWeight::SEMIBOLD
                 } else {
-                    FontWeight::MEDIUM
+                    FontWeight::NORMAL
                 })
                 .text_color(text_color)
                 .child(chip.label),

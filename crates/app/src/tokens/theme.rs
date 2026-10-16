@@ -279,10 +279,17 @@ pub fn bundled_themes_dir() -> PathBuf {
 
 /// User themes directory for community / custom themes.
 pub fn user_themes_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".vortex")
-        .join("themes")
+    #[cfg(all(feature = "demo_mode", debug_assertions))]
+    {
+        crate::agent::vortex_data_dir().join("themes")
+    }
+    #[cfg(not(all(feature = "demo_mode", debug_assertions)))]
+    {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".vortex")
+            .join("themes")
+    }
 }
 
 /// Ensure user themes dir exists and contains bundled defaults.

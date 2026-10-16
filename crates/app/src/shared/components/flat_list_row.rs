@@ -20,6 +20,11 @@ pub fn flat_list_row(
     } else {
         Tokens::surface_hover()
     };
+    let selected_bg = if sidebar_hover {
+        Tokens::sidebar_selected_bg()
+    } else {
+        Tokens::surface_active()
+    };
 
     div()
         .id(id)
@@ -34,7 +39,7 @@ pub fn flat_list_row(
         .items_center()
         .gap(Tokens::spacing_2())
         .when(on_click.is_some(), |el| el.cursor_pointer())
-        .when(selected, |el| el.bg(Tokens::surface_active()))
+        .when(selected, |el| el.bg(selected_bg))
         .when(!selected && on_click.is_some(), |el| {
             el.hover(|s| s.bg(hover))
         })

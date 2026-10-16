@@ -86,12 +86,12 @@ pub fn composer_pill(props: ComposerPillProps) -> impl IntoElement {
         .rounded(Tokens::radius_composer())
         .bg(Tokens::composer_bg())
         .border_1()
-        .border_color(Tokens::composer_border())
+        .border_color(Tokens::border_subtle())
         .flex()
         .flex_col()
         .gap(Tokens::spacing_1())
-        .px(Tokens::spacing_2())
-        .py(Tokens::spacing_1());
+        .px(Tokens::spacing_1p5())
+        .py(Tokens::spacing_0p5());
 
     let drop_entity = entity.clone();
     let paste_entity = entity.clone();
@@ -251,8 +251,8 @@ fn render_attach_button(entity: Entity<AgentWindow>) -> impl IntoElement {
             .icon(icons::PLUS)
             .ghost()
             .compact()
-            .h(px(28.0))
-            .w(px(28.0))
+            .h(px(24.0))
+            .w(px(24.0))
             .rounded(Tokens::radius_full())
             .on_click(move |_, window, app: &mut gpui::App| {
                 entity.update(app, |view, cx| {
@@ -386,7 +386,7 @@ fn render_model_picker(
 
     div()
         .flex_shrink_0()
-        .max_w(px(180.0))
+        .max_w(px(156.0))
         .child(picker_dropdown(PickerDropdownProps {
             id: "composer-model".into(),
             label: selected.clone(),

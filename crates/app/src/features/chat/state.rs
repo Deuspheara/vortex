@@ -1,7 +1,7 @@
 //! Timeline projection — normalized events from thread items.
 
 use crate::features::agent_activity::state::{ActivityPhase, phase_for_tool_name};
-use crate::features::shell::state::{AgentStatus, ThreadItem};
+use crate::features::shell::state::{AgentStatus, PlanExecutionState, ThreadItem};
 use crate::shared::state::TranscriptMode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,7 +115,7 @@ fn project_item(
         ThreadItem::AssistantMessage { id, streaming, .. } => {
             let is_final =
                 crate::features::chat::state::is_final_assistant(item_ix as usize, all_items);
-            let kind = if is_final && mode == TranscriptMode::Summary {
+            let kind = if is_final && mode == TranscriptMode::Focus {
                 TimelineEventKind::FinalSummary
             } else {
                 TimelineEventKind::AssistantMessage
@@ -137,7 +137,28 @@ fn project_item(
                 deletions: None,
             })
         }
-        ThreadItem::PlanStatus { .. } => None,
+        ThreadItem::PlanStatus {
+            id,
+            state,
+            summary,
+            counts,
+            ..
+        } => Some(TimelineEvent {
+            id: id.clone(),
+            item_ix,
+            kind: TimelineEventKind::PlanningStatus,
+            label: format!("Plan · {}", state.label()),
+            detail: Some(if counts.total() > 0 {
+                format!("{} · {}", counts.summary(), summary)
+            } else {
+                summary.clone()
+            }),
+            phase: ActivityPhase::Review,
+            status: plan_agent_status(*state),
+            artifact_id: Some("plan-status".into()),
+            additions: None,
+            deletions: None,
+        }),
         ThreadItem::SubagentRun {
             id,
             task,
@@ -163,7 +184,7 @@ fn project_item(
             status,
             ..
         } => {
-            if !mode.shows_reasoning_rows() {
+            if !should_emit_thread_item(item, mode, item_ix as usize, all_items) {
                 return None;
             }
             let preview = summary
@@ -303,11 +324,14 @@ pub fn should_emit_thread_item(
     items: &[ThreadItem],
 ) -> bool {
     match mode {
-        TranscriptMode::Summary => match item {
+        TranscriptMode::Focus => match item {
             ThreadItem::UserMessage { .. }
             | ThreadItem::RunError { .. }
             | ThreadItem::ApprovalRequest { .. }
-            | ThreadItem::ChoiceRequest { .. } => true,
+            | ThreadItem::ChoiceRequest { .. }
+            | ThreadItem::DiffSummary { .. }
+            | ThreadItem::PlanStatus { .. }
+            | ThreadItem::ContextTrace { .. } => true,
             ThreadItem::AssistantMessage {
                 streaming: true, ..
             } => true,
@@ -315,23 +339,55 @@ pub fn should_emit_thread_item(
             ThreadItem::ReasoningStep { status, .. } => {
                 matches!(status, AgentStatus::Thinking)
             }
-            ThreadItem::ToolCall { status, .. } => matches!(
+            ThreadItem::ToolCall {
+                tool_name, status, ..
+            } => is_focus_tool_receipt(tool_name, status),
+            ThreadItem::SubagentRun { status, .. } => matches!(
                 status,
-                AgentStatus::RunningTool | AgentStatus::WaitingApproval
+                AgentStatus::RunningTool | AgentStatus::WaitingApproval | AgentStatus::Failed
             ),
-            ThreadItem::DiffSummary { .. }
-            | ThreadItem::SubagentRun { .. }
-            | ThreadItem::ContextTrace { .. }
-            | ThreadItem::TodoList { .. }
-            | ThreadItem::PlanStatus { .. } => false,
+            ThreadItem::TodoList { .. } => false,
         },
-        _ => match item {
+        TranscriptMode::Activity | TranscriptMode::Debug => match item {
             ThreadItem::ReasoningStep { status, .. } => {
                 mode.shows_reasoning_rows() || matches!(status, AgentStatus::Thinking)
             }
             ThreadItem::TodoList { .. } => false,
             _ => true,
         },
+    }
+}
+
+fn plan_agent_status(state: PlanExecutionState) -> AgentStatus {
+    match state {
+        PlanExecutionState::NotStarted
+        | PlanExecutionState::Completed
+        | PlanExecutionState::Stale => AgentStatus::Completed,
+        PlanExecutionState::Starting | PlanExecutionState::Implementing => AgentStatus::RunningTool,
+        PlanExecutionState::WaitingApproval => AgentStatus::WaitingApproval,
+        PlanExecutionState::Failed | PlanExecutionState::Cancelled => AgentStatus::Failed,
+    }
+}
+
+fn is_focus_tool_receipt(tool_name: &str, status: &AgentStatus) -> bool {
+    match status {
+        AgentStatus::RunningTool | AgentStatus::WaitingApproval | AgentStatus::Failed => true,
+        AgentStatus::Completed => matches!(
+            tool_name,
+            "write_file"
+                | "edit_file"
+                | "delete_file"
+                | "apply_patch"
+                | "propose_patch"
+                | "bash_virtual"
+                | "run_real_command"
+                | "shell"
+                | "move_path"
+                | "copy_path"
+                | "create_directory"
+                | "delete_path"
+        ),
+        AgentStatus::Idle | AgentStatus::Thinking => false,
     }
 }
 
@@ -384,18 +440,18 @@ mod tests {
     }
 
     #[test]
-    fn summary_shows_streaming_assistant() {
+    fn focus_shows_streaming_assistant() {
         let items = vec![user_msg("u1"), assistant("a1", true)];
         assert!(should_emit_thread_item(
             &items[1],
-            TranscriptMode::Summary,
+            TranscriptMode::Focus,
             1,
             &items,
         ));
     }
 
     #[test]
-    fn summary_hides_completed_intermediate_assistant() {
+    fn focus_hides_completed_intermediate_assistant() {
         let items = vec![
             user_msg("u1"),
             assistant("a1", false),
@@ -403,18 +459,18 @@ mod tests {
         ];
         assert!(!should_emit_thread_item(
             &items[1],
-            TranscriptMode::Summary,
+            TranscriptMode::Focus,
             1,
             &items,
         ));
     }
 
     #[test]
-    fn normal_shows_thinking_row() {
+    fn activity_shows_thinking_row() {
         let items = vec![user_msg("u1"), thinking()];
         assert!(should_emit_thread_item(
             &items[1],
-            TranscriptMode::Normal,
+            TranscriptMode::Activity,
             1,
             &items,
         ));

@@ -15,6 +15,7 @@ pub fn user_message(
     text: &str,
     attachments: &[MessageAttachment],
     id: &str,
+    is_initial: bool,
     collapsed: bool,
     show_see_more: bool,
     on_toggle: impl Fn(&mut App) + 'static,
@@ -22,90 +23,79 @@ pub fn user_message(
     let text = text.to_string();
     let copy_text = std::sync::Arc::<str>::from(text.as_str());
     let preview_max_h = px(USER_MESSAGE_PREVIEW_LINES as f32 * LINE_LEADING);
+    let hover_group = format!("user-message-hover-{id}");
+    let label = if is_initial { "Task" } else { "You asked" };
     div()
         .id(element_key("user-message", id))
         .w_full()
+        .max_w(px(Tokens::THREAD_MAX_WIDTH * 0.88))
+        .relative()
         .flex()
+        .flex_col()
         .items_start()
-        .gap(Tokens::spacing_2())
+        .gap(Tokens::spacing_1())
         .pt(Tokens::spacing_1())
+        .min_w(px(0.0))
+        .group(hover_group.clone())
         .child(
             div()
-                .mt(Tokens::spacing_0p5())
-                .w(px(2.0))
-                .h(px(18.0))
-                .rounded(Tokens::radius_full())
-                .bg(Tokens::accent().opacity(0.8)),
+                .text_size(Tokens::text_xs())
+                .line_height(Tokens::text_sm_leading_compact())
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .text_color(Tokens::text_tertiary())
+                .child(label),
         )
         .child(
             div()
-                .max_w(px(Tokens::THREAD_MAX_WIDTH * 0.88))
-                .relative()
-                .flex()
-                .flex_col()
-                .items_start()
-                .gap(Tokens::spacing_1())
-                .min_w(px(0.0))
-                .child(
+                .w_full()
+                .pr(Tokens::spacing_6())
+                .text_size(Tokens::text_md())
+                .line_height(Tokens::text_md_leading())
+                .text_color(Tokens::text_primary())
+                .when(collapsed, |el| el.max_h(preview_max_h).overflow_hidden())
+                .child(text.clone()),
+        )
+        .when(!attachments.is_empty(), |el| {
+            el.child(div().flex().flex_wrap().gap(Tokens::spacing_1()).children(
+                attachments.iter().map(|attachment| {
                     div()
-                        .text_size(Tokens::text_xs())
-                        .line_height(Tokens::text_sm_leading_compact())
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(Tokens::text_tertiary())
-                        .child("You"),
-                )
-                .child(
-                    div()
-                        .w_full()
-                        .pr(Tokens::spacing_6())
-                        .text_size(Tokens::text_md())
-                        .line_height(Tokens::text_md_leading())
-                        .text_color(Tokens::text_primary())
-                        .when(collapsed, |el| el.max_h(preview_max_h).overflow_hidden())
-                        .child(text.clone()),
-                )
-                .when(!attachments.is_empty(), |el| {
-                    el.child(div().flex().flex_wrap().gap(Tokens::spacing_1()).children(
-                        attachments.iter().map(|attachment| {
-                            div()
-                                .w(Tokens::attachment_preview_size())
-                                .h(Tokens::attachment_preview_size())
-                                .overflow_hidden()
-                                .rounded(Tokens::radius_sm())
-                                .border_1()
-                                .border_color(Tokens::border_subtle())
-                                .bg(Tokens::surface_active())
-                                .child(render_message_attachment_preview(attachment))
-                        }),
-                    ))
-                })
-                .when(show_see_more, |el| {
-                    el.child(
-                        div()
-                            .id(element_key("user-message-see-more", id))
-                            .text_size(Tokens::text_xs())
-                            .line_height(Tokens::text_sm_leading_compact())
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(Tokens::accent())
-                            .cursor_pointer()
-                            .hover(|s| s.text_color(Tokens::accent().opacity(0.8)))
-                            .child(if collapsed { "See more" } else { "See less" })
-                            .on_click(move |_, _, app: &mut gpui::App| on_toggle(app)),
-                    )
-                })
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(0.0))
-                        .right(px(0.0))
-                        .opacity(0.35)
-                        .hover(|s| s.opacity(1.0))
-                        .child(btn_copy_icon_arc(
-                            element_key("copy-user", id),
-                            copy_text,
-                            "Copy message",
-                        )),
-                ),
+                        .w(Tokens::attachment_preview_size())
+                        .h(Tokens::attachment_preview_size())
+                        .overflow_hidden()
+                        .rounded(Tokens::radius_sm())
+                        .border_1()
+                        .border_color(Tokens::border_subtle())
+                        .bg(Tokens::surface_active())
+                        .child(render_message_attachment_preview(attachment))
+                }),
+            ))
+        })
+        .when(show_see_more, |el| {
+            el.child(
+                div()
+                    .id(element_key("user-message-see-more", id))
+                    .text_size(Tokens::text_xs())
+                    .line_height(Tokens::text_sm_leading_compact())
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(Tokens::accent())
+                    .cursor_pointer()
+                    .hover(|s| s.text_color(Tokens::accent().opacity(0.8)))
+                    .child(if collapsed { "See more" } else { "See less" })
+                    .on_click(move |_, _, app: &mut gpui::App| on_toggle(app)),
+            )
+        })
+        .child(
+            div()
+                .absolute()
+                .top(px(0.0))
+                .right(px(0.0))
+                .opacity(0.0)
+                .group_hover(hover_group, |s| s.opacity(1.0))
+                .child(btn_copy_icon_arc(
+                    element_key("copy-user", id),
+                    copy_text,
+                    "Copy message",
+                )),
         )
 }
 

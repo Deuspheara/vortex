@@ -9,7 +9,7 @@ use gpui_component::Icon;
 use gpui_component::IconName;
 use gpui_component::popover::Popover;
 
-use crate::shared::components::buttons::{btn_ghost_icon, btn_icon_sm, btn_outline};
+use crate::shared::components::buttons::{btn_ghost_icon, btn_icon_sm};
 use crate::shared::components::panel_controls::{PanelControlClusterProps, panel_control_cluster};
 use crate::tokens::Tokens;
 use crate::tokens::icons;
@@ -39,12 +39,12 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
         .w_full()
         .flex()
         .items_center()
-        .bg(Tokens::chrome())
+        .bg(Tokens::panel_bg())
         .border_b_1()
-        .border_color(Tokens::divider())
+        .border_color(Tokens::border_subtle())
         .pl(px(Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET))
-        .pr(Tokens::spacing_3())
-        .gap(Tokens::spacing_2())
+        .pr(Tokens::spacing_2())
+        .gap(Tokens::spacing_1())
         .when(props.show_panel_controls, |el| {
             el.child(panel_control_cluster(PanelControlClusterProps {
                 sidebar_collapsed: props.sidebar_collapsed,
@@ -61,8 +61,8 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                 .min_w(px(0.0))
                 .flex()
                 .items_center()
-                .gap(Tokens::spacing_2())
-                .px(Tokens::spacing_2())
+                .gap(Tokens::spacing_1())
+                .px(Tokens::spacing_1())
                 .child(render_title_block(title))
                 .child(render_title_menu(
                     props.conversation_title,
@@ -75,8 +75,9 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
             div()
                 .flex()
                 .items_center()
-                .gap(Tokens::spacing_2())
+                .gap(Tokens::spacing_1())
                 .flex_shrink_0()
+                .opacity(0.88)
                 .child(render_dock_actions(props.on_new_terminal_tab))
                 .when_some(props.workspace_readiness_label, |el, label| {
                     el.child(render_workspace_status(label, props.on_workspace_status))
@@ -94,9 +95,10 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
 fn render_title_block(title: String) -> impl IntoElement {
     div().flex_1().min_w(px(0.0)).flex().items_center().child(
         div()
-            .text_size(Tokens::text_md())
+            .text_size(Tokens::text_sm())
             .font_weight(FontWeight::MEDIUM)
             .text_color(Tokens::topbar_title_active())
+            .opacity(0.92)
             .overflow_hidden()
             .text_ellipsis()
             .child(title),
@@ -203,22 +205,45 @@ fn render_workspace_status(
     label: String,
     on_click: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
 ) -> impl IntoElement {
-    let button = btn_outline("topbar-workspace-readiness", label);
+    let badge = div()
+        .id("topbar-workspace-readiness")
+        .h(px(Tokens::ROW_HEIGHT_SM))
+        .px(Tokens::spacing_2())
+        .rounded(Tokens::radius_sm())
+        .border_1()
+        .border_color(Tokens::border_subtle())
+        .bg(Tokens::surface_hover().opacity(0.42))
+        .flex()
+        .items_center()
+        .child(
+            div()
+                .text_size(Tokens::text_xs())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(Tokens::text_secondary())
+                .child(label),
+        );
     if let Some(cb) = on_click {
-        button.on_click(move |_, _, app: &mut gpui::App| cb(app))
+        badge
+            .cursor_pointer()
+            .hover(|s| s.bg(Tokens::surface_hover().opacity(0.72)))
+            .on_click(move |_, _, app: &mut gpui::App| cb(app))
     } else {
-        button
+        badge
     }
 }
 
 fn render_dock_actions(
     on_new_terminal_tab: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
 ) -> impl IntoElement {
-    div().flex().items_center().gap(Tokens::spacing_1()).child(
-        btn_ghost_icon("topbar-new-terminal-tab", icons::TERMINAL)
-            .tooltip("New terminal tab")
-            .when_some(on_new_terminal_tab, |button, cb| {
-                button.on_click(move |_, _, app: &mut gpui::App| cb(app))
-            }),
-    )
+    div()
+        .flex()
+        .items_center()
+        .gap(Tokens::spacing_0p5())
+        .child(
+            btn_ghost_icon("topbar-new-terminal-tab", icons::TERMINAL)
+                .tooltip("New terminal tab")
+                .when_some(on_new_terminal_tab, |button, cb| {
+                    button.on_click(move |_, _, app: &mut gpui::App| cb(app))
+                }),
+        )
 }

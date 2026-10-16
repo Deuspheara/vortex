@@ -82,6 +82,8 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
         .w_full()
         .relative()
         .bg(Tokens::composer_footer_gradient())
+        .border_t_1()
+        .border_color(Tokens::divider().opacity(0.55))
         .block_mouse_except_scroll()
         .child(
             div()
@@ -90,8 +92,8 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
                 .flex_col()
                 .items_center()
                 .px(Tokens::thread_padding_x())
-                .pb(Tokens::spacing_5())
-                .pt(Tokens::spacing_2())
+                .pb(Tokens::spacing_4())
+                .pt(Tokens::spacing_1())
                 // ══ Blocking action overlay ══
                 .child(if let Some(approval) = props.sticky_approval {
                     approval_card(approval).into_any_element()
@@ -137,8 +139,8 @@ fn render_mode_row(selected_mode: &AgentMode, entity: Entity<AgentWindow>) -> im
         .px(Tokens::composer_rail_inset_x())
         .flex()
         .items_center()
-        .justify_between()
-        .pt(Tokens::spacing_2())
+        .justify_start()
+        .pt(Tokens::spacing_1p5())
         .child(mode_chips(ModeChipsProps {
             selected_mode: selected_mode.clone(),
             on_select: Rc::new(move |mode, app| {

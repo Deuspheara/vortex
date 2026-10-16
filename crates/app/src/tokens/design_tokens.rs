@@ -61,7 +61,7 @@ impl Tokens {
         linear_gradient(
             180.,
             linear_color_stop(bg.alpha(0.0), 0.0),
-            linear_color_stop(bg.alpha(0.88), 1.0),
+            linear_color_stop(bg.alpha(0.72), 1.0),
         )
         .color_space(ColorSpace::Oklab)
     }
@@ -73,7 +73,7 @@ impl Tokens {
         linear_gradient(
             180.,
             linear_color_stop(bg.alpha(0.0), 0.0),
-            linear_color_stop(bg, 0.55),
+            linear_color_stop(bg, 0.82),
         )
         .color_space(ColorSpace::Oklab)
     }
@@ -254,10 +254,10 @@ impl Tokens {
         Self::divider()
     }
     pub fn sidebar_hover_bg() -> Hsla {
-        Self::surface_hover().blend(Self::accent().opacity(0.025))
+        Self::surface_hover()
     }
     pub fn sidebar_selected_bg() -> Hsla {
-        Self::surface_active().blend(Self::accent().opacity(0.045))
+        Self::surface_active()
     }
     pub fn sidebar_time_fade_gradient(bg: Hsla) -> Background {
         linear_gradient(
@@ -420,11 +420,11 @@ impl Tokens {
         px(10.0)
     }
     pub fn radius_composer() -> gpui::Pixels {
-        px(24.0)
+        px(14.0)
     }
-    /// Horizontal inset for rows above/below the composer pill (half the corner radius).
+    /// Horizontal inset for rows above/below the composer pill.
     pub fn composer_rail_inset_x() -> gpui::Pixels {
-        px(12.0)
+        px(8.0)
     }
     pub fn radius_search() -> gpui::Pixels {
         px(10.0)
@@ -436,9 +436,9 @@ impl Tokens {
 // ════════════════════════════════════════════════════════════
 
 impl Tokens {
-    pub const SIDEBAR_WIDTH: f32 = 280.0;
-    pub const SIDEBAR_MIN_WIDTH: f32 = 220.0;
-    pub const SIDEBAR_MAX_WIDTH: f32 = 360.0;
+    pub const SIDEBAR_WIDTH: f32 = 252.0;
+    pub const SIDEBAR_MIN_WIDTH: f32 = 208.0;
+    pub const SIDEBAR_MAX_WIDTH: f32 = 320.0;
     pub const SIDEBAR_COLLAPSED: f32 = 40.0;
     pub const DRAWER_WIDTH: f32 = 360.0;
     pub const INSPECTOR_WIDTH_COMPACT: f32 = 400.0;
@@ -447,7 +447,7 @@ impl Tokens {
     pub const DIFF_PANEL_MIN_WIDTH: f32 = 440.0;
     pub const DIFF_PANEL_MAX_WIDTH: f32 = 760.0;
     pub const CENTER_MIN_WIDTH: f32 = 520.0;
-    pub const TOP_BAR_HEIGHT: f32 = 40.0;
+    pub const TOP_BAR_HEIGHT: f32 = 38.0;
     /// Left inset clearing macOS traffic-light window controls.
     pub const TOP_BAR_TRAFFIC_LIGHT_INSET: f32 = 78.0;
     pub const BOTTOM_PANEL_HEIGHT: f32 = 220.0;
@@ -548,19 +548,19 @@ impl Tokens {
     pub const ATTACHMENT_PREVIEW_GAP: f32 = 4.0;
     pub const COMPOSER_ERROR_ROW_HEIGHT: f32 = Self::ROW_HEIGHT_XS;
     /// Compact input pill height (empty state — grows with content).
-    pub const COMPOSER_INPUT_MIN_HEIGHT: f32 = 44.0;
+    pub const COMPOSER_INPUT_MIN_HEIGHT: f32 = 40.0;
     /// Compact mode/strip row above the pill (legacy alias — mode chips sit below the pill now).
     pub const COMPOSER_RUN_STRIP_HEIGHT: f32 = Self::ROW_HEIGHT_SM;
     /// Mode chip row height (`mode_chips.rs`).
-    pub const COMPOSER_MODE_CHIP_HEIGHT: f32 = 28.0;
+    pub const COMPOSER_MODE_CHIP_HEIGHT: f32 = 24.0;
     /// Gap between input pill and mode chips.
-    pub const COMPOSER_MODE_ROW_PT: f32 = 8.0;
+    pub const COMPOSER_MODE_ROW_PT: f32 = 6.0;
     /// `composer-container` top padding — `spacing_2`.
     pub const COMPOSER_CONTAINER_PT: f32 = 8.0;
     /// `composer-container` bottom padding.
-    pub const COMPOSER_CONTAINER_PB: f32 = 20.0;
+    pub const COMPOSER_CONTAINER_PB: f32 = 16.0;
     /// Gap under metadata row before the pill.
-    pub const COMPOSER_METADATA_PB: f32 = 6.0;
+    pub const COMPOSER_METADATA_PB: f32 = 4.0;
     /// Extra scroll clearance so the last thread row clears the composer footer.
     pub const COMPOSER_THREAD_CLEARANCE: f32 = 12.0;
     pub const COMPOSER_MIN_HEIGHT: f32 =
@@ -612,7 +612,7 @@ impl Tokens {
     }
     /// Height of the fade scrim above the composer (thread content shows through at top).
     /// Must be tall enough to avoid a hard horizontal band.
-    pub const COMPOSER_FADE_HEIGHT: f32 = 192.0;
+    pub const COMPOSER_FADE_HEIGHT: f32 = 120.0;
 
     /// Composer footer content height (metadata + pill + mode chips + container padding).
     pub fn composer_footer_height(

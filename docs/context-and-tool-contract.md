@@ -244,10 +244,12 @@ For every coding task:
 1. Use repo_map (when available), list_files, search_project, or LSP before read_file slices.
 2. Read only the smallest line ranges needed (start_line/end_line).
 3. Prefer search results and symbol summaries over raw source.
-4. Keep raw command output out of context; summarize failures.
-5. For simple tasks, use small_task_mode: max 3 discovery calls and max 2 file slices before editing.
-6. After editing, validate with the narrowest command first.
-7. If output is large, store it externally and return only the relevant lines.
+4. Never inspect source with shell commands like cat, head, tail, sed, or awk; use read_file slices or search tools instead.
+5. Never use shell pipes only to trim file output; choose a narrower tool call.
+6. Keep raw command output out of context; summarize failures.
+7. For simple tasks, use small_task_mode: max 3 discovery calls and max 2 file slices before editing.
+8. After editing, validate with the narrowest command first.
+9. If output is large, store it externally and return only the relevant lines.
 ```
 
 Implemented in `crates/agent_context/src/prompt.rs` (`SYSTEM_PROMPT`).

@@ -15,9 +15,7 @@ use crate::features::shell::state::{
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::shared::components::flat_list_row::flat_list_row;
 use crate::tokens::icons;
-use crate::tokens::motion::{
-    Motion, sidebar_accent_in, sidebar_glow_pulse, sidebar_text_cascade_in, sidebar_text_fade_in,
-};
+use crate::tokens::motion::{Motion, sidebar_text_cascade_in, sidebar_text_fade_in};
 use crate::tokens::{Tokens, element_key};
 
 const SESSION_META_WIDTH: f32 = 36.0;
@@ -47,12 +45,16 @@ macro_rules! sidebar_tree_row_base {
     };
 }
 
-fn sidebar_row_label_color(_selected: bool) -> gpui::Hsla {
-    Tokens::text_primary()
+fn sidebar_row_label_color(selected: bool) -> gpui::Hsla {
+    if selected {
+        Tokens::sidebar_text_hover()
+    } else {
+        Tokens::sidebar_text()
+    }
 }
 
 fn sidebar_session_selected_bg() -> gpui::Hsla {
-    Tokens::surface_hover().blend(Tokens::text_primary().opacity(0.03))
+    Tokens::sidebar_selected_bg()
 }
 
 fn session_title_opacity(_indent_level: u32, _selected: bool) -> f32 {
@@ -65,40 +67,6 @@ fn session_meta_opacity(indent_level: u32, is_menu_open: bool) -> f32 {
     } else {
         let _ = indent_level;
         0.82
-    }
-}
-
-fn sidebar_row_beam(active: bool, key: &str) -> impl IntoElement {
-    let beam = div()
-        .absolute()
-        .top(px(6.0))
-        .bottom(px(6.0))
-        .left_0()
-        .w(px(2.0))
-        .rounded(Tokens::radius_full())
-        .bg(Tokens::sidebar_accent_beam_gradient());
-
-    if active {
-        sidebar_accent_in(beam, element_key("sidebar-row-beam", key)).into_any_element()
-    } else {
-        div().into_any_element()
-    }
-}
-
-fn sidebar_row_wash(active: bool, key: &str, phase: f32) -> impl IntoElement {
-    let wash = div()
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .bottom_0()
-        .bg(Tokens::sidebar_row_wash_gradient());
-
-    if active {
-        sidebar_glow_pulse(wash, element_key("sidebar-row-wash", key), 0.3, 0.22, phase)
-            .into_any_element()
-    } else {
-        div().into_any_element()
     }
 }
 
@@ -469,8 +437,6 @@ pub fn session_row(
             view.clear_drop_target(cx);
         });
     })
-    .child(sidebar_row_wash(selected, &row.menu_key, 0.0))
-    .child(sidebar_row_beam(selected, &row.menu_key))
     .child(
         div()
             .flex_1()
@@ -488,7 +454,11 @@ pub fn session_row(
                     .text_ellipsis()
                     .whitespace_nowrap()
                     .text_size(Tokens::text_sm())
-                    .font_weight(FontWeight::MEDIUM)
+                    .font_weight(if selected {
+                        FontWeight::MEDIUM
+                    } else {
+                        FontWeight::NORMAL
+                    })
                     .text_color(sidebar_row_label_color(selected))
                     .opacity(title_opacity)
                     .when(!selected, |el| {
@@ -523,7 +493,7 @@ pub fn session_row(
                             .text_ellipsis()
                             .whitespace_nowrap()
                             .text_size(Tokens::text_xs())
-                            .text_color(Tokens::text_primary())
+                            .text_color(Tokens::sidebar_text_muted())
                             .text_align(TextAlign::Right)
                             .opacity(meta_opacity)
                             .when(!is_menu_open, |el| {
@@ -605,13 +575,13 @@ pub fn project_row(
     .gap(Tokens::spacing_1p5())
     .group(group_name.clone())
     .when(row.expanded, |el| {
-        el.bg(Tokens::sidebar_hover_bg().opacity(0.52))
+        el.bg(Tokens::sidebar_selected_bg().opacity(0.72))
     })
     .when(!row.expanded, |el| {
-        el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.72)))
+        el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
     })
     .when(row.expanded, |el| {
-        el.hover(|s| s.bg(Tokens::sidebar_hover_bg().opacity(0.82)))
+        el.hover(|s| s.bg(Tokens::sidebar_selected_bg().opacity(0.88)))
     })
     .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
         sidebar_for_right.update(app, |view, cx| {
@@ -656,11 +626,26 @@ pub fn project_row(
                 });
             })
             .child(
+                Icon::new(if row.expanded {
+                    icons::CHEVRON_DOWN
+                } else {
+                    icons::CHEVRON_RIGHT
+                })
+                .size(px(12.0))
+                .flex_shrink_0()
+                .text_color(Tokens::sidebar_text_muted())
+                .opacity(0.8),
+            )
+            .child(
                 Icon::new(icons::FOLDER)
                     .size(px(14.0))
                     .flex_shrink_0()
-                    .text_color(Tokens::sidebar_text())
-                    .opacity(0.66),
+                    .text_color(if row.expanded {
+                        Tokens::sidebar_text_hover()
+                    } else {
+                        Tokens::sidebar_text()
+                    })
+                    .opacity(0.72),
             )
             .child(sidebar_text_fade_in(
                 div()
@@ -671,9 +656,17 @@ pub fn project_row(
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .text_size(Tokens::text_sm())
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(Tokens::text_primary())
-                    .opacity(0.72)
+                    .font_weight(if row.expanded {
+                        FontWeight::MEDIUM
+                    } else {
+                        FontWeight::NORMAL
+                    })
+                    .text_color(if row.expanded {
+                        Tokens::sidebar_text_hover()
+                    } else {
+                        Tokens::sidebar_text()
+                    })
+                    .opacity(0.88)
                     .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                     .child(name),
                 element_key("project-name-cascade", &row.project_id.0),

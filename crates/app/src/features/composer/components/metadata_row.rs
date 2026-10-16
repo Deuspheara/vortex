@@ -42,7 +42,7 @@ pub fn metadata_row(props: MetadataRowProps) -> impl IntoElement {
             div()
                 .flex()
                 .items_center()
-                .gap(px(4.0))
+                .gap(Tokens::spacing_1())
                 .min_w(px(0.0))
                 .overflow_hidden()
                 .when(has_branch, |el| {
@@ -53,7 +53,11 @@ pub fn metadata_row(props: MetadataRowProps) -> impl IntoElement {
                     ))
                 }),
         )
-        .child(context_usage_ring(props.context_usage))
+        .child(
+            div()
+                .opacity(0.72)
+                .child(context_usage_ring(props.context_usage)),
+        )
 }
 
 // ── Branch dropdown ──

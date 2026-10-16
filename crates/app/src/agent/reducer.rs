@@ -551,7 +551,7 @@ impl AgentWindow {
                             conv_id,
                             ThreadItem::ReasoningStep {
                                 id,
-                                title: "Thinking".into(),
+                                title: "Current step".into(),
                                 summary: String::new(),
                                 expanded: reasoning_expanded,
                                 status: AgentStatus::Thinking,
@@ -639,7 +639,7 @@ impl AgentWindow {
                         conv_id.clone(),
                         ThreadItem::ReasoningStep {
                             id,
-                            title: "Thinking".into(),
+                            title: "Current step".into(),
                             summary: text,
                             expanded: reasoning_expanded,
                             status: AgentStatus::Thinking,

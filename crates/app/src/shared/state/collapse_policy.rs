@@ -32,23 +32,23 @@ pub fn default_expansion(
         return true;
     }
     match (mode, kind) {
-        (TranscriptMode::Summary, TimelineRowKind::UserMessage) => false,
-        (TranscriptMode::Summary, TimelineRowKind::FinalSummary) => true,
-        (TranscriptMode::Summary, TimelineRowKind::RunError) => true,
-        (TranscriptMode::Summary, TimelineRowKind::ApprovalRequest) => true,
-        (TranscriptMode::Summary, _) => false,
+        (TranscriptMode::Focus, TimelineRowKind::UserMessage) => false,
+        (TranscriptMode::Focus, TimelineRowKind::FinalSummary) => true,
+        (TranscriptMode::Focus, TimelineRowKind::RunError) => true,
+        (TranscriptMode::Focus, TimelineRowKind::ApprovalRequest) => true,
+        (TranscriptMode::Focus, _) => false,
 
-        (TranscriptMode::Normal, TimelineRowKind::RunError) => true,
-        (TranscriptMode::Normal, TimelineRowKind::ApprovalRequest) => true,
-        (TranscriptMode::Normal, TimelineRowKind::DiffSummary) => false,
-        (TranscriptMode::Normal, TimelineRowKind::ToolCall) => false,
-        (TranscriptMode::Normal, TimelineRowKind::ReasoningNote) => false,
-        (TranscriptMode::Normal, _) => false,
+        (TranscriptMode::Activity, TimelineRowKind::RunError) => true,
+        (TranscriptMode::Activity, TimelineRowKind::ApprovalRequest) => true,
+        (TranscriptMode::Activity, TimelineRowKind::DiffSummary) => false,
+        (TranscriptMode::Activity, TimelineRowKind::ToolCall) => false,
+        (TranscriptMode::Activity, TimelineRowKind::ReasoningNote) => false,
+        (TranscriptMode::Activity, _) => false,
 
-        (TranscriptMode::Verbose, TimelineRowKind::ToolCall) => failed,
-        (TranscriptMode::Verbose, TimelineRowKind::ReasoningNote) => false,
-        (TranscriptMode::Verbose, TimelineRowKind::RunError) => true,
-        (TranscriptMode::Verbose, _) => false,
+        (TranscriptMode::Debug, TimelineRowKind::ToolCall) => failed,
+        (TranscriptMode::Debug, TimelineRowKind::ReasoningNote) => false,
+        (TranscriptMode::Debug, TimelineRowKind::RunError) => true,
+        (TranscriptMode::Debug, _) => false,
     }
 }
 
@@ -57,9 +57,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn summary_hides_tool_expansion() {
+    fn focus_hides_tool_expansion() {
         assert!(!default_expansion(
-            TranscriptMode::Summary,
+            TranscriptMode::Focus,
             TimelineRowKind::ToolCall,
             AgentStatus::Completed,
             false,
@@ -68,9 +68,9 @@ mod tests {
     }
 
     #[test]
-    fn normal_expands_failures() {
+    fn activity_expands_failures() {
         assert!(default_expansion(
-            TranscriptMode::Normal,
+            TranscriptMode::Activity,
             TimelineRowKind::ToolCall,
             AgentStatus::Failed,
             true,
@@ -79,9 +79,9 @@ mod tests {
     }
 
     #[test]
-    fn normal_expands_waiting_approval() {
+    fn activity_expands_waiting_approval() {
         assert!(default_expansion(
-            TranscriptMode::Normal,
+            TranscriptMode::Activity,
             TimelineRowKind::ToolCall,
             AgentStatus::WaitingApproval,
             false,
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn selection_overrides_mode() {
         assert!(default_expansion(
-            TranscriptMode::Summary,
+            TranscriptMode::Focus,
             TimelineRowKind::ToolCall,
             AgentStatus::Completed,
             false,
@@ -101,9 +101,9 @@ mod tests {
     }
 
     #[test]
-    fn verbose_keeps_tools_collapsed_when_ok() {
+    fn debug_keeps_tools_collapsed_when_ok() {
         assert!(!default_expansion(
-            TranscriptMode::Verbose,
+            TranscriptMode::Debug,
             TimelineRowKind::ToolCall,
             AgentStatus::Completed,
             false,

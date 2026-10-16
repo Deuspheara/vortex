@@ -209,6 +209,19 @@ pub fn tool_call_detail_row_count(
         .len()
 }
 
+pub fn tool_call_receipt_text(
+    tool_name: &str,
+    display_label: &str,
+    command: Option<&str>,
+    status: &AgentStatus,
+) -> (String, Option<String>) {
+    let summary = tool_call_summary(tool_name, display_label, command, status);
+    (
+        format!("{} {}", summary.verb, summary.primary),
+        summary.secondary,
+    )
+}
+
 fn file_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
     let raw = command.unwrap_or_else(|| label_remainder(display_label).unwrap_or("file"));
     let (path, line_range, range_label) = split_line_range(raw);

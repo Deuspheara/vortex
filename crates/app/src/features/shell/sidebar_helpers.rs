@@ -11,7 +11,7 @@ use crate::shared::components::buttons::btn_ghost_icon;
 use crate::shared::components::flat_list_row::flat_list_row;
 use crate::tokens::Tokens;
 use crate::tokens::icons;
-use crate::tokens::motion::{element_key, sidebar_atmosphere};
+
 use crate::ui::agent_window::AgentWindow;
 
 /// Embeds the sidebar view entity in the agent window.
@@ -24,52 +24,14 @@ pub(crate) fn render_app_nav(
     selected: AppNavItem,
 ) -> impl IntoElement {
     div()
-        .relative()
         .px(Tokens::spacing_2())
         .pt(Tokens::spacing_2())
-        .pb(Tokens::spacing_2())
+        .pb(Tokens::spacing_1p5())
         .flex()
         .flex_col()
         .gap(Tokens::spacing_0p5())
         .border_b_1()
         .border_color(Tokens::sidebar_border())
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .right_0()
-                .h(px(128.0))
-                .overflow_hidden()
-                .child(sidebar_atmosphere(
-                    div()
-                        .absolute()
-                        .top(px(-24.0))
-                        .left(px(-22.0))
-                        .w(px(172.0))
-                        .h(px(116.0))
-                        .rounded(Tokens::radius_full())
-                        .bg(Tokens::sidebar_nav_glow_gradient()),
-                    element_key("sidebar-nav-glow", "primary"),
-                    0.38,
-                    0.12,
-                    0.0,
-                ))
-                .child(sidebar_atmosphere(
-                    div()
-                        .absolute()
-                        .top(px(18.0))
-                        .right(px(-30.0))
-                        .w(px(132.0))
-                        .h(px(84.0))
-                        .rounded(Tokens::radius_full())
-                        .bg(Tokens::sidebar_nav_wash_gradient()),
-                    element_key("sidebar-nav-glow", "secondary"),
-                    0.24,
-                    0.1,
-                    1.8,
-                )),
-        )
         .child(app_nav_row(
             "sidebar-new-chat",
             icons::PENCIL,
@@ -148,11 +110,11 @@ pub(crate) fn render_projects_section_header(
             div()
                 .flex_1()
                 .min_w(px(0.0))
-                .text_size(Tokens::text_sm())
-                .font_weight(FontWeight::MEDIUM)
+                .text_size(Tokens::text_xs())
+                .font_weight(FontWeight::SEMIBOLD)
                 .text_color(Tokens::sidebar_text_muted())
-                .opacity(0.78)
-                .child("Projects"),
+                .opacity(0.84)
+                .child("PROJECTS"),
         )
         .child(
             div()
@@ -189,7 +151,8 @@ pub(crate) fn render_sidebar_footer(
         .border_t_1()
         .border_color(Tokens::sidebar_border())
         .bg(Tokens::sidebar_bg())
-        .p(Tokens::spacing_2())
+        .px(Tokens::spacing_2())
+        .py(Tokens::spacing_2())
         .child(flat_list_row(
             "sidebar-settings-row",
             Tokens::ROW_HEIGHT_MD,

@@ -15,9 +15,8 @@ pub fn render_diff_header_row(
     on_toggle: impl Fn(&mut App) + 'static,
     on_review: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
-    let stats = format!("+{additions} −{deletions}");
-    let summary = format!(
-        "Prepared changes in {files_changed} file{} · {stats}",
+    let stats = format!(
+        "{files_changed} file{} changed · +{additions} −{deletions}",
         if files_changed == 1 { "" } else { "s" }
     );
 
@@ -25,11 +24,22 @@ pub fn render_diff_header_row(
         timeline_row(
             element_key("diff-header", item_id),
             div()
-                .text_size(Tokens::text_sm())
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(Tokens::text_secondary())
-                .hover(|s| s.text_color(Tokens::text_primary()))
-                .child(summary)
+                .flex()
+                .flex_col()
+                .gap(Tokens::spacing_0p5())
+                .child(
+                    div()
+                        .text_size(Tokens::text_sm())
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(Tokens::text_primary())
+                        .child("Changes ready"),
+                )
+                .child(
+                    div()
+                        .text_size(Tokens::text_xs())
+                        .text_color(Tokens::text_secondary())
+                        .child(stats),
+                )
                 .into_any_element(),
             div()
                 .id(element_key("review", item_id))

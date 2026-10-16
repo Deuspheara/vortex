@@ -195,8 +195,22 @@ pub fn assistant_actions_height() -> f32 {
     Tokens::ROW_HEIGHT_SM
 }
 
-pub fn assistant_accessory_height(_item_ix: usize, _items: &[ThreadItem]) -> f32 {
-    assistant_actions_height() + f32::from(Tokens::spacing_1())
+fn assistant_shows_action_row(item_ix: usize, items: &[ThreadItem]) -> bool {
+    matches!(
+        items.get(item_ix),
+        Some(ThreadItem::AssistantMessage {
+            streaming: false,
+            ..
+        })
+    ) && crate::features::chat::state::is_final_assistant(item_ix, items)
+}
+
+pub fn assistant_accessory_height(item_ix: usize, items: &[ThreadItem]) -> f32 {
+    if assistant_shows_action_row(item_ix, items) {
+        assistant_actions_height() + f32::from(Tokens::spacing_1())
+    } else {
+        0.0
+    }
 }
 
 pub fn assistant_row_height_from_blocks(
@@ -476,7 +490,7 @@ pub fn reasoning_streaming_preview(summary: &str) -> String {
 
 #[allow(dead_code)]
 pub fn build_manifest(items: &[ThreadItem]) -> Vec<RowRef> {
-    build_manifest_with_transcript(items, TranscriptMode::Normal)
+    build_manifest_with_transcript(items, TranscriptMode::default())
 }
 
 pub fn build_manifest_with_transcript(items: &[ThreadItem], mode: TranscriptMode) -> Vec<RowRef> {
@@ -488,7 +502,7 @@ pub fn build_manifest_with_collapsed(
     items: &[ThreadItem],
     collapsed: &HashSet<String>,
 ) -> Vec<RowRef> {
-    build_manifest_with_collapsed_and_transcript(items, collapsed, TranscriptMode::Normal)
+    build_manifest_with_collapsed_and_transcript(items, collapsed, TranscriptMode::default())
 }
 
 pub fn build_manifest_with_collapsed_and_transcript(
@@ -626,7 +640,7 @@ pub fn manifest_span(manifest: &[RowRef], header_ix: usize) -> (usize, usize) {
 
 #[allow(dead_code)]
 pub fn row_refs_for_item(item_ix: u32, item: &ThreadItem, items: &[ThreadItem]) -> Vec<RowRef> {
-    row_refs_for_item_with_mode(item_ix, item, TranscriptMode::Normal, items)
+    row_refs_for_item_with_mode(item_ix, item, TranscriptMode::default(), items)
 }
 
 pub fn row_refs_for_item_with_mode(
@@ -728,6 +742,11 @@ fn reasoning_refs_with_mode(
     status: &AgentStatus,
     mode: TranscriptMode,
 ) -> Vec<RowRef> {
+    if matches!(mode, TranscriptMode::Focus) {
+        return matches!(status, AgentStatus::Thinking)
+            .then(|| reasoning_refs(item_ix, summary, expanded, status))
+            .unwrap_or_default();
+    }
     if !mode.shows_reasoning_rows() {
         return Vec::new();
     }
@@ -777,11 +796,13 @@ fn tool_refs_with_mode(
     }
 
     if output.is_some() {
-        tool_output_rows(item_ix, output, status, &mut rows);
+        if mode.shows_tool_output_rows() {
+            tool_output_rows(item_ix, output, status, &mut rows);
+        }
         return rows;
     }
 
-    if mode.shows_tool_output_rows() {
+    if mode.shows_tool_detail_rows() {
         for line_ix in 0..tool_call_detail_row_count(tool_name, command, status) {
             rows.push(RowRef::ToolDetailLine {
                 item_ix,
@@ -996,7 +1017,7 @@ mod tests {
         let refs = row_refs_for_item_with_mode(
             0,
             &item,
-            TranscriptMode::Verbose,
+            TranscriptMode::Debug,
             std::slice::from_ref(&item),
         );
         assert_eq!(
@@ -1032,7 +1053,7 @@ mod tests {
                 parent_call_id: Some("call-1".into()),
             },
         ];
-        let manifest = build_manifest_with_transcript(&items, TranscriptMode::Verbose);
+        let manifest = build_manifest_with_transcript(&items, TranscriptMode::Debug);
         assert!(manifest.contains(&RowRef::SubagentHeader { item_ix: 0 }));
         assert!(manifest.contains(&RowRef::SubagentBody { item_ix: 0 }));
         assert!(manifest.contains(&RowRef::ReasoningHeader { item_ix: 1 }));
@@ -1149,7 +1170,7 @@ document.querySelector("#year").textContent = year;
         let refs = row_refs_for_item_with_mode(
             0,
             &item,
-            TranscriptMode::Verbose,
+            TranscriptMode::Debug,
             std::slice::from_ref(&item),
         );
         assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
@@ -1161,7 +1182,7 @@ document.querySelector("#year").textContent = year;
     }
 
     #[test]
-    fn expanded_tool_in_normal_mode_shows_output_not_summary_detail() {
+    fn expanded_tool_in_activity_mode_hides_raw_output() {
         let item = ThreadItem::ToolCall {
             id: "tool-1".into(),
             tool_name: "search_project".into(),
@@ -1176,19 +1197,10 @@ document.querySelector("#year").textContent = year;
         let refs = row_refs_for_item_with_mode(
             0,
             &item,
-            TranscriptMode::Normal,
+            TranscriptMode::Activity,
             std::slice::from_ref(&item),
         );
 
-        assert_eq!(refs.first(), Some(&RowRef::ToolHeader { item_ix: 0 }));
-        assert!(refs.contains(&RowRef::ToolOutputLine {
-            item_ix: 0,
-            line_ix: 0
-        }));
-        assert!(
-            !refs
-                .iter()
-                .any(|row| matches!(row, RowRef::ToolDetailLine { .. }))
-        );
+        assert_eq!(refs, vec![RowRef::ToolHeader { item_ix: 0 }]);
     }
 }
