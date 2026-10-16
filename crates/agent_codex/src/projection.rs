@@ -17,6 +17,8 @@ pub struct RunProjection {
     pub context_usage: Option<(u64, Option<u64>)>,
     #[serde(default)]
     pub auto_review: bool,
+    #[serde(default)]
+    pub observed_diff: Option<String>,
     pub texts: HashMap<String, String>,
     pub started: HashSet<String>,
     pub completed: HashSet<String>,
@@ -36,6 +38,7 @@ impl RunProjection {
             usage: [0; 3],
             context_usage: None,
             auto_review: false,
+            observed_diff: None,
             texts: HashMap::new(),
             started: HashSet::new(),
             completed: HashSet::new(),
@@ -43,6 +46,19 @@ impl RunProjection {
             paths: HashMap::new(),
         }
     }
+    pub fn turn_diff(&mut self, diff: &str) -> Vec<AgentEvent> {
+        if self.observed_diff.as_deref() == Some(diff) {
+            return vec![];
+        }
+        self.observed_diff = Some(diff.into());
+        vec![AgentEvent::FileChangesObserved {
+            run_id: self.run_id.clone(),
+            call_id: self.call_id("turn-diff"),
+            unified_diff: diff.into(),
+            applied: true,
+        }]
+    }
+
     pub fn usage_update(&mut self, total: &Value) -> Option<AgentEvent> {
         let next = [
             total["inputTokens"].as_u64().unwrap_or(0),
@@ -411,6 +427,28 @@ mod tests {
             assert_eq!(fresh.approval_review(&params, true).len(), 2);
             assert!(fresh.approval_review(&json!({}), true).is_empty());
         }
+    }
+
+    #[test]
+    fn live_turn_diff_updates_are_deduplicated_and_replayed_as_observed_changes() {
+        let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
+        let first = p.turn_diff("first");
+        assert!(matches!(
+            &first[..],
+            [AgentEvent::FileChangesObserved { applied: true, .. }]
+        ));
+        let mut p: RunProjection =
+            serde_json::from_value(serde_json::to_value(p).unwrap()).unwrap();
+        assert!(p.turn_diff("first").is_empty());
+        let second = p.turn_diff("second");
+        assert!(
+            matches!((&first[0],&second[0]), (AgentEvent::FileChangesObserved{call_id:a,..},AgentEvent::FileChangesObserved{call_id:b,..}) if a==b)
+        );
+        assert_eq!(
+            p.turn_diff("").len(),
+            1,
+            "an undo can clear the observed diff"
+        );
     }
 
     #[test]

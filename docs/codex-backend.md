@@ -59,7 +59,9 @@ Command rows show the inner command for exact `sh`, `bash`, and `zsh` `-c`/`-lc`
 wrappers, without altering execution or stored events. Short commands without
 output have no expansion arrow or duplicated command body. Scripts show their
 first line and line count, with full contents in a bounded disclosure; actual
-output expands beneath its command. Manual approval previews retain the exact
+output expands beneath its command in a compact Shell card. Successful commands
+fold into an expandable group when their turn finishes; active commands,
+failures, and manual approvals remain visible. Manual approval previews retain the exact
 request and decision buttons, without decorative risk labels.
 Reviewer failures do not grant permission. An unfinished review after interruption
 or reconnect explicitly has no confirmed decision and is never resubmitted by
@@ -85,6 +87,14 @@ replacing the active decision card.
 Allow/deny decisions are persisted as `ApprovalResolved` events correlated to the
 exact tool item. Approvals expire when a process is replaced. Vortex never interprets
 "always allow" as an unbounded Codex permission grant.
+
+Codex `turn/diff/updated` notifications also update the Changes panel during a
+turn, including files that the server includes in its aggregated diff. Identical
+snapshots are deduplicated and persisted with the reconciliation cursor; updated
+snapshots replace one change summary for that run. An empty snapshot clears the
+preview after an undo. Vortex's native index/context readiness does not gate Codex
+or flash a setup banner when Codex writes a file; provider, project, and trust
+checks still apply.
 
 Codex file-change items supply previews and completed diffs. Completed edits are
 shown as observed changes, not as native Vortex patches awaiting application.

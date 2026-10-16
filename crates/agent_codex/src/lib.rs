@@ -796,6 +796,7 @@ impl Worker {
                     chunk: string(params, "delta").into(),
                 })
             }
+            "turn/diff/updated" => events.extend(p.turn_diff(string(params, "diff"))),
             "turn/plan/updated" => {
                 let markdown = params["plan"]
                     .as_array()

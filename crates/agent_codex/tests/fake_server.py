@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """A deterministic app-server peer. Never invokes Codex or network services."""
-import json,sys,pathlib
+import json,sys,pathlib,threading,time
 root=pathlib.Path(__file__).parent
 history=root/'history.json'
 turns=json.loads(history.read_text()) if history.exists() else []
 active=None
 parallel_pending=set()
 
+send_lock=threading.Lock()
 def send(value):
- print(json.dumps(value),flush=True)
+ with send_lock:
+  sys.stdout.write(json.dumps(value)+'\n');sys.stdout.flush()
 def reply(req,result):send({'id':req['id'],'result':result})
 def notice(method,params):send({'method':method,'params':params})
 def finish(text='hello world',status='completed'):
@@ -79,6 +81,26 @@ for line in sys.stdin:
      finish('The command printed `alpha` and `beta`.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n    let description = "A deliberately long code line for checking wrapping, horizontal scrolling, and readable type in a narrow transcript without losing the end of the line: CODE-LINE-END";\n}\n```\n\nA second paragraph keeps the same reading size.\n\n- One compact list item\n- Another item with **bold text**\n\n### Small heading\n\nThread typography check complete.')
     else:
      finish('The command output stays in the activity log.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n}\n```\n\nTHREAD-STYLE-END')
+  elif text=='diff-updates':
+   for value in ('one','two','two'):
+    notice('turn/diff/updated',{'threadId':'thread-1','turnId':active['id'],'diff':'--- a/live.txt\n+++ b/live.txt\n@@ -1 +1 @@\n-before\n+'+value+'\n'})
+   finish('Updated diff')
+  elif text=='ui-live':
+   # Protocol-only streaming and observed diffs; no file is actually written.
+   def stream_ui(turn):
+    chunks=[]
+    cmd={'id':'live-command','type':'commandExecution','command':"/bin/zsh -lc \"printf 'alpha\\nbeta\\n'\"",'status':'completed','aggregatedOutput':'alpha\nbeta\n','exitCode':0}
+    notice('item/completed',{'threadId':'thread-1','turnId':turn['id'],'item':cmd})
+    for n in range(80):
+     if turn['status']!='inProgress':return
+     chunk=('## Streaming progress\n\n' if n==0 else '')+f'Checkpoint {n}: keep this paragraph stable while new text arrives. The `live.txt` preview updates beside this thread.\n\n'
+     chunks.append(chunk)
+     notice('item/agentMessage/delta',{'threadId':'thread-1','turnId':turn['id'],'itemId':'message-'+turn['id'],'delta':chunk})
+     if n in (2,15,40,65):
+      notice('turn/diff/updated',{'threadId':'thread-1','turnId':turn['id'],'diff':'--- /dev/null\n+++ b/live.txt\n@@ -0,0 +1,2 @@\n+Streaming file preview\n+Checkpoint '+str(n)+'\n'})
+     time.sleep(0.3)
+    if turn['status']=='inProgress':finish(''.join(chunks)+'\nUpdated the component:\n\n- Commands stay quiet with useful details when expanded.\n- Inline `code` has comfortable padding and rounded corners.\n- Wrapped bullet points use the same line height as the surrounding text.\n\n**Streaming check complete.**')
+   threading.Thread(target=stream_ui,args=(active,),daemon=True).start()
   elif text=='ui-usage':
    totals={'inputTokens':0,'outputTokens':0,'cachedInputTokens':0,'totalTokens':0}
    for input_tokens,output_tokens,cached in [(19360,95,5632),(19523,29,19200),(19691,2135,5632),(21850,107,19328),(22045,53,19456)]:

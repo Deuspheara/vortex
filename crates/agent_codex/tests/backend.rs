@@ -660,3 +660,30 @@ async fn unfinished_automatic_review_is_closed_on_cancellation() {
     assert!(events.iter().any(|e| matches!(e,AgentEvent::ToolCallFinished{status:ToolStatus::Cancelled,summary,..} if summary.contains("no approval decision was confirmed"))));
     assert!(!f.dir.path().join("decision.json").exists());
 }
+
+#[tokio::test]
+async fn turn_diff_notifications_update_the_preview_during_execution() {
+    let f = Fixture::new();
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    start(&b, "diff-updates");
+    let events = finished(&rx).await;
+    let changes: Vec<_> = events
+        .iter()
+        .filter_map(|e| {
+            if let AgentEvent::FileChangesObserved {
+                unified_diff,
+                applied: true,
+                ..
+            } = e
+            {
+                Some(unified_diff)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(changes.len(), 2);
+    assert!(changes[0].contains("+one"));
+    assert!(changes[1].contains("+two"));
+}
