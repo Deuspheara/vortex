@@ -96,3 +96,7 @@ pub fn file_edit() -> gpui_component::Icon {
 pub fn wrap_lines() -> gpui_component::Icon {
     gpui_component::Icon::default().path("vortex/wrap-lines.svg")
 }
+
+pub fn chat() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/chat.svg")
+}

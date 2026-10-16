@@ -217,6 +217,20 @@ Native checks used 1305×964 and 1100×800 windows:
 The horizontal track is inset from the native window resize edge so its hit area
 remains usable. Screenshots and QA runtime data remain outside the repository.
 
+## Sidebar refinement
+
+Removed the sidebar's extra right border; the resizable layout now owns the
+single sidebar/thread separator. The search field has a compact input surface,
+a clear control, and explicit focus across its hit area. Project rows remain
+flat when expanded, while only the selected conversation receives a selection
+background. Shared conversation rows use a semantic chat glyph and aligned text;
+section actions have tooltips and the footer has less visual separation.
+
+Native checks verified search filtering and clearing, project collapse/expand,
+conversation selection, and widening the sidebar through the remaining resize
+handle. The revised sidebar was inspected at 1305×964 and 1100×800. The screenshot
+and isolated QA data remain outside the repository.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.

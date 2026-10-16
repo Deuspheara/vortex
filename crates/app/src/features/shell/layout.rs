@@ -230,8 +230,6 @@ impl Render for SidebarView {
             .flex()
             .flex_col()
             .bg(Tokens::sidebar_bg())
-            .border_r_1()
-            .border_color(Tokens::sidebar_border())
             .overflow_hidden()
             .child(self.render_expanded(cx))
     }

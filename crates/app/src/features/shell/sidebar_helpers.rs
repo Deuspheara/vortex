@@ -3,9 +3,9 @@
 //! Tree rendering lives in `sidebar_view` (isolated entity).
 
 use gpui::{Entity, FontWeight, IntoElement, div, prelude::*, px};
-use gpui_component::Icon;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
+use gpui_component::{Icon, Sizable, Size};
 
 use crate::features::shell::layout::SidebarView;
 use crate::features::shell::state::AppNavItem;
@@ -26,24 +26,47 @@ pub(crate) fn render_app_nav(
     _selected: AppNavItem,
     search_input: Entity<InputState>,
 ) -> impl IntoElement {
+    let focus_search = search_input.clone();
     div()
-        .px(Tokens::spacing_3())
-        .py(Tokens::spacing_3())
+        .px(Tokens::sidebar_padding())
+        .pt(Tokens::spacing_2())
+        .pb(Tokens::spacing_4())
         .flex()
         .items_center()
         .gap(Tokens::spacing_2())
         .child(
-            div().flex_1().min_w(px(0.0)).child(
-                Input::new(&search_input).appearance(false).prefix(
-                    Icon::new(icons::SEARCH)
-                        .size(Tokens::spacing_4())
-                        .text_color(Tokens::text_tertiary()),
+            div()
+                .id("sidebar-search-field")
+                .capture_any_mouse_down(move |event, window, app| {
+                    if event.button == gpui::MouseButton::Left {
+                        focus_search.update(app, |input, cx| input.focus(window, cx));
+                    }
+                })
+                .flex_1()
+                .min_w(px(0.0))
+                .h(px(Tokens::ROW_HEIGHT_LG))
+                .bg(Tokens::surface().opacity(0.55))
+                .border_1()
+                .border_color(Tokens::border_subtle())
+                .rounded(Tokens::radius_sm())
+                .child(
+                    Input::new(&search_input)
+                        .with_size(Size::Small)
+                        .appearance(false)
+                        .cleanable(true)
+                        .prefix(
+                            Icon::new(icons::SEARCH)
+                                .size(Tokens::spacing_4())
+                                .text_color(Tokens::text_tertiary()),
+                        ),
                 ),
-            ),
         )
         .child(
             Button::new("sidebar-new-chat")
                 .icon(icons::new_thread())
+                .h(px(Tokens::ROW_HEIGHT_LG))
+                .w(px(Tokens::ROW_HEIGHT_LG))
+                .rounded(Tokens::radius_sm())
                 .ghost()
                 .compact()
                 .tooltip("New chat")
@@ -72,7 +95,6 @@ pub(crate) fn render_projects_section_header(
                 .text_size(Tokens::text_xs())
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(Tokens::sidebar_text_muted())
-                .opacity(0.84)
                 .child("PROJECTS"),
         )
         .child(
@@ -80,14 +102,19 @@ pub(crate) fn render_projects_section_header(
                 .flex()
                 .items_center()
                 .gap(Tokens::spacing_1())
-                .child(btn_ghost_icon("filter-projects", icons::SEARCH).on_click({
-                    let entity = entity.clone();
-                    move |_, _, app: &mut gpui::App| {
-                        entity.update(app, |view, cx| view.open_search(cx));
-                    }
-                }))
+                .child(
+                    btn_ghost_icon("filter-projects", icons::SEARCH)
+                        .tooltip("Search workspace")
+                        .on_click({
+                            let entity = entity.clone();
+                            move |_, _, app: &mut gpui::App| {
+                                entity.update(app, |view, cx| view.open_search(cx));
+                            }
+                        }),
+                )
                 .child(
                     btn_ghost_icon("open-project-from-projects", icons::PLUS)
+                        .tooltip("Open project")
                         .h(px(Tokens::ROW_HEIGHT_SM))
                         .w(px(Tokens::ROW_HEIGHT_SM))
                         .on_click(move |_, window, app: &mut gpui::App| {
@@ -111,8 +138,6 @@ pub(crate) fn render_sidebar_footer(
         .flex()
         .items_center()
         .flex_shrink_0()
-        .border_t_1()
-        .border_color(Tokens::sidebar_border())
         .bg(Tokens::sidebar_bg())
         .px(Tokens::spacing_2())
         .py(Tokens::spacing_2())
@@ -133,8 +158,8 @@ pub(crate) fn render_sidebar_footer(
                     .gap(Tokens::spacing_2())
                     .child(
                         Icon::new(icons::SETTINGS)
-                            .size(px(14.0))
-                            .text_color(Tokens::sidebar_text()),
+                            .size(Tokens::spacing_4())
+                            .text_color(Tokens::sidebar_text_muted()),
                     )
                     .child(
                         div()

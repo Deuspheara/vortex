@@ -9,6 +9,7 @@ impl AssetSource for AppAssets {
             "vortex/branch.svg" => Some(include_bytes!("../assets/icons/branch.svg")),
             "vortex/shield.svg" => Some(include_bytes!("../assets/icons/shield.svg")),
             "vortex/new-thread.svg" => Some(include_bytes!("../assets/icons/new-thread.svg")),
+            "vortex/chat.svg" => Some(include_bytes!("../assets/icons/chat.svg")),
             "vortex/brain.svg" => Some(include_bytes!("../assets/icons/brain.svg")),
             "vortex/file-edit.svg" => Some(include_bytes!("../assets/icons/file-edit.svg")),
             "vortex/wrap-lines.svg" => Some(include_bytes!("../assets/icons/wrap-lines.svg")),
@@ -23,6 +24,7 @@ impl AssetSource for AppAssets {
         let mut entries = gpui_component_assets::Assets.list(path)?;
         if path == "vortex" {
             entries.push("vortex/wrap-lines.svg".into());
+            entries.push("vortex/chat.svg".into());
             entries.push("vortex/brain.svg".into());
             entries.push("vortex/file-edit.svg".into());
 

@@ -167,11 +167,7 @@ impl Render for DragSession {
             .flex()
             .items_center()
             .gap(Tokens::spacing_2())
-            .child(
-                Icon::new(icons::MESSAGE_SQUARE)
-                    .size(px(13.0))
-                    .text_color(Tokens::accent()),
-            )
+            .child(icons::chat().size(px(13.0)).text_color(Tokens::accent()))
             .child(
                 div()
                     .overflow_hidden()
@@ -393,6 +389,7 @@ pub fn session_row(
         Tokens::spacing_2()
     )
     .group(group_name.clone())
+    .gap(Tokens::spacing_2())
     .when(selected, |el| el.bg(sidebar_session_selected_bg()))
     .when(!selected, |el| {
         el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
@@ -437,6 +434,16 @@ pub fn session_row(
             view.clear_drop_target(cx);
         });
     })
+    .child(
+        icons::chat()
+            .size(Tokens::spacing_3p5())
+            .flex_shrink_0()
+            .text_color(if selected {
+                Tokens::sidebar_text_hover()
+            } else {
+                Tokens::sidebar_text_muted()
+            }),
+    )
     .child(
         div()
             .flex_1()
@@ -574,15 +581,7 @@ pub fn project_row(
     )
     .gap(Tokens::spacing_1p5())
     .group(group_name.clone())
-    .when(row.expanded, |el| {
-        el.bg(Tokens::sidebar_selected_bg().opacity(0.72))
-    })
-    .when(!row.expanded, |el| {
-        el.hover(|s| s.bg(Tokens::sidebar_hover_bg()))
-    })
-    .when(row.expanded, |el| {
-        el.hover(|s| s.bg(Tokens::sidebar_selected_bg().opacity(0.88)))
-    })
+    .hover(|s| s.bg(Tokens::sidebar_hover_bg()))
     .on_mouse_up(MouseButton::Right, move |_, _, app: &mut gpui::App| {
         sidebar_for_right.update(app, |view, cx| {
             view.set_open_action_menu(Some(menu_key_for_right.clone()), cx);
@@ -656,17 +655,12 @@ pub fn project_row(
                     .whitespace_nowrap()
                     .text_ellipsis()
                     .text_size(Tokens::text_sm())
-                    .font_weight(if row.expanded {
-                        FontWeight::MEDIUM
-                    } else {
-                        FontWeight::NORMAL
-                    })
+                    .font_weight(FontWeight::MEDIUM)
                     .text_color(if row.expanded {
                         Tokens::sidebar_text_hover()
                     } else {
                         Tokens::sidebar_text()
                     })
-                    .opacity(0.88)
                     .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                     .child(name),
                 element_key("project-name-cascade", &row.project_id.0),
