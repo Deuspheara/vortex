@@ -229,6 +229,12 @@ pub enum AgentEvent {
         patch_id: PatchId,
         files: Vec<PathBuf>,
     },
+    /// Current request occupancy, independent of cumulative billed/processed usage.
+    ContextWindowUpdated {
+        run_id: RunId,
+        used_tokens: u64,
+        max_tokens: Option<u64>,
+    },
     UsageUpdated {
         run_id: RunId,
         input_tokens: u64,
@@ -277,6 +283,7 @@ impl AgentEvent {
             | Self::AndroidActionPreviewed { run_id, .. }
             | Self::AndroidActionCompleted { run_id, .. }
             | Self::AndroidJourneyUpdated { run_id, .. }
+            | Self::ContextWindowUpdated { run_id, .. }
             | Self::UsageUpdated { run_id, .. }
             | Self::RunFinished { run_id, .. }
             | Self::RunFailed { run_id, .. } => Some(run_id),

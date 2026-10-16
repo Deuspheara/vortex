@@ -184,6 +184,7 @@ fn serialize_event(event: &AgentEvent) -> Result<(String, String), String> {
         AgentEvent::PatchPreviewUpdated { .. } => "PatchPreviewUpdated",
         AgentEvent::PatchProposed { .. } => "PatchProposed",
         AgentEvent::PatchApplied { .. } => "PatchApplied",
+        AgentEvent::ContextWindowUpdated { .. } => "ContextWindowUpdated",
         AgentEvent::UsageUpdated { .. } => "UsageUpdated",
         AgentEvent::RunFinished { .. } => "RunFinished",
         AgentEvent::RunFailed { .. } => "RunFailed",

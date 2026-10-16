@@ -13,6 +13,8 @@ pub struct RunProjection {
     pub active: bool,
     #[serde(default)]
     pub usage: [u64; 3],
+    #[serde(default)]
+    pub context_usage: Option<(u64, Option<u64>)>,
     pub texts: HashMap<String, String>,
     pub started: HashSet<String>,
     pub completed: HashSet<String>,
@@ -30,6 +32,7 @@ impl RunProjection {
             turn_id: None,
             active: true,
             usage: [0; 3],
+            context_usage: None,
             texts: HashMap::new(),
             started: HashSet::new(),
             completed: HashSet::new(),
@@ -57,6 +60,20 @@ impl RunProjection {
             cache_read_tokens: Some(delta[2]),
             cache_write_tokens: None,
             estimated_cost_usd: None,
+        })
+    }
+    pub fn context_usage_update(&mut self, usage: &Value) -> Option<AgentEvent> {
+        let used_tokens = usage["last"]["totalTokens"].as_u64()?;
+        let max_tokens = usage["modelContextWindow"].as_u64().filter(|n| *n > 0);
+        let snapshot = (used_tokens, max_tokens);
+        if self.context_usage == Some(snapshot) {
+            return None;
+        }
+        self.context_usage = Some(snapshot);
+        Some(AgentEvent::ContextWindowUpdated {
+            run_id: self.run_id.clone(),
+            used_tokens,
+            max_tokens,
         })
     }
     pub fn call_id(&self, item: &str) -> ToolCallId {
@@ -378,6 +395,56 @@ mod recovery_tests {
             Some(AgentEvent::UsageUpdated {
                 input_tokens: 20,
                 output_tokens: 5,
+                ..
+            })
+        ));
+    }
+}
+
+#[cfg(test)]
+mod context_usage_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn context_is_last_request_including_output_not_cumulative_or_uncached() {
+        let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
+        let usage = json!({"total":{"totalTokens":104888},
+            "last":{"inputTokens":22045,"cachedInputTokens":19456,"outputTokens":53,"totalTokens":22098},
+            "modelContextWindow":475000});
+        assert!(matches!(
+            p.context_usage_update(&usage),
+            Some(AgentEvent::ContextWindowUpdated {
+                used_tokens: 22098,
+                max_tokens: Some(475000),
+                ..
+            })
+        ));
+        let mut restored: RunProjection =
+            serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert!(restored.context_usage_update(&usage).is_none());
+        // Compaction can lower occupancy even when cumulative totals do not change.
+        assert!(matches!(
+            restored.context_usage_update(
+                &json!({"last":{"totalTokens":12000},"modelContextWindow":475000})
+            ),
+            Some(AgentEvent::ContextWindowUpdated {
+                used_tokens: 12000,
+                ..
+            })
+        ));
+    }
+    #[test]
+    fn missing_last_usage_is_not_misreported_as_an_empty_context() {
+        let mut p = RunProjection::new(RunId::new("r"), SessionId::new("s"), "t".into());
+        assert!(
+            p.context_usage_update(&json!({"total":{"totalTokens":104888}}))
+                .is_none()
+        );
+        assert!(matches!(
+            p.context_usage_update(&json!({"last":{"totalTokens":1234},"modelContextWindow":null})),
+            Some(AgentEvent::ContextWindowUpdated {
+                used_tokens: 1234,
+                max_tokens: None,
                 ..
             })
         ));

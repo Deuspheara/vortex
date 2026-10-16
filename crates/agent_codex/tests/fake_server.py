@@ -64,6 +64,13 @@ for line in sys.stdin:
     cmd.update(status='completed',exitCode=0,aggregatedOutput='alpha\nbeta\n')
     notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':cmd})
     finish('The command output stays in the activity log.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n}\n```\n\nTHREAD-STYLE-END')
+  elif text=='ui-usage':
+   totals={'inputTokens':0,'outputTokens':0,'cachedInputTokens':0,'totalTokens':0}
+   for input_tokens,output_tokens,cached in [(19360,95,5632),(19523,29,19200),(19691,2135,5632),(21850,107,19328),(22045,53,19456)]:
+    last={'inputTokens':input_tokens,'outputTokens':output_tokens,'cachedInputTokens':cached,'totalTokens':input_tokens+output_tokens}
+    for key in totals:totals[key]+=last[key]
+    notice('thread/tokenUsage/updated',{'threadId':'thread-1','turnId':active['id'],'tokenUsage':{'total':dict(totals),'last':last,'modelContextWindow':475000}})
+   finish('Usage fixture complete: current context 22,098 / 475,000 tokens; processed input 102,469 tokens. No inference or file changes were performed.')
   elif text=='ui-diff':
    # Observed protocol fixture only: no workspace file is changed.
    notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'ui-file-changes','type':'fileChange','status':'completed','changes':[{'path': 'src/main.rs', 'diff': '@@ -1,3 +1,4 @@\n fn main() {\n-    let message = "old";\n+    let message = "Review layout";\n+    println!("{message}");\n }\n'}, {'path': 'src/config.ts', 'kind': {'type': 'add'}, 'diff': 'export const configuration = {\n  theme: "frappe",\n  description: "A long line for checking readable wrapping and horizontal scrolling in a narrow review panel, without losing content or misaligning the corresponding old and new code lines.",\n  enabled: true,\n' + ''.join(f'  option_{i}: true,\n' for i in range(40)) + '};\n'}, {'path': 'src/legacy.rs', 'kind': {'type': 'delete'}, 'diff': 'pub fn legacy() {}\n// Replaced by the new entry point.\n'}]}})

@@ -825,6 +825,9 @@ impl Worker {
                 if let Some(event) = p.usage_update(&params["tokenUsage"]["total"]) {
                     events.push(event);
                 }
+                if let Some(event) = p.context_usage_update(&params["tokenUsage"]) {
+                    events.push(event);
+                }
             }
             "error" if !params["willRetry"].as_bool().unwrap_or(false) => {
                 return self.finish(

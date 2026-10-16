@@ -494,3 +494,39 @@ async fn live_codex_edit_requires_approval_and_reports_completed_diff() {
     assert!(observed, "No completed file diff was normalized");
     assert_eq!(std::fs::read_to_string(target).unwrap(), "after\n");
 }
+
+#[tokio::test]
+async fn usage_context_snapshot_is_persisted_separately_from_processed_tokens() {
+    let fixture = Fixture::new();
+    let (backend, rx) = fixture.spawn();
+    ready(&backend).await;
+    start(&backend, "ui-usage");
+    let events = finished(&rx).await;
+    let total_input: u64 = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::UsageUpdated { input_tokens, .. } => Some(*input_tokens),
+            _ => None,
+        })
+        .sum();
+    assert_eq!(total_input, 102469);
+    assert!(events.iter().any(|e| matches!(
+        e,
+        AgentEvent::ContextWindowUpdated {
+            used_tokens: 22098,
+            max_tokens: Some(475000),
+            ..
+        }
+    )));
+    let persisted = fixture
+        .store
+        .load_session_events(&SessionId::new("s"))
+        .unwrap();
+    assert_eq!(
+        persisted
+            .iter()
+            .filter(|e| matches!(e.event, AgentEvent::ContextWindowUpdated { .. }))
+            .count(),
+        5
+    );
+}

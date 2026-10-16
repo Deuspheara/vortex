@@ -507,6 +507,7 @@ impl AgentWindow {
             return;
         }
         match event {
+            AgentEvent::ContextWindowUpdated { .. } => {}
             AgentEvent::UserMessage { run_id, text } => {
                 if let Some(cid) = conv_id {
                     let user_id = format!("user-{}", run_id.0);
