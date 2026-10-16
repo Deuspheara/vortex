@@ -29,6 +29,12 @@ pub enum ArtifactKind {
 }
 
 #[derive(Clone, Debug)]
+pub struct ToolImage {
+    pub mime_type: String,
+    pub bytes: std::sync::Arc<Vec<u8>>,
+}
+
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct Artifact {
     pub id: ArtifactId,
@@ -42,9 +48,32 @@ pub struct Artifact {
     pub terminal_output: Option<String>,
     pub plan: Option<PlanArtifact>,
     pub selected_file_ix: usize,
+    pub image: Option<ToolImage>,
 }
 
 impl Artifact {
+    pub fn screen(
+        id: String,
+        source: String,
+        mime_type: String,
+        bytes: Vec<u8>,
+        call_id: String,
+    ) -> Self {
+        let mut artifact = Self::tool_evidence(
+            id,
+            ArtifactKind::Screenshot,
+            "Screen preview",
+            String::new(),
+            Some(call_id),
+        );
+        artifact.subtitle = Some(source);
+        artifact.image = Some(ToolImage {
+            mime_type,
+            bytes: std::sync::Arc::new(bytes),
+        });
+        artifact
+    }
+
     pub fn diff(id: impl Into<String>, title: impl Into<String>, files: Vec<DiffFile>) -> Self {
         let summaries: Vec<_> = files
             .iter()
@@ -66,6 +95,7 @@ impl Artifact {
             terminal_output: None,
             plan: None,
             selected_file_ix: 0,
+            image: None,
         }
     }
 
@@ -87,6 +117,7 @@ impl Artifact {
             terminal_output: Some(output),
             plan: None,
             selected_file_ix: 0,
+            image: None,
         }
     }
 
@@ -109,6 +140,7 @@ impl Artifact {
             terminal_output: Some(output),
             plan: None,
             selected_file_ix: 0,
+            image: None,
         }
     }
 
@@ -125,6 +157,7 @@ impl Artifact {
             terminal_output: None,
             plan: Some(plan),
             selected_file_ix: 0,
+            image: None,
         }
     }
 

@@ -1,6 +1,8 @@
 //! Full Codex agent backend, independent of the native model/tool loop.
 mod discovery;
+mod elicitation;
 mod projection;
+mod tool_images;
 mod transport;
 use agent_protocol::*;
 use agent_store::{EventStore, StoredRun};
@@ -97,7 +99,7 @@ struct PendingApproval {
     request_id: Value,
     run_id: RunId,
     call_id: ToolCallId,
-    method: String,
+    permission_content: Option<Value>,
     prompt: AgentEvent,
     shown: bool,
 }
@@ -496,6 +498,22 @@ impl Worker {
                 }
             }
             AgentCommand::CancelRun { run_id } => {
+                // Resolve MCP dialogs too, including requests queued behind another
+                // approval. Interrupting the turn alone can leave the MCP peer waiting.
+                let cancelled = self
+                    .approvals
+                    .iter()
+                    .filter(|(_, a)| a.run_id == run_id && a.permission_content.is_some())
+                    .map(|(id, _)| id.clone())
+                    .collect::<Vec<_>>();
+                for id in cancelled {
+                    let pending = &self.approvals[&id];
+                    client
+                        .send(json!({"id":pending.request_id,"result":{"action":"cancel"}}))
+                        .await?;
+                    self.approvals.remove(&id);
+                    self.approval_order.retain(|queued| queued != &id);
+                }
                 let p = self
                     .runs
                     .get(&run_id.0)
@@ -531,10 +549,12 @@ impl Worker {
         if !self.runs.get(&pending.run_id.0).is_some_and(|p| p.active) {
             return Err("Approval belongs to a finished turn".into());
         }
-        let decision = if accept { "accept" } else { "decline" };
-        let _method = pending.method;
+        let result = match &pending.permission_content {
+            Some(content) => elicitation::response(content, accept),
+            None => json!({"decision": if accept { "accept" } else { "decline" }}),
+        };
         client
-            .send(json!({"id":pending.request_id,"result":{"decision":decision}}))
+            .send(json!({"id":pending.request_id,"result":result}))
             .await?;
         self.persist(
             &self.runs[&pending.run_id.0],
@@ -654,29 +674,71 @@ impl Worker {
             })
             .map(|p| p.run_id.0.clone());
         if message.get("id").is_some() {
+            let permission = (method == "mcpServer/elicitation/request")
+                .then(|| elicitation::permission(params))
+                .flatten();
+            // Decline unsupported forms through MCP without crashing the turn or
+            // pretending a form, URL flow, or device proof was completed.
+            if method == "mcpServer/elicitation/request" && (permission.is_none() || id.is_none()) {
+                client
+                    .send(json!({"id":message["id"],"result":{"action":"decline"}}))
+                    .await?;
+                if let Some(id) = &id {
+                    let p = &self.runs[id];
+                    let call_id = p.call_id(&format!("unsupported-elicitation/{}", message["id"]));
+                    self.persist(p, vec![
+                        AgentEvent::ToolCallStarted {
+                            run_id: p.run_id.clone(), call_id: call_id.clone(),
+                            name: "codex_mcp_permission".into(), args_preview: "MCP permission request".into(),
+                            dedupe_key: None, risk: RiskLevel::High,
+                        },
+                        AgentEvent::ToolCallFinished {
+                            run_id: Some(p.run_id.clone()), call_id, status: ToolStatus::Denied,
+                            summary: "Permission declined · this request needs an unsupported form or authentication flow".into(),
+                            body: None,
+                        },
+                    ])?;
+                }
+                return Ok(());
+            }
             if let Some(ref id) = id
-                && matches!(
-                    method,
-                    "item/commandExecution/requestApproval" | "item/fileChange/requestApproval"
-                )
+                && (permission.is_some()
+                    || matches!(
+                        method,
+                        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval"
+                    ))
             {
                 let p = self.runs.get(id).unwrap();
                 let approval_id = ApprovalId::new(format!("codex-{}", uuid::Uuid::new_v4()));
-                let item = string(params, "itemId");
+                let permission_item = format!("mcp-permission/{}", approval_id.0);
+                let item = if permission.is_some() {
+                    permission_item.as_str()
+                } else {
+                    string(params, "itemId")
+                };
                 let call = p.call_id(item);
                 let prompt = AgentEvent::ApprovalRequested {
                     run_id: Some(p.run_id.clone()),
                     approval_id: approval_id.clone(),
                     call_id: call.clone(),
                     risk: RiskLevel::High,
-                    reason: params["reason"]
-                        .as_str()
-                        .unwrap_or("Codex requests permission to proceed")
-                        .to_string(),
-                    command_preview: params["command"]
-                        .as_str()
-                        .map(str::to_string)
-                        .or_else(|| p.previews.get(item).cloned().filter(|s| !s.is_empty())),
+                    reason: permission
+                        .as_ref()
+                        .map(|(description, _)| description.clone())
+                        .unwrap_or_else(|| {
+                            params["reason"]
+                                .as_str()
+                                .unwrap_or("Codex requests permission to proceed")
+                                .to_string()
+                        }),
+                    command_preview: if permission.is_some() {
+                        None
+                    } else {
+                        params["command"]
+                            .as_str()
+                            .map(str::to_string)
+                            .or_else(|| p.previews.get(item).cloned().filter(|s| !s.is_empty()))
+                    },
                     affected_paths: p
                         .paths
                         .get(item)
@@ -709,7 +771,7 @@ impl Worker {
                         request_id: message["id"].clone(),
                         run_id: p.run_id.clone(),
                         call_id: call,
-                        method: method.into(),
+                        permission_content: permission.map(|(_, content)| content),
                         prompt,
                         shown,
                     },

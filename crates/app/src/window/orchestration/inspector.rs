@@ -101,7 +101,10 @@ impl AgentWindow {
 
     pub fn select_artifact(&mut self, artifact_id: ArtifactId, cx: &mut Context<Self>) {
         if let Some(artifact) = self.artifact_store.get(&artifact_id) {
-            if matches!(artifact.kind, ArtifactKind::Terminal) {
+            if matches!(
+                artifact.kind,
+                ArtifactKind::Terminal | ArtifactKind::Screenshot | ArtifactKind::Vision
+            ) {
                 let id = self
                     .inspector_tabs
                     .select_artifact(artifact_id.clone(), artifact.title.clone());
@@ -123,6 +126,17 @@ impl AgentWindow {
     }
 
     pub fn select_tool_artifact(&mut self, item_id: &str, cx: &mut Context<Self>) {
+        let screen = self
+            .artifact_store
+            .all()
+            .find(|artifact| {
+                artifact.image.is_some() && artifact.thread_item_id.as_deref() == Some(item_id)
+            })
+            .map(|artifact| artifact.id.clone());
+        if let Some(id) = screen {
+            self.select_artifact(id, cx);
+            return;
+        }
         let artifact_id = ArtifactId::new(format!("tool-{item_id}"));
         if self.artifact_store.get(&artifact_id).is_none() {
             if let Some(conv_id) = self.selected_conversation_id.clone() {

@@ -102,6 +102,7 @@ pub fn render_docked_inspector(props: DockedInspectorProps) -> impl IntoElement 
             on_close,
             on_add,
             props.on_reorder_tab.clone(),
+            props.store.clone(),
         ))
         .child(
             div()
@@ -123,6 +124,7 @@ fn render_inspector_tabs(
     on_close: Option<Rc<dyn Fn(InspectorTabId, &mut gpui::App)>>,
     on_add: Option<Rc<dyn Fn(InspectorTabKind, &mut gpui::App)>>,
     on_reorder: Option<Rc<dyn Fn(InspectorTabId, InspectorTabId, &mut gpui::App)>>,
+    store: ArtifactStore,
 ) -> impl IntoElement {
     let tabs: Vec<TabItem> = inspector_tabs
         .tabs_for_dock(dock)
@@ -130,7 +132,7 @@ fn render_inspector_tabs(
         .map(|tab| TabItem {
             id: tab.id,
             label: tab.title.clone(),
-            icon: inspector_tab_icon(&tab.kind),
+            icon: inspector_tab_icon(&tab.kind, &store),
         })
         .collect();
 
@@ -248,7 +250,7 @@ fn render_inspector_body(props: DockedInspectorProps) -> impl IntoElement {
         InspectorTabKind::Artifact(id) => props
             .store
             .get(&id)
-            .map(render_artifact_view)
+            .map(|artifact| render_artifact_view(artifact, props.width))
             .unwrap_or_else(|| render_empty_panel().into_any_element()),
         InspectorTabKind::Subagent(item_id) => props
             .selected_subagent
@@ -261,12 +263,22 @@ fn render_inspector_body(props: DockedInspectorProps) -> impl IntoElement {
     }
 }
 
-fn inspector_tab_icon(kind: &InspectorTabKind) -> Option<gpui_component::IconName> {
+fn inspector_tab_icon(
+    kind: &InspectorTabKind,
+    store: &ArtifactStore,
+) -> Option<gpui_component::IconName> {
     Some(match kind {
         InspectorTabKind::BuiltIn(InspectorView::Changes) => icons::GIT_COMPARE,
         InspectorTabKind::BuiltIn(InspectorView::Context) => icons::SEARCH,
         InspectorTabKind::BuiltIn(InspectorView::Plan) => icons::CHECKLIST,
         InspectorTabKind::BuiltIn(InspectorView::Terminal) => icons::TERMINAL,
+        InspectorTabKind::Artifact(id)
+            if store
+                .get(id)
+                .is_some_and(|artifact| artifact.image.is_some()) =>
+        {
+            icons::APP_WINDOW
+        }
         InspectorTabKind::Artifact(_) => icons::FILE_TEXT,
         InspectorTabKind::Subagent(_) => icons::BOT,
         InspectorTabKind::Custom(InspectorCustomSlot::Browser) => icons::GLOBE,
@@ -277,7 +289,65 @@ fn inspector_tab_icon(kind: &InspectorTabKind) -> Option<gpui_component::IconNam
     })
 }
 
-fn render_artifact_view(artifact: &Artifact) -> gpui::AnyElement {
+fn render_artifact_view(artifact: &Artifact, width: f32) -> gpui::AnyElement {
+    if let Some(image) = &artifact.image {
+        let format = match image.mime_type.as_str() {
+            "image/jpeg" => gpui::ImageFormat::Jpeg,
+            "image/webp" => gpui::ImageFormat::Webp,
+            _ => gpui::ImageFormat::Png,
+        };
+        let source = std::sync::Arc::new(gpui::Image::from_bytes(
+            format,
+            image.bytes.as_ref().clone(),
+        ));
+        return div()
+            .w(px(width))
+            .h_full()
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .w_full()
+                    .min_w(px(0.0))
+                    .px(Tokens::spacing_3())
+                    .py(Tokens::spacing_2())
+                    .text_size(Tokens::text_xs())
+                    .text_color(Tokens::text_secondary())
+                    .flex_shrink_0()
+                    .overflow_hidden()
+                    .child(format!(
+                        "Latest tool image · {}",
+                        artifact.subtitle.as_deref().unwrap_or("Computer use")
+                    )),
+            )
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .min_h(px(0.0))
+                    .w_full()
+                    .overflow_hidden()
+                    .child(
+                        gpui::img(source)
+                            .absolute()
+                            .inset_0()
+                            .size_full()
+                            .object_fit(gpui::ObjectFit::Contain)
+                            .with_fallback(|| {
+                                div()
+                                    .p(Tokens::spacing_3())
+                                    .text_color(Tokens::text_secondary())
+                                    .child("This tool image could not be decoded")
+                                    .into_any_element()
+                            }),
+                    ),
+            )
+            .into_any_element();
+    }
     match &artifact.kind {
         crate::features::shell::state::ArtifactKind::Terminal
         | crate::features::shell::state::ArtifactKind::WebSource

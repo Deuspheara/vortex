@@ -65,3 +65,31 @@ pub fn phase_for_tool_name(tool_name: &str) -> ActivityPhase {
         _ => ActivityPhase::Edit,
     }
 }
+
+/// Keep the actual action in history; the server heading stays in the decision card.
+pub fn approval_action_description(request: &str) -> String {
+    let action = request
+        .split_once(" requests permission\n\n")
+        .map(|(_, action)| action)
+        .unwrap_or(request);
+    action.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn permission_history_preserves_the_requested_action() {
+        assert_eq!(
+            approval_action_description(
+                "computer-use requests permission\n\nView the browser screen\n\n• Screen access"
+            ),
+            "View the browser screen • Screen access"
+        );
+        assert_eq!(
+            approval_action_description("Run cargo check"),
+            "Run cargo check"
+        );
+    }
+}

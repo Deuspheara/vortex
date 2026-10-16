@@ -40,6 +40,7 @@ impl AgentWindow {
             let approve_entity = entity.clone();
             let approve_always_entity = entity.clone();
             ApprovalCardProps {
+                is_command: pending.is_command,
                 title: pending.title,
                 risk: pending.risk,
                 can_act: self.has_pending_approval(),

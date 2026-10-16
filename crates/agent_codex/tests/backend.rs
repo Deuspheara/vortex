@@ -175,6 +175,181 @@ async fn approval_accept_and_reject_use_correlated_request_id() {
     }
 }
 #[tokio::test]
+async fn tool_screen_images_are_normalized_persisted_and_kept_out_of_text_output() {
+    let f = Fixture::new();
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    start(&b, "ui-screen");
+    let events = finished(&rx).await;
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e, AgentEvent::ToolImageObserved { .. }))
+            .count(),
+        1
+    );
+    let image = events
+        .iter()
+        .find(|e| matches!(e, AgentEvent::ToolImageObserved { .. }))
+        .unwrap();
+    let AgentEvent::ToolImageObserved {
+        source,
+        mime_type,
+        data_base64,
+        call_id,
+        ..
+    } = image
+    else {
+        panic!()
+    };
+    assert_eq!(source, "computer-use fixture / screenshot");
+    assert_eq!(mime_type, "image/png");
+    assert!(data_base64.starts_with("iVBOR"));
+    assert!(events.iter().any(|e| matches!(e, AgentEvent::ToolCallFinished { call_id: id, body: Some(body), .. } if id == call_id && !body.contains(data_base64) && body.contains("Simulated capture fixture"))));
+    let stored = f.store.load_session_events(&SessionId::new("s")).unwrap();
+    assert!(stored.iter().any(|e| matches!(&e.event, AgentEvent::ToolImageObserved { data_base64: data, .. } if data == data_base64)));
+}
+
+#[tokio::test]
+async fn mcp_permissions_require_an_explicit_correlated_decision() {
+    for prompt in [
+        "elicitation-empty",
+        "elicitation-boolean",
+        "elicitation-openai",
+        "elicitation-no-turn",
+    ] {
+        for accept in [true, false] {
+            let f = Fixture::new();
+            let (b, rx) = f.spawn();
+            ready(&b).await;
+            start(&b, prompt);
+            let events = until(&rx, |e| matches!(e, AgentEvent::ApprovalRequested { .. })).await;
+            let AgentEvent::ApprovalRequested {
+                approval_id,
+                reason,
+                command_preview,
+                ..
+            } = events.last().unwrap()
+            else {
+                panic!()
+            };
+            assert!(reason.contains("computer-use"));
+            assert!(reason.contains("Allow access to your screen"));
+            assert!(command_preview.is_none());
+            assert!(!f.dir.path().join("decision.json").exists());
+            if prompt == "elicitation-boolean" {
+                assert!(reason.contains("Screen access"));
+                assert!(reason.contains("View the selected screen"));
+            }
+            b.send(if accept {
+                AgentCommand::ApproveTool {
+                    approval_id: approval_id.clone(),
+                }
+            } else {
+                AgentCommand::RejectTool {
+                    approval_id: approval_id.clone(),
+                    reason: None,
+                }
+            })
+            .unwrap();
+            let completed = finished(&rx).await;
+            assert_eq!(text(&completed), if accept { "approved" } else { "denied" });
+            assert!(completed.iter().any(|e| matches!(e, AgentEvent::ApprovalResolved { accepted, .. } if *accepted == accept)));
+            let reply: serde_json::Value = serde_json::from_str(
+                &std::fs::read_to_string(f.dir.path().join("decision.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(reply["id"], "screen-permission");
+            assert_eq!(
+                reply["result"]["action"],
+                if accept { "accept" } else { "decline" }
+            );
+            assert!(reply["result"].get("decision").is_none());
+            if accept {
+                assert_eq!(
+                    reply["result"]["content"],
+                    if prompt == "elicitation-boolean" {
+                        serde_json::json!({"screen":true})
+                    } else {
+                        serde_json::json!({})
+                    }
+                );
+            } else {
+                assert!(reply["result"].get("content").is_none());
+            }
+            let stored = f.store.load_session_events(&SessionId::new("s")).unwrap();
+            assert!(stored.iter().any(|e| matches!(&e.event, AgentEvent::ApprovalRequested { reason, .. } if reason.contains("computer-use"))));
+        }
+    }
+}
+
+#[tokio::test]
+async fn unsupported_mcp_forms_decline_without_failing_the_turn() {
+    for prompt in ["elicitation-rich", "elicitation-url"] {
+        let f = Fixture::new();
+        let (b, rx) = f.spawn();
+        ready(&b).await;
+        start(&b, prompt);
+        let events = finished(&rx).await;
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            AgentEvent::ApprovalRequested { .. } | AgentEvent::RunFailed { .. }
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            AgentEvent::ToolCallFinished {
+                status: ToolStatus::Denied,
+                ..
+            }
+        )));
+        assert_eq!(text(&events), "denied");
+    }
+}
+
+#[tokio::test]
+async fn cancelling_mcp_permission_cancels_the_dialog_and_expires_approval() {
+    let f = Fixture::new();
+    let (b, rx) = f.spawn();
+    ready(&b).await;
+    start(&b, "elicitation-empty");
+    let events = until(&rx, |e| matches!(e, AgentEvent::ApprovalRequested { .. })).await;
+    let AgentEvent::ApprovalRequested {
+        approval_id,
+        run_id: Some(run_id),
+        ..
+    } = events.last().unwrap()
+    else {
+        panic!()
+    };
+    b.send(AgentCommand::CancelRun {
+        run_id: run_id.clone(),
+    })
+    .unwrap();
+    let completed = finished(&rx).await;
+    assert!(completed.iter().any(|e| matches!(
+        e,
+        AgentEvent::RunFinished {
+            status: RunStatus::Cancelled,
+            ..
+        }
+    )));
+    let reply: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(f.dir.path().join("decision.json")).unwrap())
+            .unwrap();
+    assert_eq!(reply["result"]["action"], "cancel");
+    b.send(AgentCommand::ApproveTool {
+        approval_id: approval_id.clone(),
+    })
+    .unwrap();
+    start(&b, "follow-up");
+    assert_eq!(text(&finished(&rx).await), "hello world");
+    let reply_after: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(f.dir.path().join("decision.json")).unwrap())
+            .unwrap();
+    assert_eq!(reply_after, reply);
+}
+
+#[tokio::test]
 async fn concurrent_approvals_are_presented_one_at_a_time() {
     let f = Fixture::new();
     let (b, rx) = f.spawn();

@@ -166,6 +166,7 @@ fn serialize_event(event: &AgentEvent) -> Result<(String, String), String> {
         AgentEvent::ToolCallStarted { .. } => "ToolCallStarted",
         AgentEvent::ToolCallUpdated { .. } => "ToolCallUpdated",
         AgentEvent::ToolCallAwaitingApproval { .. } => "ToolCallAwaitingApproval",
+        AgentEvent::ToolImageObserved { .. } => "ToolImageObserved",
         AgentEvent::ApprovalRequested { .. } => "ApprovalRequested",
         AgentEvent::ApprovalResolved { .. } => "ApprovalResolved",
         AgentEvent::ChoiceRequested { .. } => "ChoiceRequested",

@@ -81,6 +81,29 @@ the draft composer is retained while its expanded input is temporarily hidden.
 The user's approval response is correlated to the exact server request. Unknown
 server requests are rejected, including unsupported permission and credential
 requests; unsupported interactions stop the affected turn with a visible error.
+MCP `mcpServer/elicitation/request` confirmations are supported: plain `form`
+and `openai/form` requests with an empty object schema or boolean permission
+fields appear above the composer with the requesting server, full explanation,
+and Allow / Deny actions. Allow returns the displayed boolean permissions as
+`true`; Deny returns no form content. This includes screen access confirmations
+from configured computer-use MCP servers. Vortex handles consent; the MCP server
+owns capture, target selection, and any operating system permission prompts.
+It does not add a screen broadcast or configure a computer-use server.
+Text-entry forms, URL flows, device verification, and richer schemas are declined
+with a visible activity entry so the agent can continue without access.
+Stop run cancels outstanding MCP confirmations. Permission decisions never become
+an always-allow rule, including in AI review mode.
+Permission history keeps the requested action and its Allow/Deny result in compact
+activity rows with action icons; hover a truncated receipt to read the full text.
+
+Inline PNG, JPEG, and WebP images returned by MCP tools are normalized into
+`ToolImageObserved` events and saved with the session. The first image opens a
+Screen preview tab in the right inspector; later images update that conversation's
+latest preview without reopening a tab the user closed. The preview names the
+source tool and shows the latest returned image, rather than a continuous feed.
+No image URLs are fetched or local screenshot paths read. Encoded image data is
+removed from the tool's text output. Payloads are bounded to 14 MiB of base64;
+unsupported or invalid images do not produce a preview.
 Command/edit requests within a turn are presented in order, one at a time.
 Queued requests persist a normalized waiting state for their tool item without
 replacing the active decision card.

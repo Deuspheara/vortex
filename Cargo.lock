@@ -237,6 +237,7 @@ dependencies = [
  "agent_store",
  "agent_tools",
  "android_device",
+ "base64",
  "blake3",
  "chrono",
  "dirs 6.0.0",

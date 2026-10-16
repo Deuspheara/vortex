@@ -1048,6 +1048,25 @@ mod tests {
     use crate::features::shell::state::{PlanExecutionState, PlanProgressCounts};
 
     #[test]
+    fn permission_receipts_share_compact_activity_spacing() {
+        let items: Vec<_> = (0..2)
+            .map(|index| ThreadItem::ApprovalRequest {
+                id: format!("permission-{index}"),
+                title: "Allowed · View browser screen".into(),
+                risk: crate::features::shell::state::ApprovalRisk::High,
+                resolved: true,
+            })
+            .collect();
+        let first = RowRef::Approval { item_ix: 0 };
+        let second = RowRef::Approval { item_ix: 1 };
+        assert_eq!(row_height(first, None, &items), Tokens::ROW_HEIGHT_XS);
+        assert_eq!(
+            row_height(second, Some(first), &items),
+            Tokens::ROW_HEIGHT_XS + layout::activity_inner_gap()
+        );
+    }
+
+    #[test]
     fn subagent_emits_single_header_row() {
         let item = ThreadItem::SubagentRun {
             id: "subagent-1".into(),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A deterministic app-server peer. Never invokes Codex or network services."""
-import json,sys,pathlib,threading,time
+import json,sys,pathlib,threading,time,base64,struct,zlib
 root=pathlib.Path(__file__).parent
 history=root/'history.json'
 turns=json.loads(history.read_text()) if history.exists() else []
@@ -27,7 +27,8 @@ for line in sys.stdin:
   if req.get('id') in parallel_pending:
    parallel_pending.remove(req['id'])
    if not parallel_pending:finish('both approved')
-  elif req.get('result',{}).get('decision')=='accept':finish('approved')
+  elif req.get('result',{}).get('action')=='cancel':pass
+  elif req.get('result',{}).get('decision',req.get('result',{}).get('action'))=='accept':finish('approved')
   else:finish('denied')
  elif method=='initialize':reply(req,{'userAgent':'fake'})
  elif method=='initialized':pass
@@ -50,6 +51,29 @@ for line in sys.stdin:
    approval_command = ('python3 - <<\'PY\'\n' + ''.join(f'print("approval line {n}")\n' for n in range(120)) + '# COMMAND-END\nPY') if text=='long-approval' else 'echo test'
    notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd','type':'commandExecution','command':approval_command}})
    send({'id':'approval-1','method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd','command':approval_command}})
+  elif text=='ui-screen':
+   def png_chunk(kind,data):return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
+   width,height=640,400
+   rows=[]
+   for y in range(height):
+    row=bytearray()
+    for x in range(width):
+     color=(40,44,60) if y<40 or x<120 else ((180,145,205) if 160<x<580 and 95<y<140 else (65+(x//40)%2*12,72+(y//40)%2*12,95))
+     if x<3 or y<3 or x>=width-3 or y>=height-3:color=(205,215,235)
+     row.extend(color)
+    rows.append(b'\x00'+bytes(row))
+   png=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('>IIBBBBB',width,height,8,2,0,0,0))+png_chunk(b'IDAT',zlib.compress(b''.join(rows)))+png_chunk(b'IEND',b'')
+   item={'id':'screen-fixture','type':'mcpToolCall','server':'computer-use fixture','tool':'screenshot','status':'completed','result':{'content':[{'type':'text','text':'Simulated capture fixture. No screen was accessed.'},{'type':'image','mimeType':'image/png','data':base64.b64encode(png).decode()}]}}
+   notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':item})
+   finish('Screen preview fixture complete. The image is synthetic; no screen capture was performed.')
+  elif text.startswith('elicitation-'):
+   schema={'type':'object','properties':{}}
+   mode='form'
+   if text=='elicitation-boolean':schema['properties']={'screen':{'type':'boolean','title':'Screen access','description':'View the selected screen'}}
+   if text=='elicitation-rich':schema['properties']={'password':{'type':'string'}}
+   if text=='elicitation-openai':mode='openai/form'
+   if text=='elicitation-url':mode='url'
+   send({'id':'screen-permission','method':'mcpServer/elicitation/request','params':{'threadId':'thread-1','turnId':None if text=='elicitation-no-turn' else active['id'],'serverName':'computer-use','mode':mode,'message':'Allow access to your screen for this task?','requestedSchema':schema}})
   elif text.startswith('ai-review-'):
    assert params['approvalPolicy']=='on-request'
    assert params['approvalsReviewer']=='auto_review'

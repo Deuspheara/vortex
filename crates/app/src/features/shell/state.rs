@@ -716,6 +716,7 @@ impl ThreadItem {
                 | ThreadItem::DiffSummary { .. }
                 | ThreadItem::PlanStatus { .. }
                 | ThreadItem::ContextTrace { .. }
+                | ThreadItem::ApprovalRequest { .. }
         )
     }
 }
@@ -881,6 +882,7 @@ pub struct PendingDiffApproval {
 #[derive(Clone, Debug)]
 pub struct PendingThreadApproval {
     pub title: String,
+    pub is_command: bool,
     pub risk: ApprovalRisk,
     pub allow_always_label: Option<String>,
 }

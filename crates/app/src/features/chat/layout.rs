@@ -66,8 +66,8 @@ pub const LINE_H: f32 = Tokens::DIFF_LINE_HEIGHT;
 /// Diff file stat line height — `Tokens::ROW_HEIGHT_SM`.
 pub const DIFF_FILE_H: f32 = Tokens::ROW_HEIGHT_SM;
 
-/// Approval row height — `Tokens::ROW_HEIGHT_SM`.
-pub const APPROVAL_H: f32 = Tokens::ROW_HEIGHT_SM;
+/// Compact permission receipts share the activity band.
+pub const APPROVAL_H: f32 = Tokens::ROW_HEIGHT_XS;
 
 /// Top padding on assistant markdown body.
 pub fn assistant_body_pt() -> f32 {

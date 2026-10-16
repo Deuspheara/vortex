@@ -121,6 +121,14 @@ pub enum AgentEvent {
         run_id: RunId,
         call_id: ToolCallId,
     },
+    /// An image returned by a tool, never an independent screen capture by the UI.
+    ToolImageObserved {
+        run_id: RunId,
+        call_id: ToolCallId,
+        source: String,
+        mime_type: String,
+        data_base64: String,
+    },
     ApprovalRequested {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         run_id: Option<RunId>,
@@ -273,6 +281,7 @@ impl AgentEvent {
             | Self::ToolCallStarted { run_id, .. }
             | Self::ToolCallUpdated { run_id, .. }
             | Self::ToolCallAwaitingApproval { run_id, .. }
+            | Self::ToolImageObserved { run_id, .. }
             | Self::ApprovalResolved { run_id, .. }
             | Self::ChoiceRequested { run_id, .. }
             | Self::TodoUpdated { run_id, .. }

@@ -865,6 +865,39 @@ impl AgentWindow {
                     }
                 }
             }
+            AgentEvent::ToolImageObserved {
+                call_id,
+                source,
+                mime_type,
+                data_base64,
+                ..
+            } => {
+                use base64::{Engine, engine::general_purpose::STANDARD};
+                let Some(cid) = conv_id else {
+                    return;
+                };
+                if data_base64.len() > 14 * 1024 * 1024
+                    || !matches!(
+                        mime_type.as_str(),
+                        "image/png" | "image/jpeg" | "image/webp"
+                    )
+                {
+                    return;
+                }
+                let Ok(bytes) = STANDARD.decode(&data_base64) else {
+                    return;
+                };
+                let id = ArtifactId::new(format!("screen-{}", cid.0));
+                let first_image = self.artifact_store.get(&id).is_none();
+                let mut artifact =
+                    Artifact::screen(id.0.clone(), source, mime_type, bytes, call_id.0.clone());
+                artifact.thread_item_id = self.reducer_state.tool_items.get(&call_id.0).cloned();
+                self.artifact_store.upsert(artifact);
+                if first_image && self.selected_conversation_id.as_ref() == Some(&cid) {
+                    self.select_artifact(id, cx);
+                }
+                cx.notify();
+            }
             AgentEvent::ToolCallFinished {
                 call_id,
                 status,
@@ -1392,12 +1425,14 @@ impl AgentWindow {
                         } = item
                         {
                             *resolved = true;
-                            *title = if accepted {
-                                "Permission allowed once"
-                            } else {
-                                "Permission denied"
-                            }
-                            .into();
+                            let action = title
+                                .strip_prefix("Allowed · ")
+                                .or_else(|| title.strip_prefix("Denied · "))
+                                .unwrap_or(title);
+                            *title = format!(
+                                "{} · {action}",
+                                if accepted { "Allowed" } else { "Denied" }
+                            );
                         }
                     },
                     cx,
@@ -1470,7 +1505,10 @@ impl AgentWindow {
                         conv_id.clone(),
                         ThreadItem::ApprovalRequest {
                             id: approval_id.0.clone(),
-                            title: title.clone(),
+                            title:
+                                crate::features::agent_activity::state::approval_action_description(
+                                    &title,
+                                ),
                             risk: mapped_risk.clone(),
                             resolved: false,
                         },
@@ -1510,6 +1548,7 @@ impl AgentWindow {
                     risk: mapped_risk.clone(),
                 });
                 self.pending_thread_approval = Some(PendingThreadApproval {
+                    is_command: command_preview.is_some(),
                     title,
                     risk: mapped_risk,
                     allow_always_label: if is_shell_tool && !approval_id.0.starts_with("codex-") {

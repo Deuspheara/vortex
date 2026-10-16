@@ -322,14 +322,18 @@ impl RunProjection {
                 }
                 _ => ToolStatus::Completed,
             };
+            let mut result = item["result"].clone();
+            if kind == "mcpToolCall" {
+                if let Some(image) =
+                    crate::tool_images::extract(&mut result, &self.run_id, &call_id, &preview)
+                {
+                    events.push(image);
+                }
+            }
             let body = item["aggregatedOutput"]
                 .as_str()
                 .map(str::to_string)
-                .or_else(|| {
-                    item.get("result")
-                        .filter(|v| !v.is_null())
-                        .map(Value::to_string)
-                });
+                .or_else(|| (!result.is_null()).then(|| result.to_string()));
             let body = body.or_else(|| {
                 item.get("error")
                     .filter(|v| !v.is_null())

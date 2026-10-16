@@ -4,8 +4,9 @@ use crate::features::shell::state::ApprovalRisk;
 use crate::shared::components::buttons::btn_copy_icon_arc;
 use crate::shared::components::buttons::{btn_approve, btn_deny};
 use crate::tokens::element_key;
-use crate::tokens::{Tokens, activity_action_line_with_loading};
+use crate::tokens::{Tokens, icons};
 use gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*, px};
+use gpui_component::Icon;
 
 /// Full command text is bounded independently from the always-visible decision row.
 #[derive(IntoElement)]
@@ -69,6 +70,7 @@ impl RenderOnce for ApprovalCommandPreview {
 
 /// Sticky elevated approval card — primary blocking action surface near composer.
 pub struct ApprovalCardProps {
+    pub is_command: bool,
     pub title: String,
     pub risk: ApprovalRisk,
     pub can_act: bool,
@@ -104,12 +106,24 @@ pub fn approval_card(props: ApprovalCardProps) -> impl IntoElement {
                 .flex()
                 .flex_col()
                 .gap(Tokens::spacing_3())
-                .child(div().flex().flex_col().gap(Tokens::spacing_0p5()).child(
-                    ApprovalCommandPreview {
+                .when(props.is_command, |el| {
+                    el.child(ApprovalCommandPreview {
                         id: "composer",
-                        command: title,
-                    },
-                ))
+                        command: title.clone(),
+                    })
+                })
+                .when(!props.is_command, |el| {
+                    el.child(
+                        div()
+                            .id("permission-request-description")
+                            .max_h(px(Tokens::TOOL_OUTPUT_MAX_HEIGHT))
+                            .overflow_y_scroll()
+                            .text_size(Tokens::text_sm())
+                            .line_height(Tokens::text_sm_leading())
+                            .text_color(Tokens::text_primary())
+                            .child(title),
+                    )
+                })
                 .when(props.can_act, |el| {
                     el.child(
                         div()
@@ -118,8 +132,15 @@ pub fn approval_card(props: ApprovalCardProps) -> impl IntoElement {
                             .items_center()
                             .gap(Tokens::spacing_2())
                             .child(
-                                btn_approve("approve-once", "Allow once")
-                                    .on_click(move |_, _, app: &mut App| on_approve(app)),
+                                btn_approve(
+                                    "approve-once",
+                                    if props.is_command {
+                                        "Allow once"
+                                    } else {
+                                        "Allow"
+                                    },
+                                )
+                                .on_click(move |_, _, app: &mut App| on_approve(app)),
                             )
                             .child(
                                 btn_deny("deny-approval-card", "Deny")
@@ -145,27 +166,55 @@ pub fn thread_approval_row(
     resolved: bool,
     approval_active: bool,
 ) -> impl IntoElement {
-    let detail = if resolved {
-        None
-    } else if approval_active {
-        Some(format!(
-            "Review above the composer to continue · {}",
-            risk.label()
-        ))
+    let _risk = risk;
+    let title = title.lines().next().unwrap_or_default();
+    let tooltip = title.to_string();
+    let action = title.to_lowercase();
+    let icon = if action.contains("screen")
+        || action.contains("computer")
+        || action.contains("screenshot")
+    {
+        icons::APP_WINDOW
+    } else if action.contains("browser")
+        || action.contains("navigate")
+        || action.contains("website")
+    {
+        icons::GLOBE
+    } else if action.contains("command") || action.contains("terminal") {
+        icons::TERMINAL
+    } else if action.contains("edit") || action.contains("write") {
+        icons::PENCIL
     } else {
-        None
+        icons::SHIELD_CHECK
     };
     div()
         .id("thread-approval-row")
+        .tooltip(move |window, cx| {
+            gpui_component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+        })
         .w_full()
-        .child(activity_action_line_with_loading(
-            title,
-            detail.as_deref(),
-            !resolved && approval_active,
-            false,
-            approval_active,
-            "approval-legacy",
-        ))
+        .h(px(Tokens::ROW_HEIGHT_XS))
+        .flex()
+        .items_center()
+        .gap(Tokens::spacing_2())
+        .text_size(Tokens::text_sm())
+        .text_color(Tokens::text_secondary())
+        .child(Icon::new(icon).size(Tokens::text_sm()).flex_shrink_0())
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .truncate()
+                .child(title.to_string()),
+        )
+        .when(!resolved && approval_active, |el| {
+            el.child(
+                div()
+                    .text_size(Tokens::text_xs())
+                    .text_color(Tokens::text_tertiary())
+                    .child("Awaiting permission"),
+            )
+        })
 }
 
 /// Bottom bar inside the diff panel — title, risk, Reject / Approve.
