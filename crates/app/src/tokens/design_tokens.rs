@@ -548,7 +548,7 @@ impl Tokens {
     pub const ATTACHMENT_PREVIEW_GAP: f32 = 4.0;
     pub const COMPOSER_ERROR_ROW_HEIGHT: f32 = Self::ROW_HEIGHT_XS;
     /// Compact input pill height (empty state — grows with content).
-    pub const COMPOSER_INPUT_MIN_HEIGHT: f32 = 40.0;
+    pub const COMPOSER_INPUT_MIN_HEIGHT: f32 = 64.0;
     /// Compact mode/strip row above the pill (legacy alias — mode chips sit below the pill now).
     pub const COMPOSER_RUN_STRIP_HEIGHT: f32 = Self::ROW_HEIGHT_SM;
     /// Mode chip row height (`mode_chips.rs`).
@@ -747,13 +747,13 @@ impl Tokens {
     pub fn text_base() -> gpui::Pixels {
         px(14.0)
     }
-    /// 15 px — thread body
+    /// 14 px — thread body
     pub fn text_md() -> gpui::Pixels {
-        px(15.0)
+        px(14.0)
     }
     /// 15 px thread body line height (~1.55)
     pub fn text_md_leading() -> gpui::Pixels {
-        px(23.0)
+        px(22.0)
     }
     /// 13 px tool row line height
     pub fn text_sm_leading() -> gpui::Pixels {

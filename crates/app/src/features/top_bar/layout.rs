@@ -45,15 +45,19 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
         .pl(px(Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET))
         .pr(Tokens::spacing_2())
         .gap(Tokens::spacing_1())
-        .when(props.show_panel_controls, |el| {
-            el.child(panel_control_cluster(PanelControlClusterProps {
-                sidebar_collapsed: props.sidebar_collapsed,
-                inspector_open: props.inspector_open,
-                terminal_open: props.terminal_panel_open,
-                on_toggle_sidebar: props.on_toggle_sidebar,
-                on_toggle_inspector: props.on_toggle_inspector,
-                on_toggle_terminal: props.on_toggle_terminal,
-            }))
+        .when(!props.sidebar_collapsed, |el| {
+            el.child(
+                div()
+                    .w(px(
+                        Tokens::SIDEBAR_WIDTH - Tokens::TOP_BAR_TRAFFIC_LIGHT_INSET
+                    ))
+                    .flex_shrink_0()
+                    .px(Tokens::spacing_3())
+                    .text_size(Tokens::text_sm())
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(Tokens::text_primary())
+                    .child("Vortex"),
+            )
         })
         .child(
             div()
@@ -78,6 +82,16 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                 .gap(Tokens::spacing_1())
                 .flex_shrink_0()
                 .opacity(0.88)
+                .when(props.show_panel_controls, |el| {
+                    el.child(panel_control_cluster(PanelControlClusterProps {
+                        sidebar_collapsed: props.sidebar_collapsed,
+                        inspector_open: props.inspector_open,
+                        terminal_open: props.terminal_panel_open,
+                        on_toggle_sidebar: props.on_toggle_sidebar,
+                        on_toggle_inspector: props.on_toggle_inspector,
+                        on_toggle_terminal: props.on_toggle_terminal,
+                    }))
+                })
                 .child(render_dock_actions(props.on_new_terminal_tab))
                 .when_some(props.workspace_readiness_label, |el, label| {
                     el.child(render_workspace_status(label, props.on_workspace_status))

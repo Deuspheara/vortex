@@ -21,6 +21,9 @@ impl AgentWindow {
     }
 
     pub fn set_bottom_panel_height(&mut self, height: f32, cx: &mut Context<Self>) {
+        if !self.terminal_panel_open || height < Tokens::BOTTOM_PANEL_MIN_HEIGHT {
+            return;
+        }
         self.bottom_panel_height = height.clamp(
             Tokens::BOTTOM_PANEL_MIN_HEIGHT,
             Tokens::BOTTOM_PANEL_MAX_HEIGHT,
@@ -31,6 +34,9 @@ impl AgentWindow {
     }
 
     pub fn set_right_dock_width(&mut self, width: f32, cx: &mut Context<Self>) {
+        if !self.diff_panel.open || width < Tokens::DIFF_PANEL_MIN_WIDTH {
+            return;
+        }
         self.right_dock_width =
             width.clamp(Tokens::DIFF_PANEL_MIN_WIDTH, Tokens::DIFF_PANEL_MAX_WIDTH);
         cx.notify();

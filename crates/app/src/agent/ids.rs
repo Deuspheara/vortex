@@ -45,6 +45,14 @@ pub fn vortex_data_dir() -> PathBuf {
 
     #[cfg(not(all(feature = "demo_mode", debug_assertions)))]
     {
+        if let Some(path) = std::env::var_os("VORTEX_DATA_DIR") {
+            let path = PathBuf::from(path);
+            assert!(
+                path.is_absolute(),
+                "VORTEX_DATA_DIR must be an absolute path"
+            );
+            return path;
+        }
         dirs::home_dir()
             .map(|h| h.join(".config").join("vortex"))
             .unwrap_or_else(|| PathBuf::from(".vortex"))

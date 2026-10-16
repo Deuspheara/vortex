@@ -140,10 +140,21 @@ fn tool_call_summary(
             command,
             Some("virtual shell"),
         ),
-        "run_real_command" => command_summary(
+        "run_real_command" | "codex_command" => command_summary(
             if running { "Running" } else { "Ran" },
             command,
             Some("real command"),
+        ),
+        "codex_file_change" => file_summary(
+            if running {
+                "Editing"
+            } else if matches!(status, AgentStatus::Failed) {
+                "Edit not applied"
+            } else {
+                "Edited"
+            },
+            command,
+            display_label,
         ),
         "write_file" => file_summary(
             if running { "Writing" } else { "Wrote" },

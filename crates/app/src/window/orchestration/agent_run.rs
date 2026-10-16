@@ -88,6 +88,9 @@ impl AgentWindow {
         });
         self.pending_image_attachments.clear();
         self.composer_error = None;
+        if let Some(thread) = &self.thread_view {
+            thread.update(cx, |view, _| view.scroll_to_bottom());
+        }
 
         self.sync_plan_status_for_conversation(&conv_id, cx);
         self.sync_thread_view(conv_id.clone(), cx);
@@ -219,6 +222,21 @@ impl AgentWindow {
     }
 
     pub fn cancel_active_run(&mut self, cx: &mut Context<Self>) {
+        if let Some(run_id) = &self.active_run_id
+            && run_id.0.starts_with("codex-")
+        {
+            match self
+                .agent_bridge
+                .send(agent_protocol::AgentCommand::CancelRun {
+                    run_id: run_id.clone(),
+                }) {
+                Ok(()) => self.composer_error = Some("Stopping Codex…".into()),
+                Err(error) => self.composer_error = Some(format!("Could not stop Codex: {error}")),
+            }
+            // Keep this turn active until turn/completed confirms interruption.
+            cx.notify();
+            return;
+        }
         if let Some(run_id) = &self.active_run_id {
             self.agent_bridge
                 .send(agent_protocol::AgentCommand::CancelRun {

@@ -765,6 +765,7 @@ fn row_style(kind: &DiffRowKind) -> (Hsla, Option<Hsla>, Hsla) {
 pub fn parse_unified_diff(unified_diff: &str) -> Vec<DiffFile> {
     let mut files = Vec::new();
     let mut current_path: Option<String> = None;
+    let mut old_path = String::new();
     let mut rows: Vec<DiffRow> = Vec::new();
     let mut added = 0usize;
     let mut removed = 0usize;
@@ -797,6 +798,10 @@ pub fn parse_unified_diff(unified_diff: &str) -> Vec<DiffFile> {
     };
 
     for line in unified_diff.lines() {
+        if let Some(path) = line.strip_prefix("--- ") {
+            old_path = path.strip_prefix("a/").unwrap_or(path).trim().to_string();
+            continue;
+        }
         if line.starts_with("+++ ") {
             flush(
                 current_path.take(),
@@ -812,9 +817,16 @@ pub fn parse_unified_diff(unified_diff: &str) -> Vec<DiffFile> {
                 .unwrap_or("")
                 .trim()
                 .to_string();
+            let path = if path == "/dev/null" {
+                old_path.clone()
+            } else {
+                path
+            };
             if !path.is_empty() && path != "/dev/null" {
                 current_path = Some(path);
             }
+            old_line = 0;
+            new_line = 0;
             continue;
         }
         if line.starts_with("@@") {
@@ -873,4 +885,16 @@ pub fn parse_unified_diff(unified_diff: &str) -> Vec<DiffFile> {
         &mut files,
     );
     files
+}
+
+#[cfg(test)]
+mod codex_diff_tests {
+    use super::*;
+    #[test]
+    fn deleted_files_keep_their_path_and_line_counts() {
+        let files = parse_unified_diff("--- a/proof.txt\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-proof\n");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "proof.txt");
+        assert_eq!((files[0].added, files[0].removed), (0, 1));
+    }
 }

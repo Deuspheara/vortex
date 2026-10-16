@@ -115,12 +115,18 @@ impl AgentWindow {
     }
 
     fn conv_id_for_event(&self, event: &AgentEvent) -> Option<ConversationId> {
+        if let AgentEvent::RunStarted { session_id, .. } = event {
+            return Some(ConversationId(session_id.0.clone()));
+        }
         if let AgentEvent::SessionCommandFailed { session_id, .. } = event {
             return Some(ConversationId(session_id.0.clone()));
         }
         if let Some(run_id) = event.run_id() {
             if let Some(conv_id) = self.reducer_state.run_conversations.get(run_id) {
                 return Some(conv_id.clone());
+            }
+            if let Ok(Some(run)) = self.agent_bridge.runtime.store.get_run(run_id) {
+                return Some(ConversationId(run.session_id.0));
             }
         }
         self.selected_conversation_id.clone()
@@ -140,7 +146,10 @@ impl AgentWindow {
             for item in &mut conv.thread_items {
                 match item {
                     ThreadItem::ToolCall { status, .. }
-                        if matches!(status, AgentStatus::RunningTool) =>
+                        if matches!(
+                            status,
+                            AgentStatus::RunningTool | AgentStatus::WaitingApproval
+                        ) =>
                     {
                         *status = tool_status.clone();
                     }
@@ -244,6 +253,11 @@ impl AgentWindow {
             },
             cx,
         );
+        // The next assistant item follows the tool activity, rather than being
+        // appended into the prose that preceded it.
+        if let Some(state) = self.reducer_state.stream_runs.get_mut(run_id) {
+            state.assistant_item_id = None;
+        }
     }
 
     pub(crate) fn maybe_rename_conversation_from_prompt(
@@ -474,6 +488,23 @@ impl AgentWindow {
     fn apply_agent_event_inner(&mut self, event: AgentEvent, cx: &mut Context<Self>) {
         let conv_id = self.conv_id_for_event(&event);
         self.set_event_conversation(conv_id.clone());
+        // Other sessions are already persisted. Rebuild them when selected;
+        // their live events must not replace this session's Stop/approval controls.
+        if let Some(cid) = &conv_id
+            && self.selected_conversation_id.as_ref() != Some(cid)
+        {
+            match &event {
+                AgentEvent::RunStarted { depth: 0, .. } => {
+                    self.running_conversations.insert(cid.clone());
+                }
+                AgentEvent::RunFinished { .. } => {
+                    self.running_conversations.remove(cid);
+                }
+                _ => {}
+            }
+            self.sync_sidebar_view(cx);
+            return;
+        }
         match event {
             AgentEvent::UserMessage { run_id, text } => {
                 if let Some(cid) = conv_id {
@@ -1439,7 +1470,7 @@ impl AgentWindow {
                 self.pending_thread_approval = Some(PendingThreadApproval {
                     title,
                     risk: mapped_risk,
-                    allow_always_label: if is_shell_tool {
+                    allow_always_label: if is_shell_tool && !approval_id.0.starts_with("codex-") {
                         command_preview
                             .as_deref()
                             .and_then(allow_always_label)
@@ -1536,6 +1567,18 @@ impl AgentWindow {
                 );
             }
             AgentEvent::RunFinished { run_id, status, .. } => {
+                if self.composer_error.as_deref() == Some("Stopping Codex…") {
+                    self.composer_error = None;
+                }
+                if status == RunStatus::Cancelled
+                    && let Some(cid) = conv_id.clone()
+                {
+                    self.push_thread_item(cid, ThreadItem::RunError {
+                        id: format!("stopped-{}", run_id.0),
+                        message: "Run stopped\nReview any completed changes before sending a follow-up.".into(),
+                        session_ref: Some(run_id.0.clone()), retryable: false,
+                    }, cx);
+                }
                 let run_depth = self
                     .reducer_state
                     .run_depths

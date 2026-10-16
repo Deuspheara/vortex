@@ -76,7 +76,8 @@ impl ToolCatalog {
 
 fn normalized_tool_name(name: &str) -> &str {
     match name {
-        "RunCommand" | "shell" => "run_real_command",
+        "RunCommand" | "shell" | "codex_command" => "run_real_command",
+        "codex_file_change" => "propose_patch",
         _ => name
             .split("<|")
             .next()

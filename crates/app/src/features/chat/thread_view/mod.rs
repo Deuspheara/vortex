@@ -50,7 +50,6 @@ use crate::ui::agent_window::AgentWindow;
 use crate::ui::thread_update::{ThreadAction, ThreadEffect};
 
 const MOTION_PAUSE_MS: u64 = 250;
-const ASSISTANT_STREAM_SYNC_MS: u64 = 33;
 /// Frame-aligned coalescing window for the streaming tail. Tokens that arrive within
 /// one display frame are flushed together (one commit per frame). At ~8 ms this targets
 /// 120 Hz on fast displays; GPUI further coalesces the resulting `notify()`s to the display
@@ -110,12 +109,9 @@ pub struct ThreadView {
     pending_scroll_item_id: Option<String>,
     motion_paused: bool,
     last_scroll_activity: Option<Instant>,
-    pending_items: Option<Vec<ThreadItem>>,
     pending_item_updates: HashMap<String, ThreadItem>,
     pending_streaming_row_patches: HashSet<String>,
     pending_mutated_item_patches: HashSet<String>,
-    last_stream_sync: Option<Instant>,
-    stream_debounce_scheduled: bool,
     item_update_debounce_scheduled: bool,
     last_tail_signature: u64,
     user_scrolled_up: bool,
@@ -159,12 +155,9 @@ impl ThreadView {
             pending_scroll_item_id: None,
             motion_paused: false,
             last_scroll_activity: None,
-            pending_items: None,
             pending_item_updates: HashMap::new(),
             pending_streaming_row_patches: HashSet::new(),
             pending_mutated_item_patches: HashSet::new(),
-            last_stream_sync: None,
-            stream_debounce_scheduled: false,
             item_update_debounce_scheduled: false,
             last_tail_signature: 0,
             user_scrolled_up: false,
@@ -212,12 +205,9 @@ impl ThreadView {
             pending_scroll_item_id: None,
             motion_paused: false,
             last_scroll_activity: None,
-            pending_items: None,
             pending_item_updates: HashMap::new(),
             pending_streaming_row_patches: HashSet::new(),
             pending_mutated_item_patches: HashSet::new(),
-            last_stream_sync: None,
-            stream_debounce_scheduled: false,
             item_update_debounce_scheduled: false,
             last_tail_signature: 0,
             user_scrolled_up: false,

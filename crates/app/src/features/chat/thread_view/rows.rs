@@ -500,22 +500,29 @@ impl ThreadView {
             }
             RowRef::RunError { .. } => {
                 let Some(ThreadItem::RunError {
-                    message, retryable, ..
+                    id,
+                    message,
+                    retryable,
+                    ..
                 }) = item
                 else {
                     return div().into_any_element();
                 };
-                let title = message.lines().next().unwrap_or(message).to_string();
-                let msg = message.clone();
+                let (title, msg) = message
+                    .split_once('\n')
+                    .map(|(title, body)| (title.to_string(), body.to_string()))
+                    .unwrap_or_else(|| ("Run failed".into(), message.clone()));
                 let retry = *retryable;
                 let settings_entity = agent.clone();
                 error_card(ErrorCardProps {
                     title,
                     message: msg,
                     retryable: retry,
-                    on_open_settings: Some(Box::new(move |app| {
-                        settings_entity.update(app, |view, cx| view.open_settings(cx));
-                    })),
+                    on_open_settings: (!id.starts_with("stopped-")).then(|| {
+                        Box::new(move |app: &mut gpui::App| {
+                            settings_entity.update(app, |view, cx| view.open_settings(cx));
+                        }) as Box<dyn Fn(&mut gpui::App)>
+                    }),
                     on_retry: None,
                 })
                 .into_any_element()

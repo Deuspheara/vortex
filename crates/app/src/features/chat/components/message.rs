@@ -29,6 +29,7 @@ pub fn user_message(
         .id(element_key("user-message", id))
         .w_full()
         .max_w(px(Tokens::THREAD_MAX_WIDTH * 0.88))
+        .ml_auto()
         .relative()
         .flex()
         .flex_col()

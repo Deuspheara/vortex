@@ -41,6 +41,8 @@ pub fn error_card(props: ErrorCardProps) -> impl IntoElement {
                         )
                         .child(
                             div()
+                                .flex_1()
+                                .min_w(px(0.0))
                                 .flex()
                                 .flex_col()
                                 .gap(Tokens::spacing_0p5())

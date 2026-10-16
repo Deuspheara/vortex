@@ -39,21 +39,11 @@ impl ThreadView {
     }
 
     pub(crate) fn end_spacer_height(&self) -> f32 {
-        Tokens::composer_stack_total(
-            self.composer_overlay_bar_height,
-            self.composer_input_expanded,
-            self.composer_has_attachments,
-            self.composer_has_error,
-        )
+        f32::from(Tokens::spacing_6())
     }
 
     pub(crate) fn composer_thread_inset_px(&self) -> f32 {
-        Tokens::composer_thread_inset_px(
-            self.composer_overlay_bar_height,
-            self.composer_input_expanded,
-            self.composer_has_attachments,
-            self.composer_has_error,
-        )
+        0.0
     }
 
     pub(crate) fn refresh_end_spacer_size(&mut self) {

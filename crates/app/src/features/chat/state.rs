@@ -386,19 +386,23 @@ fn is_focus_tool_receipt(tool_name: &str, status: &AgentStatus) -> bool {
                 | "copy_path"
                 | "create_directory"
                 | "delete_path"
+                | "codex_command"
+                | "codex_file_change"
         ),
         AgentStatus::Idle | AgentStatus::Thinking => false,
     }
 }
 
-/// Last non-streaming assistant in the thread (ignoring trailing todo lists).
+/// Last settled assistant in each user turn. Later turns must not hide replies.
 pub fn is_final_assistant(item_ix: usize, items: &[ThreadItem]) -> bool {
     match items.get(item_ix) {
         Some(ThreadItem::AssistantMessage {
             streaming: false, ..
         }) => items.get(item_ix + 1..).is_none_or(|rest| {
-            rest.iter()
-                .all(|i| matches!(i, ThreadItem::TodoList { .. }))
+            !rest
+                .iter()
+                .take_while(|i| !matches!(i, ThreadItem::UserMessage { .. }))
+                .any(|i| matches!(i, ThreadItem::AssistantMessage { depth: 0, .. }))
         }),
         _ => false,
     }
@@ -447,6 +451,22 @@ mod tests {
             TranscriptMode::Focus,
             1,
             &items,
+        ));
+    }
+    #[test]
+    fn focus_preserves_settled_reply_when_another_turn_starts() {
+        let items = vec![
+            user_msg("u1"),
+            assistant("a1", false),
+            user_msg("u2"),
+            thinking(),
+            assistant("a2", true),
+        ];
+        assert!(should_emit_thread_item(
+            &items[1],
+            TranscriptMode::Focus,
+            1,
+            &items
         ));
     }
 

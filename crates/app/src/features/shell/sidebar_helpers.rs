@@ -45,18 +45,6 @@ pub(crate) fn render_app_nav(
             },
         ))
         .child(app_nav_row(
-            "sidebar-nav-chat",
-            icons::MESSAGE_SQUARE,
-            "Threads",
-            selected == AppNavItem::Chat,
-            {
-                let entity = entity.clone();
-                move |app| {
-                    entity.update(app, |view, cx| view.open_chat(cx));
-                }
-            },
-        ))
-        .child(app_nav_row(
             "sidebar-nav-search",
             icons::SEARCH,
             "Search",
@@ -65,30 +53,6 @@ pub(crate) fn render_app_nav(
                 let entity = entity.clone();
                 move |app| {
                     entity.update(app, |view, cx| view.open_search(cx));
-                }
-            },
-        ))
-        .child(app_nav_row(
-            "sidebar-nav-extensions",
-            icons::APP_WINDOW,
-            "Extensions",
-            selected == AppNavItem::Extensions,
-            {
-                let entity = entity.clone();
-                move |app| {
-                    entity.update(app, |view, cx| view.open_extensions(cx));
-                }
-            },
-        ))
-        .child(app_nav_row(
-            "sidebar-nav-automations",
-            icons::HISTORY,
-            "Automations",
-            selected == AppNavItem::Automations,
-            {
-                let entity = entity.clone();
-                move |app| {
-                    entity.update(app, |view, cx| view.open_automations(cx));
                 }
             },
         ))
@@ -144,41 +108,61 @@ pub(crate) fn render_sidebar_footer(
     entity: Entity<AgentWindow>,
     selected: bool,
 ) -> impl IntoElement {
-    let entity_click = entity;
+    let entity_click = entity.clone();
+    let extensions_entity = entity.clone();
+    let automations_entity = entity;
     div()
         .id("sidebar-settings")
+        .flex()
+        .items_center()
         .flex_shrink_0()
         .border_t_1()
         .border_color(Tokens::sidebar_border())
         .bg(Tokens::sidebar_bg())
         .px(Tokens::spacing_2())
         .py(Tokens::spacing_2())
-        .child(flat_list_row(
-            "sidebar-settings-row",
-            Tokens::ROW_HEIGHT_MD,
-            Tokens::spacing_2(),
-            Tokens::spacing_2(),
-            selected,
-            true,
-            Some(move |app: &mut gpui::App| {
-                entity_click.update(app, |view, cx| view.open_settings(cx));
-            }),
-            div()
-                .flex()
-                .items_center()
-                .gap(Tokens::spacing_2())
-                .child(
-                    Icon::new(icons::SETTINGS)
-                        .size(px(14.0))
-                        .text_color(Tokens::sidebar_text()),
-                )
-                .child(
-                    div()
-                        .text_size(Tokens::text_sm())
-                        .text_color(Tokens::sidebar_text())
-                        .child("Settings"),
-                ),
-        ))
+        .child(
+            div().flex_1().min_w(px(0.0)).child(flat_list_row(
+                "sidebar-settings-row",
+                Tokens::ROW_HEIGHT_MD,
+                Tokens::spacing_2(),
+                Tokens::spacing_2(),
+                selected,
+                true,
+                Some(move |app: &mut gpui::App| {
+                    entity_click.update(app, |view, cx| view.open_settings(cx));
+                }),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(Tokens::spacing_2())
+                    .child(
+                        Icon::new(icons::SETTINGS)
+                            .size(px(14.0))
+                            .text_color(Tokens::sidebar_text()),
+                    )
+                    .child(
+                        div()
+                            .text_size(Tokens::text_sm())
+                            .text_color(Tokens::sidebar_text())
+                            .child("Settings"),
+                    ),
+            )),
+        )
+        .child(
+            btn_ghost_icon("sidebar-extensions", icons::APP_WINDOW)
+                .tooltip("Extensions")
+                .on_click(move |_, _, app| {
+                    extensions_entity.update(app, |view, cx| view.open_extensions(cx))
+                }),
+        )
+        .child(
+            btn_ghost_icon("sidebar-automations", icons::HISTORY)
+                .tooltip("Automations")
+                .on_click(move |_, _, app| {
+                    automations_entity.update(app, |view, cx| view.open_automations(cx))
+                }),
+        )
 }
 
 fn app_nav_row(

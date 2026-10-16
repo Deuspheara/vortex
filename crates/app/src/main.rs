@@ -35,7 +35,7 @@ fn main() {
         #[cfg(all(feature = "demo_mode", debug_assertions))]
         let preferred_size = size(px(1100.), px(720.));
         #[cfg(not(all(feature = "demo_mode", debug_assertions)))]
-        let preferred_size = size(px(1400.), px(900.));
+        let preferred_size = size(px(1440.), px(900.));
         // Keep controls reachable on laptop displays, including isolated previews.
         let window_size = cx.primary_display().map_or(preferred_size, |display| {
             let available = display.bounds().size;

@@ -61,11 +61,22 @@ impl AgentWindow {
                 .unwrap_or_default()
                 .is_empty()
         });
-        if status.state == agent_codex::ConnectionState::Ready
-            && preference.is_none()
+        if preference.is_none() && !has_history {
+            if self.selected_provider != "Codex" {
+                self.selected_model = "Connecting…".into();
+            }
+            self.selected_provider = "Codex".into();
+        }
+        if self.selected_provider == "Codex"
+            && status.state != agent_codex::ConnectionState::Ready
             && !has_history
         {
-            self.selected_provider = "Codex".into();
+            self.selected_model = match status.state {
+                agent_codex::ConnectionState::SignInRequired => "Sign in to Codex",
+                agent_codex::ConnectionState::Unavailable => "Codex unavailable",
+                _ => "Connecting…",
+            }
+            .into();
         }
         if self.selected_provider == "Codex" && status.state == agent_codex::ConnectionState::Ready
         {

@@ -36,6 +36,7 @@ use agent_protocol::AgentMode;
 // ── ViewState (cheap, cloneable) ──────────────────────────────────────────
 
 struct ViewState {
+    dragging: bool,
     entity: Entity<AgentWindow>,
     screen: AppScreen,
     sidebar_collapsed: bool,
@@ -121,6 +122,7 @@ impl AgentWindow {
         let (model_items, model_search_keys) = self.model_picker_items_for_selected_provider();
 
         ViewState {
+            dragging: cx.has_active_drag(),
             entity: cx.entity().clone(),
             screen: self.screen,
             sidebar_collapsed: self.sidebar_collapsed,
@@ -381,40 +383,46 @@ fn main_workspace(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEl
         .overflow_hidden()
         .relative()
         .child(
-            v_resizable("main-workspace-resizable")
-                .on_resize(on_bottom_resize)
-                // ── Center panel (top) ──
-                .child(
-                    resizable_panel()
-                        .size_range(px(Tokens::CENTER_MIN_WIDTH)..px(6000.0))
-                        .child(center_panel(agent, vs, cbs)),
-                )
-                // ── Terminal panel (bottom) ──
-                .child(
-                    resizable_panel()
-                        .visible(
-                            vs.screen == AppScreen::Chat && vs.conversation_workspace.terminal.open,
-                        )
-                        .size(px(vs.conversation_workspace.terminal.bottom_panel_height))
-                        .size_range(
-                            px(Tokens::BOTTOM_PANEL_MIN_HEIGHT)
-                                ..px(Tokens::BOTTOM_PANEL_MAX_HEIGHT),
-                        )
-                        .child(
-                            div()
-                                .size_full()
-                                .min_w(px(0.0))
-                                .min_h(px(0.0))
-                                .overflow_hidden()
-                                .child(bottom_dock_content(agent, vs, cbs))
-                                .with_animation("terminal-fade", Motion::fade_in(), |el, d| {
-                                    el.opacity(d)
-                                }),
-                        ),
-                ),
+            v_resizable(crate::tokens::element_key(
+                "main-workspace",
+                if vs.conversation_workspace.terminal.open {
+                    "terminal"
+                } else {
+                    "thread"
+                },
+            ))
+            .on_resize(on_bottom_resize)
+            // ── Center panel (top) ──
+            .child(
+                resizable_panel()
+                    .size_range(px(Tokens::CENTER_MIN_WIDTH)..px(6000.0))
+                    .child(center_panel(agent, vs, cbs)),
+            )
+            // ── Terminal panel (bottom) ──
+            .child(
+                resizable_panel()
+                    .visible(
+                        vs.screen == AppScreen::Chat && vs.conversation_workspace.terminal.open,
+                    )
+                    .size(px(vs.conversation_workspace.terminal.bottom_panel_height))
+                    .size_range(
+                        px(Tokens::BOTTOM_PANEL_MIN_HEIGHT)..px(Tokens::BOTTOM_PANEL_MAX_HEIGHT),
+                    )
+                    .child(
+                        div()
+                            .size_full()
+                            .min_w(px(0.0))
+                            .min_h(px(0.0))
+                            .overflow_hidden()
+                            .child(bottom_dock_content(agent, vs, cbs))
+                            .with_animation("terminal-fade", Motion::fade_in(), |el, d| {
+                                el.opacity(d)
+                            }),
+                    ),
+            ),
         )
         .when(
-            vs.screen == AppScreen::Chat && !vs.conversation_workspace.terminal.open,
+            vs.dragging && vs.screen == AppScreen::Chat && !vs.conversation_workspace.terminal.open,
             |el| {
                 let move_tab = cbs.move_inspector_tab_to_dock.clone();
                 el.child(
@@ -468,28 +476,34 @@ fn center_panel(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoElem
         .overflow_hidden()
         .relative()
         .child(
-            h_resizable("workspace-row-resizable")
-                .on_resize(on_right_resize)
-                .child(
-                    resizable_panel()
-                        .size_range(px(Tokens::CENTER_MIN_WIDTH)..px(6000.0))
-                        .child(column(agent, vs, cbs)),
-                )
-                .child(
-                    resizable_panel()
-                        .visible(
-                            vs.screen == AppScreen::Chat
-                                && vs.conversation_workspace.inspector.open,
-                        )
-                        .size(px(vs.conversation_workspace.inspector.right_dock_width))
-                        .size_range(
-                            px(Tokens::DIFF_PANEL_MIN_WIDTH)..px(Tokens::DIFF_PANEL_MAX_WIDTH),
-                        )
-                        .child(inspector_content(agent, vs, cbs)),
-                ),
+            h_resizable(crate::tokens::element_key(
+                "workspace-row",
+                if vs.conversation_workspace.inspector.open {
+                    "review"
+                } else {
+                    "thread"
+                },
+            ))
+            .on_resize(on_right_resize)
+            .child(
+                resizable_panel()
+                    .size_range(px(Tokens::CENTER_MIN_WIDTH)..px(6000.0))
+                    .child(column(agent, vs, cbs)),
+            )
+            .child(
+                resizable_panel()
+                    .visible(
+                        vs.screen == AppScreen::Chat && vs.conversation_workspace.inspector.open,
+                    )
+                    .size(px(vs.conversation_workspace.inspector.right_dock_width))
+                    .size_range(px(Tokens::DIFF_PANEL_MIN_WIDTH)..px(Tokens::DIFF_PANEL_MAX_WIDTH))
+                    .child(inspector_content(agent, vs, cbs)),
+            ),
         )
         .when(
-            vs.screen == AppScreen::Chat && !vs.conversation_workspace.inspector.open,
+            vs.dragging
+                && vs.screen == AppScreen::Chat
+                && !vs.conversation_workspace.inspector.open,
             |el| {
                 let move_tab = cbs.move_inspector_tab_to_dock.clone();
                 el.child(
@@ -672,10 +686,8 @@ fn composer_layer(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEl
 
     div()
         .id("chat-composer-layer")
-        .absolute()
-        .bottom_0()
-        .left_0()
-        .right_0()
+        .w_full()
+        .flex_shrink_0()
         .child(composer::render_composer(ComposerProps {
             codex: vs.selected_provider == "Codex",
             has_text: composer_vm.has_text,

@@ -12,11 +12,9 @@ impl ThreadView {
         self.conversation_id = Some(conversation_id.clone());
         self.stick_to_bottom = true;
         self.pending_scroll_bottom = true;
-        self.pending_items = None;
         self.pending_item_updates.clear();
         self.pending_streaming_row_patches.clear();
         self.pending_mutated_item_patches.clear();
-        self.last_stream_sync = None;
         self.markdown_cache.clear();
         self.tool_output_cache.clear();
         self.item_index.clear();
@@ -358,9 +356,6 @@ impl ThreadView {
         match effect {
             ThreadEffect::Notify => cx.notify(),
             ThreadEffect::ScrollToBottom => self.apply_thread_effect(effect),
-            ThreadEffect::ScheduleStreamSync { interval_ms } => {
-                self.schedule_stream_sync(interval_ms, cx)
-            }
             ThreadEffect::ScheduleItemUpdate => self.schedule_item_update(cx),
         }
     }
@@ -599,69 +594,23 @@ impl ThreadView {
         items: Vec<ThreadItem>,
         _cx: &mut Context<Self>,
         immediate: bool,
-        run_active: bool,
+        _run_active: bool,
     ) -> Vec<ThreadEffect> {
         self.conversation_id = Some(conversation_id);
 
         if immediate {
-            self.pending_items = None;
             self.pending_item_updates.clear();
             self.pending_streaming_row_patches.clear();
             self.pending_mutated_item_patches.clear();
-            self.last_stream_sync = None;
-            self.stream_debounce_scheduled = false;
             return self.rebuild_all(items);
         }
 
-        let item_streaming = items.iter().any(|item| match item {
-            ThreadItem::AssistantMessage {
-                streaming: true, ..
-            } => true,
-            ThreadItem::ToolCall {
-                status: crate::features::shell::state::AgentStatus::RunningTool,
-                ..
-            } => true,
-            ThreadItem::ReasoningStep {
-                status: crate::features::shell::state::AgentStatus::Thinking,
-                ..
-            } => true,
-            _ => false,
-        });
-        let streaming = run_active || item_streaming;
-
-        if streaming {
-            let interval_ms = if run_active {
-                STREAM_FRAME_SYNC_MS
-            } else if items.iter().any(|item| {
-                matches!(
-                    item,
-                    ThreadItem::ToolCall {
-                        status: crate::features::shell::state::AgentStatus::RunningTool,
-                        ..
-                    }
-                )
-            }) {
-                STREAM_FRAME_SYNC_MS
-            } else {
-                ASSISTANT_STREAM_SYNC_MS
-            };
-            let defer = self
-                .last_stream_sync
-                .is_some_and(|t| t.elapsed() < Duration::from_millis(interval_ms));
-
-            self.pending_items = Some(items.clone());
-
-            if defer {
-                return vec![ThreadEffect::ScheduleStreamSync { interval_ms }];
-            }
-
-            self.last_stream_sync = Some(Instant::now());
-            self.pending_items = None;
-        } else {
-            self.pending_items = None;
-            self.last_stream_sync = None;
-            self.stream_debounce_scheduled = false;
-        }
+        // Full snapshots include every committed delta and status. Invalidate
+        // older queued patches so a delayed Running/streaming update cannot
+        // overwrite a completed snapshot (notably during history replay).
+        self.pending_item_updates.clear();
+        self.pending_streaming_row_patches.clear();
+        self.pending_mutated_item_patches.clear();
 
         self.effects_for_pending_items(items)
     }
@@ -681,28 +630,6 @@ impl ThreadView {
             effects.push(ThreadEffect::ScrollToBottom);
         }
         effects
-    }
-
-    pub(crate) fn schedule_stream_sync(&mut self, interval_ms: u64, cx: &mut Context<Self>) {
-        if self.stream_debounce_scheduled {
-            return;
-        }
-        self.stream_debounce_scheduled = true;
-        let entity = cx.entity().downgrade();
-        cx.spawn(async move |_weak, cx| {
-            Timer::after(Duration::from_millis(interval_ms)).await;
-            entity
-                .update(cx, |view, cx| {
-                    view.stream_debounce_scheduled = false;
-                    if let Some(items) = view.pending_items.take() {
-                        view.last_stream_sync = Some(Instant::now());
-                        let effects = view.effects_for_pending_items(items);
-                        view.apply_thread_effects(effects, cx);
-                    }
-                })
-                .ok();
-        })
-        .detach();
     }
 
     pub(crate) fn schedule_item_update(&mut self, cx: &mut Context<Self>) {

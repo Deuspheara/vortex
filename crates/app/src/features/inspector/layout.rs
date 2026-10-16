@@ -101,7 +101,14 @@ pub fn render_docked_inspector(props: DockedInspectorProps) -> impl IntoElement 
             on_add,
             props.on_reorder_tab.clone(),
         ))
-        .child(render_inspector_body(props).into_any_element())
+        .child(
+            div()
+                .flex_1()
+                .min_h(px(0.0))
+                .w_full()
+                .overflow_hidden()
+                .child(render_inspector_body(props).into_any_element()),
+        )
         .into_any_element()
 }
 
@@ -125,6 +132,7 @@ fn render_inspector_tabs(
 
     div()
         .id("inspector-tabs")
+        .flex_shrink_0()
         .flex()
         .border_b_1()
         .border_color(Tokens::border_subtle())

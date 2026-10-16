@@ -83,7 +83,6 @@ pub fn render_composer(props: ComposerProps) -> impl IntoElement {
         .w_full()
         .relative()
         .bg(Tokens::composer_footer_gradient())
-        .block_mouse_except_scroll()
         .child(
             div()
                 .w_full()
