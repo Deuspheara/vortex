@@ -139,15 +139,22 @@ fn tool_call_summary(
             Some("virtual shell"),
         ),
         "codex_approval_review" => ToolCallSummary::new(
-            "AI review",
-            trim_to_chars(
-                &command
-                    .unwrap_or("Review unavailable")
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                140,
-            ),
+            "",
+            if running {
+                "Checking command"
+            } else if command.is_some_and(|c| c.starts_with("Approved")) {
+                "Command approved"
+            } else if command.is_some_and(|c| c.starts_with("Denied")) {
+                "Command not approved"
+            } else if command.is_some_and(|c| c.starts_with("Timed out")) {
+                "Command review timed out"
+            } else if command
+                .is_some_and(|c| c.starts_with("Review interrupted") || c.starts_with("Aborted"))
+            {
+                "Command review stopped"
+            } else {
+                "Command review failed"
+            },
             None,
             false,
         ),
@@ -328,25 +335,60 @@ fn search_summary(verb: &str, command: Option<&str>, display_label: &str) -> Too
     }])
 }
 
+/// Presentation only: remove a shell launcher only when its argument shape is exact.
+/// Never changes the command sent to Codex or retained in the event log.
+pub fn display_command(command: &str) -> String {
+    let Ok(args) = shell_words::split(command) else {
+        return command.to_string();
+    };
+    if args.len() == 3
+        && matches!(args[0].rsplit('/').next(), Some("sh" | "bash" | "zsh"))
+        && matches!(args[1].as_str(), "-c" | "-lc" | "-cl")
+    {
+        args[2].clone()
+    } else {
+        command.to_string()
+    }
+}
+
+pub fn is_command_tool(name: &str) -> bool {
+    matches!(name, "codex_command" | "run_real_command" | "bash_virtual")
+}
+
+pub fn command_output<'a>(command: Option<&str>, output: Option<&'a str>) -> Option<&'a str> {
+    output.filter(|out| {
+        !out.trim().is_empty()
+            && command.is_none_or(|cmd| {
+                out.trim() != cmd.trim() && out.trim() != display_command(cmd).trim()
+            })
+    })
+}
+
 fn command_summary(verb: &str, command: Option<&str>, context: Option<&str>) -> ToolCallSummary {
-    let command_preview = command
-        .map(|cmd| trim_to_chars(&cmd.split_whitespace().collect::<Vec<_>>().join(" "), 140))
-        .unwrap_or_else(|| "command".to_string());
-    ToolCallSummary::new(
-        verb,
-        command_preview.clone(),
-        context.map(str::to_string),
-        true,
-    )
-    .with_detail_rows(vec![ToolCallDetailRow::Command {
-        label: if verb == "Ran" {
-            "Command executed:".to_string()
+    let full = command
+        .map(display_command)
+        .unwrap_or_else(|| "command".into());
+    let preview = if full.contains('\n') {
+        format!(
+            "{} · {} lines",
+            trim_to_chars(full.lines().next().unwrap_or("command"), 120),
+            full.lines().count()
+        )
+    } else {
+        trim_to_chars(&full, 140)
+    };
+    let needs_detail = full.contains('\n') || full.chars().count() > 140;
+    ToolCallSummary::new(verb, preview, context.map(str::to_string), true).with_detail_rows(
+        if needs_detail {
+            vec![ToolCallDetailRow::Command {
+                label: "Command".into(),
+                command: full,
+                context: None,
+            }]
         } else {
-            "Command:".to_string()
+            vec![]
         },
-        command: command_preview,
-        context: context.map(str::to_string),
-    }])
+    )
 }
 
 fn web_summary(verb: &str, command: Option<&str>, display_label: &str) -> ToolCallSummary {
@@ -545,6 +587,7 @@ pub fn render_tool_header_row(
     command: Option<&str>,
     expanded: bool,
     status: &AgentStatus,
+    output: Option<&str>,
     animate: bool,
     group_pos: Option<ActivityGroupPos>,
     change_counts: Option<(usize, usize)>,
@@ -552,6 +595,47 @@ pub fn render_tool_header_row(
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
     let summary = tool_call_summary(tool_name, display_label, command, status);
+    if is_command_tool(tool_name) {
+        let disclosure =
+            command_output(command, output).is_some() || !summary.detail_rows.is_empty();
+        return activity_group_wrap(
+            div()
+                .id(element_key("command-header", item_id))
+                .w_full()
+                .min_w(px(0.0))
+                .h(px(Tokens::TOOL_ROW_HEIGHT))
+                .px(Tokens::spacing_0p5())
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .rounded(Tokens::radius_xs())
+                .when(disclosure, |el| {
+                    el.cursor_pointer()
+                        .hover(|s| s.bg(Tokens::surface_hover().opacity(0.35)))
+                })
+                .on_click(move |_, _, app| {
+                    if disclosure {
+                        on_toggle(app);
+                    }
+                })
+                .child(render_tool_summary(
+                    item_id,
+                    summary,
+                    expanded,
+                    is_running(status),
+                    animate,
+                    tool_name,
+                    on_open_file,
+                ))
+                .when(disclosure, |el| {
+                    el.child(
+                        crate::shared::components::collapsible_row::disclosure_chevron(expanded),
+                    )
+                }),
+            group_pos,
+        )
+        .into_any_element();
+    }
     activity_group_wrap(
         div()
             .id(element_key("tool-row", item_id))
@@ -575,12 +659,19 @@ pub fn render_tool_header_row(
                     .items_center()
                     .gap(Tokens::spacing_1p5())
                     .child(change_counts_badge(item_id, change_counts))
-                    .child(crate::shared::components::collapsible_row::disclosure_chevron(expanded))
+                    .when(tool_name != "codex_approval_review", |el| {
+                        el.child(
+                            crate::shared::components::collapsible_row::disclosure_chevron(
+                                expanded,
+                            ),
+                        )
+                    })
                     .into_any_element(),
                 move |_, _, app: &mut App| on_toggle(app),
             )),
         group_pos,
     )
+    .into_any_element()
 }
 
 fn render_tool_summary(
@@ -675,7 +766,11 @@ fn render_tool_primary(
         .text_size(Tokens::text_sm())
         .line_height(Tokens::text_sm_leading())
         .font_weight(FontWeight::NORMAL)
-        .font_family(Tokens::ui_font_family())
+        .font_family(if summary.primary_mono {
+            Tokens::code_font_family()
+        } else {
+            Tokens::ui_font_family()
+        })
         .text_color(Tokens::text_secondary())
         .hover(|s| s.text_color(Tokens::text_primary()))
         .child(summary.primary.clone())
@@ -738,8 +833,11 @@ pub fn render_tool_detail_line_row(
             .id(element_key("tool-detail-line", item_id))
             .w_full()
             .min_w(px(0.0))
-            .px(Tokens::spacing_0p5())
-            .py(Tokens::spacing_1())
+            .max_h(px(Tokens::TOOL_OUTPUT_MAX_HEIGHT))
+            .overflow_y_scroll()
+            .pl(Tokens::spacing_7())
+            .pr(Tokens::spacing_2())
+            .py(Tokens::spacing_2())
             .font_family(Tokens::code_font_family())
             .text_size(Tokens::text_code())
             .line_height(Tokens::text_sm_leading())
@@ -926,11 +1024,15 @@ pub fn render_tool_output_body(
         .min_w(px(0.0))
         .relative()
         .group(group.clone())
-        .px(Tokens::spacing_0p5())
+        .pl(Tokens::spacing_7())
+        .pr(Tokens::spacing_2())
         .pb(Tokens::spacing_2())
         .child(
             div()
                 .id(element_key("tool-output-scroll", item_id))
+                .border_l_1()
+                .border_color(Tokens::border_subtle())
+                .pl(Tokens::spacing_3())
                 .w_full()
                 .max_h(px(Tokens::TOOL_OUTPUT_MAX_HEIGHT) - Tokens::spacing_2())
                 .overflow_y_scroll()
@@ -1071,6 +1173,29 @@ mod tests {
     }
 
     #[test]
+    fn shell_wrapper_is_presentation_only_and_preserves_inner_syntax() {
+        let raw = r#"/bin/zsh -lc "printf 'after\n' > result.txt""#;
+        assert_eq!(display_command(raw), r#"printf 'after\n' > result.txt"#);
+        assert_eq!(display_command("bash -c 'echo $HOME'"), "echo $HOME");
+        for raw in [
+            "bash -c 'echo hello' extra",
+            "python3 -c 'print(1)'",
+            "zsh -lc 'unterminated",
+        ] {
+            assert_eq!(display_command(raw), raw);
+        }
+        assert!(command_output(Some(raw), Some(raw)).is_none());
+        assert_eq!(
+            command_output(Some(raw), Some("actual output")),
+            Some("actual output")
+        );
+        assert_eq!(
+            tool_call_detail_row_count("codex_command", Some(raw), &completed()),
+            0
+        );
+    }
+
+    #[test]
     fn shell_tools_use_monospace_command_preview() {
         let virtual_summary = tool_call_summary(
             "bash_virtual",
@@ -1092,12 +1217,10 @@ mod tests {
             Some("virtual shell"),
             true,
         );
-        assert!(matches!(
-            virtual_summary.detail_rows.first(),
-            Some(ToolCallDetailRow::Command { command, context, .. })
-                if command == "find android_todo -name \"*.kt\""
-                    && context.as_deref() == Some("virtual shell")
-        ));
+        assert!(
+            virtual_summary.detail_rows.is_empty(),
+            "short commands have no duplicate disclosure"
+        );
         assert_visible_summary(
             &real_summary,
             "Running",
@@ -1220,7 +1343,7 @@ mod tests {
         );
         assert_eq!(
             tool_call_detail_row_count("bash_virtual", Some("cargo test"), &completed()),
-            1
+            0
         );
     }
 
@@ -1233,7 +1356,7 @@ mod tests {
             &completed(),
         );
         assert!(!summary.primary.contains('\n'));
-        assert_eq!(summary.primary, "python3 - <<'PY' print('hello') PY");
+        assert_eq!(summary.primary, "python3 - <<'PY' · 3 lines");
     }
 
     #[test]

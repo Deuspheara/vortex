@@ -323,6 +323,14 @@ pub fn should_emit_thread_item(
     item_ix: usize,
     items: &[ThreadItem],
 ) -> bool {
+    if let ThreadItem::ToolCall {
+        tool_name, status, ..
+    } = item
+        && tool_name == "codex_approval_review"
+        && mode != TranscriptMode::Debug
+    {
+        return matches!(status, AgentStatus::Failed);
+    }
     match mode {
         TranscriptMode::Focus => match item {
             ThreadItem::UserMessage { .. }
@@ -412,6 +420,38 @@ pub fn is_final_assistant(item_ix: usize, items: &[ThreadItem]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_review_is_quiet_except_when_action_is_needed() {
+        for status in [
+            AgentStatus::RunningTool,
+            AgentStatus::Completed,
+            AgentStatus::Failed,
+        ] {
+            let item = ThreadItem::ToolCall {
+                id: "review".into(),
+                tool_name: "codex_approval_review".into(),
+                command: None,
+                output: Some("Risk: low".into()),
+                expanded: true,
+                status: status.clone(),
+                depth: 0,
+                parent_call_id: None,
+            };
+            for mode in [TranscriptMode::Focus, TranscriptMode::Activity] {
+                assert_eq!(
+                    should_emit_thread_item(&item, mode, 0, std::slice::from_ref(&item)),
+                    matches!(status, AgentStatus::Failed)
+                );
+            }
+            assert!(should_emit_thread_item(
+                &item,
+                TranscriptMode::Debug,
+                0,
+                std::slice::from_ref(&item)
+            ));
+        }
+    }
 
     fn user_msg(id: &str) -> ThreadItem {
         ThreadItem::UserMessage {

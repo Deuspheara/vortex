@@ -344,6 +344,7 @@ impl ThreadView {
                     preview,
                     *expanded,
                     status,
+                    output.as_deref(),
                     animate,
                     group_pos,
                     change_counts,

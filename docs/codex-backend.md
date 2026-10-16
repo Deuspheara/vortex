@@ -48,11 +48,19 @@ second model or grant full access. The shared `AutoSafe` mode selects this revie
 only for Codex; native Auto safe retains its existing deterministic policy.
 
 Codex reviews eligible requests for elevated execution. Commands already allowed
-inside the sandbox may run without an additional review. Review activity shows
-Reviewing, Approved, Denied, Timed out, or Aborted, with the reported risk,
-authorization, and rationale available in its disclosure. An approved review is
-not evidence that a command ran; execution is displayed separately. Automatic
-reviews persist as activity, never as human `ApprovalResolved` decisions.
+inside the sandbox may run without an additional review. Routine automatic reviews
+stay out of the normal transcript; a rejection, timeout, or interruption shows a
+short status without a risk report. Debug transcript mode retains the complete
+review audit, including risk, authorization, and rationale. An approved review is
+not evidence that a command ran. Automatic reviews persist as activity, never as
+human `ApprovalResolved` decisions.
+
+Command rows show the inner command for exact `sh`, `bash`, and `zsh` `-c`/`-lc`
+wrappers, without altering execution or stored events. Short commands without
+output have no expansion arrow or duplicated command body. Scripts show their
+first line and line count, with full contents in a bounded disclosure; actual
+output expands beneath its command. Manual approval previews retain the exact
+request and decision buttons, without decorative risk labels.
 Reviewer failures do not grant permission. An unfinished review after interruption
 or reconnect explicitly has no confirmed decision and is never resubmitted by
 Vortex. Unsupported server interactions still stop the turn without granting access.

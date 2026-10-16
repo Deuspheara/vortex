@@ -5,7 +5,7 @@ use crate::shared::components::buttons::btn_copy_icon_arc;
 use crate::shared::components::buttons::{btn_approve, btn_deny};
 use crate::tokens::element_key;
 use crate::tokens::{Tokens, activity_action_line_with_loading};
-use gpui::{App, FontWeight, IntoElement, RenderOnce, Window, div, prelude::*, px};
+use gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*, px};
 
 /// Full command text is bounded independently from the always-visible decision row.
 #[derive(IntoElement)]
@@ -80,7 +80,7 @@ pub struct ApprovalCardProps {
 
 pub fn approval_card(props: ApprovalCardProps) -> impl IntoElement {
     let title = props.title;
-    let risk_label = props.risk.label().to_string();
+    let _risk = props.risk;
     let on_deny = props.on_deny;
     let on_approve = props.on_approve;
     let on_approve_always = props.on_approve_always;
@@ -104,22 +104,12 @@ pub fn approval_card(props: ApprovalCardProps) -> impl IntoElement {
                 .flex()
                 .flex_col()
                 .gap(Tokens::spacing_3())
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(Tokens::spacing_0p5())
-                        .child(ApprovalCommandPreview {
-                            id: "composer",
-                            command: title,
-                        })
-                        .child(
-                            div()
-                                .text_size(Tokens::text_xs())
-                                .text_color(Tokens::text_tertiary())
-                                .child(risk_label),
-                        ),
-                )
+                .child(div().flex().flex_col().gap(Tokens::spacing_0p5()).child(
+                    ApprovalCommandPreview {
+                        id: "composer",
+                        command: title,
+                    },
+                ))
                 .when(props.can_act, |el| {
                     el.child(
                         div()
@@ -187,7 +177,7 @@ pub fn diff_approval_bar(
     on_approve: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
     let title = title.to_string();
-    let risk_label = risk.label().to_string();
+    let _risk = risk;
 
     div()
         .id("diff-approval-bar")
@@ -222,14 +212,7 @@ pub fn diff_approval_bar(
                         .child(ApprovalCommandPreview {
                             id: "diff",
                             command: title,
-                        })
-                        .child(
-                            div()
-                                .text_size(Tokens::text_xs())
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(Tokens::text_tertiary())
-                                .child(risk_label),
-                        ),
+                        }),
                 )
                 .child(
                     div()

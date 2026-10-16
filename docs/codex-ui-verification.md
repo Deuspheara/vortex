@@ -424,3 +424,34 @@ and interrupted review were exercised with deterministic protocol fixtures;
 only successful approval was induced against the real account. Unsupported
 interactions still fail closed. Codex-owned changes retain the limitations
 explained in [Codex backend](codex-backend.md).
+
+## Quiet command presentation — 2026-10-16
+
+Supersedes the visible review-report treatment above. Reopened the saved real
+Codex conversation used for the previous verification in the normal native app
+at 1100×800. Its command now displays `printf 'after\n' > vortex-native-review.txt`
+without the `/bin/zsh -lc` launcher. There is one command row, no duplicate body,
+no expansion arrow for empty output, and no successful-review report.
+
+At 900×600, the deterministic native fixture verified:
+
+- A real output disclosure expands to `alpha` and `beta` under a single command
+  header, aligned on a subtle rail, without repeating the command.
+- A long Python heredoc has a first-line header and a 123-line count; its full
+  contents remain scrollable through the final delimiter in a bounded detail area.
+- A denied automatic review shows “Command not approved” without risk,
+  authorization, rationale, or an empty disclosure arrow. Routine review activity
+  is hidden in Focus and Activity modes. Debug mode retains the persisted audit.
+- Manual approval cards retain the exact request and actions, without decorative
+  risk labels. Execution, sandbox policy, and approval routing are unchanged.
+
+Shell unwrapping is presentation-only and limited to an exact three-argument
+`sh`/`bash`/`zsh` wrapper with a recognized command flag. Extra arguments, other
+interpreters, and malformed quoting remain intact. Tests cover quoted inner
+commands, empty/duplicate output, disclosure rows, and review visibility.
+
+Formatting, workspace Clippy, app check/build, workspace tests (256 passed,
+3 account tests ignored), and the demo fixture test passed. Existing warnings
+remain. No additional real inference was needed: the real conversation was
+replayed from its existing event store, and new rejection/output scenarios used
+the nonexecuting protocol fixture.

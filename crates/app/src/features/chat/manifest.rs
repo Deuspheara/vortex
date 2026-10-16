@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use gpui::{Pixels, Size, px, size};
 
-use crate::features::agent_activity::components::tool_call::tool_call_detail_row_count;
+use crate::features::agent_activity::components::tool_call::{
+    command_output, is_command_tool, tool_call_detail_row_count,
+};
 use crate::features::chat::layout::{
     self, APPROVAL_H, DIFF_FILE_H, HEADER_H, LINE_H, PLAN_STATUS_H, REASONING_BODY_MAX_H,
     SECTION_HEADER_H, TRUNCATED_H, USER_SEE_MORE_H,
@@ -783,9 +785,14 @@ fn tool_refs_with_mode(
     mode: TranscriptMode,
 ) -> Vec<RowRef> {
     let mut rows = vec![RowRef::ToolHeader { item_ix }];
-    if !expanded {
+    if !expanded || (tool_name == "codex_approval_review" && mode != TranscriptMode::Debug) {
         return rows;
     }
+    let output = if is_command_tool(tool_name) {
+        command_output(command, output)
+    } else {
+        output
+    };
 
     if output.is_some() {
         // Explicit disclosure is a user request for details in every transcript mode.
@@ -793,7 +800,7 @@ fn tool_refs_with_mode(
         return rows;
     }
 
-    if mode.shows_tool_detail_rows() {
+    if mode.shows_tool_detail_rows() || is_command_tool(tool_name) {
         for line_ix in 0..tool_call_detail_row_count(tool_name, command, status) {
             rows.push(RowRef::ToolDetailLine {
                 item_ix,
@@ -1136,6 +1143,46 @@ document.querySelector("#year").textContent = year;
         assert_eq!(
             row_height(RowRef::PlanStatus { item_ix: 0 }, None, &items),
             Tokens::TOOL_ROW_HEIGHT
+        );
+    }
+
+    #[test]
+    fn command_disclosure_contains_output_instead_of_repeated_command() {
+        assert_eq!(
+            tool_refs_with_mode(
+                0,
+                "codex_command",
+                Some("echo hi"),
+                Some("echo hi"),
+                true,
+                &AgentStatus::Completed,
+                TranscriptMode::Activity
+            ),
+            vec![RowRef::ToolHeader { item_ix: 0 }]
+        );
+        assert!(
+            tool_refs_with_mode(
+                0,
+                "codex_command",
+                Some("echo hi"),
+                Some("hi"),
+                true,
+                &AgentStatus::Completed,
+                TranscriptMode::Activity
+            )
+            .contains(&RowRef::ToolOutputBody { item_ix: 0 })
+        );
+        assert_eq!(
+            tool_refs_with_mode(
+                0,
+                "codex_approval_review",
+                None,
+                Some("Risk: low"),
+                true,
+                &AgentStatus::Failed,
+                TranscriptMode::Activity
+            ),
+            vec![RowRef::ToolHeader { item_ix: 0 }]
         );
     }
 
