@@ -6,12 +6,14 @@ native patch-first edits, Codex-owned execution, and an inspectable activity tim
 in one Rust/GPUI app.
 
 <p align="center">
-  <img src="screenshot/thread.png" alt="Vortex desktop UI showing a running agent thread, plan, tool activity, and diff review" width="100%">
+  <img src="docs/assets/vortex.jpg" alt="Vortex on macOS showing an Atlas Notes demo thread, tool activity, approval-required composer, and proposed code diff" width="100%">
 </p>
 
-> Status: early-stage developer preview. The code is suitable to publish and
-> inspect, but the app is not yet a hardened end-user product. Treat production
-> readiness as an explicit checklist, not as the default state of this branch.
+*The real app with isolated sample data and a proposed patch. This offline replay
+does not run a model or apply changes. [Reproduce the screenshot](docs/screenshot-demo.md).*
+
+> Early-stage developer preview. Production readiness is tracked in the
+> [release checklist](docs/production-readiness.md).
 
 ## Highlights
 
@@ -26,17 +28,6 @@ in one Rust/GPUI app.
   reconnection and conversation resume.
 - OpenRouter-backed model calls when `OPENROUTER_API_KEY` is set, with a mock
   provider fallback for local UI exploration.
-
-## Product Shape
-
-Vortex is designed to feel like an IDE sidebar plus a document thread, not a
-chat box bolted onto a file tree. The main surface keeps the agent's reasoning,
-tool calls, shell output, patch previews, and final response in a continuous
-timeline so users can inspect what happened and why.
-
-The runtime architecture keeps provider events, tool execution, patch
-application, and UI rendering separated. That separation makes the app easier to
-audit, replay, and harden as the product moves toward release.
 
 ## Safety Model
 
@@ -167,6 +158,7 @@ crates/
   agent_sandbox/     Risk, approval, path, and secret policies
   agent_context/     Prompt and context builder
   agent_shell/       Rust-native virtual shell
+  agent_eval/        Evaluation harness and runtime scenarios
   real_process/      Approved real command executor
   project_index/     File walk, search, summaries, and project index cache
   context_providers/ Context provider service and adapters
@@ -181,16 +173,6 @@ docs/                Architecture, runtime, editing, release, and performance no
 Vortex is designed around safety boundaries, but a production release should be
 cut only after the release owner verifies the current branch against the full
 checklist in [Production readiness](docs/production-readiness.md).
-
-At minimum, do not publish a production build until:
-
-1. CI is green on the release commit.
-2. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets`,
-   `cargo check -p app`, and `cargo test --workspace` pass locally or in CI.
-3. A secret scan covers tracked files and git history.
-4. Runtime data is confirmed outside the repository.
-5. README, security policy, and user-facing setup instructions match the
-   release behavior.
 
 ## Public repo hygiene
 

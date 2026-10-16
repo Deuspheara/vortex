@@ -25,9 +25,9 @@ pub fn seed(store: &dyn EventStore, data_dir: &Path) -> Result<(), String> {
         .with_ymd_and_hms(2026, 10, 15, 12, 0, 0)
         .single()
         .unwrap();
-    let project = ProjectId::new("portfolio-atlas");
-    let session = SessionId::new("portfolio-search");
-    let run = RunId::new("portfolio-replay");
+    let project = ProjectId::new("demo-atlas");
+    let session = SessionId::new("demo-search");
+    let run = RunId::new("demo-replay");
     store.upsert_project(&StoredProject {
         id: project.clone(),
         root_path: root.display().to_string(),
@@ -57,8 +57,8 @@ pub fn seed(store: &dyn EventStore, data_dir: &Path) -> Result<(), String> {
         started_at: now,
         finished_at: Some(now),
     })?;
-    let call = ToolCallId::new("portfolio-inspect");
-    let patch = PatchId::new("portfolio-search-patch");
+    let call = ToolCallId::new("demo-inspect");
+    let patch = PatchId::new("demo-search-patch");
     let events = vec![
         AgentEvent::RunStarted {run_id:run.clone(),session_id:session,model:ModelId::new("Offline fixture replay"),mode:AgentMode::ApplyWithApproval,depth:0,parent_run_id:None},
         AgentEvent::AssistantTextDelta {run_id:run.clone(),text:"## Atlas Notes — add search\n\nDemo data / fixture replay. Add a search field to the notes list, keep filtering case-insensitive, and preserve all notes when the query is empty. No model or agent tools were executed for this replay.\n".into()},
@@ -80,7 +80,7 @@ pub fn seed(store: &dyn EventStore, data_dir: &Path) -> Result<(), String> {
     })?;
     for (i, event) in events.into_iter().enumerate() {
         store.append_event(&StoredEvent {
-            id: EventId::new(format!("portfolio-event-{i}")),
+            id: EventId::new(format!("demo-event-{i}")),
             run_id: run.clone(),
             sequence: i as i64,
             event,
@@ -104,7 +104,7 @@ mod tests {
         seed(&store, &root).unwrap();
         seed(&store, &root).unwrap();
         let events = store
-            .load_session_events(&SessionId::new("portfolio-search"))
+            .load_session_events(&SessionId::new("demo-search"))
             .unwrap();
         assert_eq!(events.len(), 9);
         assert!(

@@ -68,8 +68,8 @@ impl AgentBridge {
         let runtime = Arc::new(runtime);
 
         #[cfg(all(feature = "demo_mode", debug_assertions))]
-        crate::agent::portfolio::seed(store.as_ref(), &vortex_data_dir())
-            .expect("seed isolated portfolio store");
+        crate::agent::demo_fixture::seed(store.as_ref(), &vortex_data_dir())
+            .expect("seed isolated demo store");
 
         let openrouter_api_key = if uses_mock {
             None

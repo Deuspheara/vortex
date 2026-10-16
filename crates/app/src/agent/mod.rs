@@ -9,4 +9,4 @@ pub use ids::*;
 pub use reducer::*;
 
 #[cfg(all(feature = "demo_mode", debug_assertions))]
-pub mod portfolio;
+pub mod demo_fixture;

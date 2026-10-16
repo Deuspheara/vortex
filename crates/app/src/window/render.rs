@@ -340,7 +340,7 @@ fn top_bar(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
         inspector_open: vs.conversation_workspace.inspector.open,
         terminal_panel_open: vs.conversation_workspace.terminal.open,
         show_panel_controls: vs.screen == AppScreen::Chat,
-        workspace_readiness_label: (!vs.conversation_workspace.readiness.is_ready())
+        workspace_readiness_label: show_workspace_readiness(vs)
             .then(|| vs.conversation_workspace.readiness.summary_label()),
         on_toggle_sidebar: Some(to_boxed(cbs.toggle_sidebar.clone())),
         on_toggle_inspector: Some(to_boxed(cbs.toggle_inspector.clone())),
@@ -680,6 +680,13 @@ fn settings_column(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
 
 // ── Chat column ───────────────────────────────────────────────────────────
 
+fn show_workspace_readiness(vs: &ViewState) -> bool {
+    // Offline fixture previews do not need live-provider onboarding. Keep the
+    // actual readiness state and normal-build setup guidance unchanged.
+    !cfg!(all(feature = "demo_mode", debug_assertions))
+        && !vs.conversation_workspace.readiness.is_ready()
+}
+
 fn chat_column(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
     div()
         .id("chat-column")
@@ -691,7 +698,7 @@ fn chat_column(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoEleme
         .min_h(px(0.0))
         .overflow_hidden()
         .bg(Tokens::main_bg())
-        .when(!vs.conversation_workspace.readiness.is_ready(), |col| {
+        .when(show_workspace_readiness(vs), |col| {
             col.child(render_workspace_readiness_banner(vs, cbs))
         })
         .when(!vs.conversation_workspace.active_todos.is_empty(), |col| {

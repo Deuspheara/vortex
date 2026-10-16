@@ -37,8 +37,8 @@ pub fn vortex_data_dir() -> PathBuf {
         );
         assert!(path.is_absolute(), "Demo directory must be absolute");
         assert!(
-            path.join(".portfolio-demo").is_file(),
-            "Create a dedicated .portfolio-demo marker before launch"
+            path.join(".screenshot-demo").is_file(),
+            "Create a dedicated .screenshot-demo marker before launch"
         );
         path
     }
