@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use gpui::{App, FontWeight, IntoElement, MouseButton, div, prelude::*, px};
+use gpui_component::Icon;
 
 use crate::features::agent_activity::components::{
     activity_output_line_row, activity_truncated_row_with_trailing,
@@ -536,6 +537,7 @@ pub fn render_tool_header_row(
                     expanded,
                     is_running(status),
                     animate,
+                    tool_name,
                     on_open_file,
                 )
                 .into_any_element(),
@@ -550,47 +552,59 @@ fn render_tool_summary(
     item_id: &str,
     summary: ToolCallSummary,
     expanded: bool,
-    running: bool,
-    animate: bool,
+    _running: bool,
+    _animate: bool,
+    tool_name: &str,
     on_open_file: Option<OpenToolFileCallback>,
 ) -> impl IntoElement {
     let primary = render_tool_primary(item_id, &summary, on_open_file);
+    let file_target = summary.target_path.is_some();
     div()
         .id(element_key("tool-summary", item_id))
         .w_full()
         .min_w(px(0.0))
-        .h(px(Tokens::ROW_HEIGHT_SM))
+        .h(px(Tokens::TOOL_ROW_HEIGHT))
         .flex()
         .items_center()
         .gap(Tokens::spacing_2())
-        .when(running, |el| el.child(tool_loading_dots(item_id, animate)))
+        .child(super::activity_icon(tool_name))
         .child(
             div()
                 .flex_shrink_0()
                 .text_size(Tokens::text_sm())
                 .line_height(Tokens::text_sm_leading())
                 .font_family(Tokens::ui_font_family())
-                .font_weight(FontWeight::MEDIUM)
+                .font_weight(FontWeight::NORMAL)
                 .text_color(Tokens::activity_verb_text())
                 .child(summary.verb),
         )
         .child(primary)
-        .when_some(summary.secondary, |el, secondary| {
-            el.child(
-                div()
-                    .max_w(px(300.0))
-                    .min_w(px(0.0))
-                    .overflow_hidden()
-                    .truncate()
-                    .text_size(Tokens::text_sm())
-                    .line_height(Tokens::text_sm_leading_compact())
-                    .font_family(Tokens::ui_font_family())
-                    .text_color(Tokens::text_faint())
-                    .opacity(0.78)
-                    .hover(|s| s.text_color(Tokens::text_tertiary()).opacity(1.0))
-                    .child(secondary),
-            )
-        })
+        .when_some(
+            summary.secondary.filter(|_| {
+                !file_target
+                    && !matches!(
+                        tool_name,
+                        "codex_command" | "run_real_command" | "bash_virtual"
+                    )
+            }),
+            |el, secondary| {
+                el.child(
+                    div()
+                        .max_w(px(300.0))
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_size(Tokens::text_sm())
+                        .line_height(Tokens::text_sm_leading_compact())
+                        .font_family(Tokens::ui_font_family())
+                        .text_color(Tokens::text_faint())
+                        .opacity(0.78)
+                        .hover(|s| s.text_color(Tokens::text_tertiary()).opacity(1.0))
+                        .child(secondary),
+                )
+            },
+        )
         .when(summary.expandable, |el| {
             el.child(
                 div()
@@ -599,7 +613,14 @@ fn render_tool_summary(
                     .line_height(Tokens::text_sm_leading_compact())
                     .text_color(Tokens::text_tertiary())
                     .opacity(0.78)
-                    .child(if expanded { "⌄" } else { "›" }),
+                    .child(
+                        Icon::new(if expanded {
+                            crate::tokens::icons::CHEVRON_DOWN
+                        } else {
+                            crate::tokens::icons::CHEVRON_RIGHT
+                        })
+                        .size(Tokens::spacing_3()),
+                    ),
             )
         })
 }
@@ -623,19 +644,13 @@ fn render_tool_primary(
         .flex_1()
         .min_w(px(0.0))
         .overflow_hidden()
-        .truncate()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_size(Tokens::text_sm())
         .line_height(Tokens::text_sm_leading())
-        .font_weight(FontWeight::MEDIUM)
-        .when(summary.primary_mono, |el| {
-            el.font_family("monospace")
-                .text_size(Tokens::text_code())
-                .text_color(Tokens::text_secondary())
-        })
-        .when(!summary.primary_mono, |el| {
-            el.font_family(Tokens::ui_font_family())
-                .text_color(Tokens::text_secondary())
-        })
+        .font_weight(FontWeight::NORMAL)
+        .font_family(Tokens::ui_font_family())
+        .text_color(Tokens::text_secondary())
         .hover(|s| s.text_color(Tokens::text_primary()))
         .child(summary.primary.clone())
         .into_any_element()
@@ -661,14 +676,15 @@ fn render_file_link(
                 .max_w_full()
                 .min_w(px(0.0))
                 .overflow_hidden()
-                .truncate()
+                .whitespace_nowrap()
+                .overflow_hidden()
                 .cursor_pointer()
                 .border_b_1()
                 .border_color(Tokens::info().opacity(0.72))
                 .text_size(Tokens::text_sm())
                 .line_height(Tokens::text_sm_leading())
                 .font_family(Tokens::ui_font_family())
-                .font_weight(FontWeight::MEDIUM)
+                .font_weight(FontWeight::NORMAL)
                 .text_color(Tokens::info())
                 .hover(|s| {
                     s.text_color(Tokens::accent_hover())
@@ -684,24 +700,6 @@ fn render_file_link(
                 .child(label),
         )
         .into_any_element()
-}
-
-fn tool_loading_dots(item_id: &str, animate: bool) -> gpui::AnyElement {
-    let indicator = div()
-        .id(element_key("tool-loading-dots", item_id))
-        .w(px(24.0))
-        .flex_shrink_0()
-        .font_family("monospace")
-        .text_size(Tokens::text_sm())
-        .line_height(Tokens::text_sm_leading_compact())
-        .text_color(Tokens::text_tertiary())
-        .child("...");
-
-    if animate {
-        indicator.opacity(0.82).into_any_element()
-    } else {
-        indicator.opacity(0.62).into_any_element()
-    }
 }
 
 pub fn render_tool_detail_line_row(
@@ -775,8 +773,9 @@ fn render_tool_detail_content(
                     .flex_1()
                     .min_w(px(0.0))
                     .overflow_hidden()
-                    .truncate()
-                    .font_family("monospace")
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .font_family(Tokens::code_font_family())
                     .text_size(Tokens::text_code())
                     .line_height(Tokens::text_sm_leading_compact())
                     .text_color(Tokens::text_secondary())
@@ -800,7 +799,8 @@ fn render_tool_detail_content(
                     .flex_1()
                     .min_w(px(0.0))
                     .overflow_hidden()
-                    .truncate()
+                    .whitespace_nowrap()
+                    .overflow_hidden()
                     .text_size(Tokens::text_sm())
                     .line_height(Tokens::text_sm_leading_compact())
                     .font_family(Tokens::ui_font_family())
@@ -819,7 +819,7 @@ fn detail_label(label: String) -> impl IntoElement {
         .text_size(Tokens::text_xs())
         .line_height(Tokens::text_sm_leading_compact())
         .font_family(Tokens::ui_font_family())
-        .font_weight(FontWeight::MEDIUM)
+        .font_weight(FontWeight::NORMAL)
         .text_color(Tokens::text_faint())
         .child(label)
 }
@@ -829,7 +829,8 @@ fn detail_metadata(metadata: String) -> impl IntoElement {
         .max_w(px(240.0))
         .min_w(px(0.0))
         .overflow_hidden()
-        .truncate()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_size(Tokens::text_sm())
         .line_height(Tokens::text_sm_leading_compact())
         .font_family(Tokens::ui_font_family())
@@ -853,11 +854,10 @@ fn change_counts_badge(item_id: &str, change_counts: Option<(usize, usize)>) -> 
         .px(crate::tokens::Tokens::spacing_1())
         .py(crate::tokens::Tokens::spacing_0p5())
         .rounded(crate::tokens::Tokens::radius_xs())
-        .bg(crate::tokens::Tokens::surface_hover().opacity(0.4))
         .child(
             div()
                 .text_size(crate::tokens::Tokens::text_xs())
-                .text_color(crate::tokens::Tokens::text_secondary())
+                .text_color(crate::tokens::Tokens::success())
                 .child(format!("+{added}")),
         )
         .child(

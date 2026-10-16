@@ -1,6 +1,7 @@
 //! Width-aware measurement for visible variable-height transcript rows.
 //! The manifest remains virtualized; unchanged rows reuse their layout result.
 use super::*;
+use crate::features::shell::state::AgentStatus;
 use std::hash::{Hash, Hasher};
 
 pub(super) struct MeasuredRow {
@@ -46,6 +47,15 @@ impl ThreadView {
                 self.user_scrolled_up.hash(&mut signature);
                 crate::features::chat::state::is_final_assistant(item_ix, &self.items)
                     .hash(&mut signature);
+            }
+            (
+                RowRef::ReasoningBody { .. },
+                ThreadItem::ReasoningStep {
+                    summary, status, ..
+                },
+            ) => {
+                summary.hash(&mut signature);
+                matches!(status, AgentStatus::Thinking).hash(&mut signature);
             }
             _ => return None,
         }

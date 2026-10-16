@@ -54,7 +54,7 @@ pub fn activity_step(catalog: &ToolCatalog, step: &SessionStep) -> impl IntoElem
             el.child(
                 div()
                     .text_size(Tokens::text_xs())
-                    .font_family("monospace")
+                    .font_family(Tokens::code_font_family())
                     .text_color(Tokens::tool_path_text())
                     .truncate()
                     .child(detail),

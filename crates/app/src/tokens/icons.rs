@@ -84,3 +84,11 @@ pub fn shield() -> gpui_component::Icon {
 pub fn new_thread() -> gpui_component::Icon {
     gpui_component::Icon::default().path("vortex/new-thread.svg")
 }
+
+/// Semantic transcript glyphs share the same stroke, size and baseline.
+pub fn brain() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/brain.svg")
+}
+pub fn file_edit() -> gpui_component::Icon {
+    gpui_component::Icon::default().path("vortex/file-edit.svg")
+}

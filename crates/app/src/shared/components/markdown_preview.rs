@@ -97,7 +97,7 @@ pub fn estimate_markdown_height(blocks: &[MarkdownBlock], include_header: bool) 
     for (i, block) in blocks.iter().enumerate() {
         height += estimate_block_height(block);
         if i + 1 < blocks.len() {
-            height += 8.0;
+            height += 16.0;
         }
     }
 
@@ -159,8 +159,8 @@ fn estimate_block_height(block: &MarkdownBlock) -> f32 {
 }
 
 fn code_block_height(body: &str) -> f32 {
-    let header = 18.0;
-    let body_pad = 8.0;
+    let header = Tokens::CODE_HEADER_HEIGHT;
+    let body_pad = f32::from(Tokens::spacing_3());
     let preview = code_preview(body);
     let footer = if preview.truncated { 22.0 } else { 0.0 };
     header + body_pad + preview.rendered_lines.max(1) as f32 * Tokens::DIFF_LINE_HEIGHT + footer
@@ -211,7 +211,7 @@ pub fn markdown_preview_blocks_shared_streaming(
         .min_w(gpui::px(0.0))
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_2())
+        .gap(Tokens::spacing_4())
         .children(blocks.iter().enumerate().map(|(index, block)| {
             let is_tail = streaming && index + 1 == block_count;
             let highlight = syntax_highlight && !is_tail && !is_incomplete_code_block(block);
@@ -232,7 +232,7 @@ pub fn markdown_preview_blocks_thread_shared(
         .min_w(gpui::px(0.0))
         .flex()
         .flex_col()
-        .gap(Tokens::spacing_2())
+        .gap(Tokens::spacing_4())
         .children(blocks.iter().enumerate().map(|(index, block)| {
             let _is_tail = streaming && index + 1 == block_count;
             render_block_thread(block, index)
@@ -731,8 +731,9 @@ fn render_block(
             .into_any_element(),
         MarkdownBlock::Heading(level, text) => {
             let (size, weight) = match level {
-                1 => (Tokens::text_lg(), FontWeight::SEMIBOLD),
-                2 => (Tokens::text_base(), FontWeight::SEMIBOLD),
+                1 => (px(Tokens::THREAD_HEADING_1), FontWeight::SEMIBOLD),
+                2 => (px(Tokens::THREAD_HEADING_2), FontWeight::SEMIBOLD),
+                3 => (px(Tokens::THREAD_HEADING_3), FontWeight::SEMIBOLD),
                 _ => (Tokens::text_sm(), FontWeight::SEMIBOLD),
             };
             div()
@@ -796,8 +797,9 @@ fn render_block_thread(block: &MarkdownBlock, index: usize) -> gpui::AnyElement 
             .into_any_element(),
         MarkdownBlock::Heading(level, text) => {
             let (size, weight) = match level {
-                1 => (Tokens::text_lg(), FontWeight::SEMIBOLD),
-                2 => (Tokens::text_base(), FontWeight::SEMIBOLD),
+                1 => (px(Tokens::THREAD_HEADING_1), FontWeight::SEMIBOLD),
+                2 => (px(Tokens::THREAD_HEADING_2), FontWeight::SEMIBOLD),
+                3 => (px(Tokens::THREAD_HEADING_3), FontWeight::SEMIBOLD),
                 _ => (Tokens::text_sm(), FontWeight::SEMIBOLD),
             };
             div()
@@ -1014,7 +1016,7 @@ fn render_code_text_line(
             .flex_shrink_0()
             .h(px(Tokens::DIFF_LINE_HEIGHT))
             .whitespace_nowrap()
-            .font_family(Tokens::terminal_font_family())
+            .font_family(Tokens::code_font_family())
             .text_size(Tokens::text_code())
             .text_color(Tokens::code_fg())
             .child(line)
@@ -1024,6 +1026,7 @@ fn render_code_text_line(
     let default_style = TextStyle {
         color: Tokens::code_fg().into(),
         font_size: Tokens::text_code().into(),
+        font_family: Tokens::code_font_family().into(),
         ..Default::default()
     };
 
@@ -1033,7 +1036,7 @@ fn render_code_text_line(
         .flex_shrink_0()
         .h(px(Tokens::DIFF_LINE_HEIGHT))
         .whitespace_nowrap()
-        .font_family(Tokens::terminal_font_family())
+        .font_family(Tokens::code_font_family())
         .text_size(Tokens::text_code())
         .text_color(Tokens::code_fg())
         .child(StyledText::new(line).with_default_highlights(&default_style, spans))
@@ -1182,115 +1185,35 @@ fn render_code_block(
     syntax_highlight: bool,
     index: usize,
 ) -> impl IntoElement {
-    let label = lang.unwrap_or("code").to_string();
-    let full_body = body.to_string();
     let preview = code_preview(body);
-    let preview_body = preview.body;
-    let show_copy = syntax_highlight;
-    let code_lines = render_code_lines(&preview_body, lang.as_deref(), syntax_highlight);
-
+    let label = lang.unwrap_or("text").to_string();
+    let code_lines = render_code_lines(&preview.body, lang, syntax_highlight);
+    let full_body = std::sync::Arc::<str>::from(body);
     div()
         .w_full()
+        .min_w(px(0.0))
         .flex_shrink_0()
-        .rounded(Tokens::radius_sm())
+        .rounded(Tokens::radius_md())
         .border_1()
-        .border_color(Tokens::border_subtle())
-        .overflow_hidden()
-        .child(
-            div()
-                .px(Tokens::spacing_2())
-                .py(Tokens::spacing_0p5())
-                .bg(Tokens::panel_bg())
-                .border_b_1()
-                .border_color(Tokens::border_subtle())
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(Tokens::spacing_2())
-                .child(
-                    div()
-                        .text_size(Tokens::text_xs())
-                        .text_color(Tokens::text_tertiary())
-                        .child(label),
-                )
-                .when(show_copy, |row| {
-                    row.child(btn_copy_icon_arc(
-                        element_key("copy-code", &index.to_string()),
-                        std::sync::Arc::from(full_body.as_str()),
-                        "Copy code",
-                    ))
-                }),
-        )
-        .child(
-            div()
-                .id(element_key("markdown-code-body", &index.to_string()))
-                .w_full()
-                .min_w(px(0.0))
-                .flex_shrink_0()
-                .flex()
-                .flex_col()
-                .items_start()
-                .overflow_x_scroll()
-                .px(Tokens::spacing_2())
-                .py(Tokens::spacing_1())
-                .bg(Tokens::code_bg())
-                .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                .whitespace_nowrap()
-                .children(code_lines),
-        )
-        .when(preview.truncated, |el| {
-            el.child(
-                div()
-                    .w_full()
-                    .px(Tokens::spacing_2())
-                    .py(Tokens::spacing_1())
-                    .bg(Tokens::panel_bg())
-                    .border_t_1()
-                    .border_color(Tokens::border_subtle())
-                    .text_size(Tokens::text_xs())
-                    .text_color(Tokens::text_tertiary())
-                    .child(format!(
-                        "Preview truncated: first {} of {} lines",
-                        preview.rendered_lines, preview.total_lines
-                    )),
-            )
-        })
-}
-
-fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> impl IntoElement {
-    let preview = code_preview(body);
-    let label = lang.unwrap_or("code").to_string();
-    let code_lines = render_code_lines(&preview.body, lang, true);
-    let full_body = std::sync::Arc::<str>::from(body.to_string().as_str());
-
-    div()
-        .w_full()
-        .flex_shrink_0()
-        .rounded(Tokens::radius_sm())
-        .border_1()
-        .border_color(Tokens::border_subtle())
+        .border_color(Tokens::border_strong())
+        .bg(Tokens::code_bg())
         .overflow_hidden()
         .flex()
         .flex_col()
         .child(
             div()
-                .px(Tokens::spacing_2())
-                .py(Tokens::spacing_0p5())
-                .bg(Tokens::surface_hover())
-                .border_b_1()
-                .border_color(Tokens::border_subtle())
+                .h(px(Tokens::CODE_HEADER_HEIGHT))
+                .flex_shrink_0()
+                .px(Tokens::spacing_3())
                 .flex()
                 .items_center()
                 .justify_between()
-                .gap(Tokens::spacing_2())
-                .child(
-                    div()
-                        .text_size(Tokens::text_xs())
-                        .text_color(Tokens::text_tertiary())
-                        .child(label),
-                )
+                .font_family(Tokens::ui_font_family())
+                .text_size(Tokens::text_label())
+                .text_color(Tokens::text_tertiary())
+                .child(label)
                 .child(btn_copy_icon_arc(
-                    element_key("copy-code-thread", &index.to_string()),
+                    element_key("copy-code", &index.to_string()),
                     full_body,
                     "Copy code",
                 )),
@@ -1305,22 +1228,21 @@ fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> imp
                 .flex_col()
                 .items_start()
                 .overflow_x_scroll()
-                .px(Tokens::spacing_2())
-                .py(Tokens::spacing_1())
-                .bg(Tokens::code_bg())
+                .px(Tokens::spacing_3())
+                .pb(Tokens::spacing_3())
                 .line_height(px(Tokens::DIFF_LINE_HEIGHT))
+                .whitespace_nowrap()
                 .children(code_lines),
         )
         .when(preview.truncated, |el| {
             el.child(
                 div()
                     .w_full()
-                    .px(Tokens::spacing_2())
-                    .py(Tokens::spacing_0p5())
-                    .bg(Tokens::surface_hover())
+                    .px(Tokens::spacing_3())
+                    .py(Tokens::spacing_2())
                     .border_t_1()
                     .border_color(Tokens::border_subtle())
-                    .text_size(Tokens::text_xs())
+                    .text_size(Tokens::text_label())
                     .text_color(Tokens::text_tertiary())
                     .child(format!(
                         "Showing first {} of {} lines",
@@ -1328,6 +1250,10 @@ fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> imp
                     )),
             )
         })
+}
+
+fn render_code_block_thread(lang: Option<&str>, body: &str, index: usize) -> impl IntoElement {
+    render_code_block(lang, body, true, index)
 }
 
 struct CodePreview {

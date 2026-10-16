@@ -28,7 +28,9 @@ pub(crate) fn live_tail_height(tail: &str) -> f32 {
         .is_some_and(|line| line.starts_with("```"))
     {
         let lines = tail.lines().count().saturating_sub(1).max(1) as f32;
-        return 18.0 + 8.0 + lines * Tokens::DIFF_LINE_HEIGHT;
+        return Tokens::CODE_HEADER_HEIGHT
+            + f32::from(Tokens::spacing_3())
+            + lines * Tokens::DIFF_LINE_HEIGHT;
     }
     let visual_lines = tail
         .lines()
@@ -59,7 +61,15 @@ impl ThreadView {
         } else {
             crate::shared::components::streaming_markdown::split_at_seal_boundary(sanitized).1
         };
+        let pending_prefix_height = if sealed.is_none() {
+            let (prefix, _) =
+                crate::shared::components::streaming_markdown::streaming_text_parts(sanitized, 0);
+            live_tail_height(prefix)
+        } else {
+            0.0
+        };
         let mut height = crate::features::chat::layout::assistant_body_pt()
+            + pending_prefix_height
             + sealed_height
             + live_tail_height(tail);
         if !sanitized.is_empty() {

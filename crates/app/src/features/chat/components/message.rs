@@ -12,7 +12,7 @@ use gpui::{
 
 /// Preferred bubble width; the parent limits it to the actual transcript width.
 pub fn user_message_width(text: &str, has_attachments: bool, app: &App) -> gpui::Pixels {
-    let max_width = px(Tokens::THREAD_MAX_WIDTH * 0.88);
+    let max_width = px(Tokens::THREAD_MAX_WIDTH * 0.8);
     let text_width = if text.len() > 128 {
         max_width
     } else {
@@ -36,7 +36,8 @@ pub fn user_message_width(text: &str, has_attachments: bool, app: &App) -> gpui:
     } else {
         text_width.max(Tokens::attachment_preview_size())
     };
-    (content_width + Tokens::spacing_3() * 2.0 + Tokens::spacing_6()).min(max_width)
+    (content_width + Tokens::spacing_3() * 2.0 + Tokens::spacing_6() + Tokens::spacing_2())
+        .min(max_width)
 }
 
 /// User turn — flatter Zed-like row with just a subtle accent wash.
@@ -67,13 +68,15 @@ pub fn user_message(
         .items_start()
         .gap(Tokens::spacing_1())
         .p(Tokens::spacing_3())
-        .rounded(Tokens::radius_md())
+        .rounded(Tokens::radius_lg())
         .bg(Tokens::user_message_bg())
         .min_w(px(0.0))
         .group(hover_group.clone())
         .child(
             div()
                 .pr(Tokens::spacing_6())
+                .font_family(Tokens::ui_font_family())
+                .font_weight(gpui::FontWeight::NORMAL)
                 .text_size(Tokens::text_md())
                 .line_height(Tokens::text_md_leading())
                 .text_color(Tokens::text_primary())

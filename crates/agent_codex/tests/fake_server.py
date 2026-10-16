@@ -52,6 +52,18 @@ for line in sys.stdin:
    for n in (1,2):
     notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':{'id':'cmd-'+str(n),'type':'commandExecution','command':'echo '+str(n)}})
     send({'id':'parallel-'+str(n),'method':'item/commandExecution/requestApproval','params':{'threadId':'thread-1','turnId':active['id'],'itemId':'cmd-'+str(n),'command':'echo '+str(n)}})
+  elif text in ('ui-thinking','ui-style','ui-stream'):
+   # Native transcript QA: protocol events only; no command or file is executed.
+   notice('item/reasoning/summaryTextDelta',{'threadId':'thread-1','turnId':active['id'],'itemId':'ui-reasoning','summaryIndex':0,'delta':'**Checking the transcript layout**\nCompare the icon column, typography, command output, and code preview at narrow and wide widths.'})
+   if text=='ui-stream':
+    notice('item/agentMessage/delta',{'threadId':'thread-1','turnId':active['id'],'itemId':'message-'+active['id'],'delta':'A streaming code preview.\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("STREAM-TAIL-LINE");\n}'})
+   if text=='ui-style':
+    cmd={'id':'ui-command','type':'commandExecution','command':"printf 'alpha\\nbeta\\n'",'status':'inProgress'}
+    notice('item/started',{'threadId':'thread-1','turnId':active['id'],'item':cmd})
+    notice('item/commandExecution/outputDelta',{'threadId':'thread-1','turnId':active['id'],'itemId':'ui-command','delta':'alpha\nbeta\n'})
+    cmd.update(status='completed',exitCode=0,aggregatedOutput='alpha\nbeta\n')
+    notice('item/completed',{'threadId':'thread-1','turnId':active['id'],'item':cmd})
+    finish('The command output stays in the activity log.\n\n## Code preview\n\n```rust\nfn main() {\n    println!("alpha");\n    println!("beta");\n}\n```\n\nTHREAD-STYLE-END')
   elif text=='wait':pass
   elif text=='unknown-request':
    send({'id':'unknown-1','method':'item/permissions/requestApproval','params':{'threadId':'thread-1','turnId':active['id']}})

@@ -3,8 +3,7 @@
 use gpui::{App, IntoElement};
 
 use crate::features::agent_activity::components::{
-    ActivityRowVisual, activity_header_row_with_visual, activity_output_line_row,
-    activity_preview_line_row,
+    activity_output_line_row, activity_preview_line_row,
 };
 use crate::features::shell::state::{
     ActivityGroupPos, AgentStatus, REASONING_OUTPUT_PREVIEW_LINES,
@@ -12,10 +11,6 @@ use crate::features::shell::state::{
 
 fn is_running(status: &AgentStatus) -> bool {
     matches!(status, AgentStatus::Thinking)
-}
-
-fn is_generic_reasoning_title(title: &str) -> bool {
-    matches!(title, "Thinking" | "thinking" | "Current step")
 }
 
 fn reasoning_preview(summary: &str) -> Option<String> {
@@ -34,52 +29,64 @@ fn reasoning_preview(summary: &str) -> Option<String> {
         })
 }
 
-fn reasoning_header_copy(title: &str, summary: &str, running: bool) -> (String, Option<String>) {
-    let preview = reasoning_preview(summary);
-    if running {
-        return match preview {
-            Some(detail) => ("Current step".into(), Some(detail)),
-            None if is_generic_reasoning_title(title) => ("Planning".into(), None),
-            None => (title.to_string(), None),
-        };
-    }
-
-    let label = if is_generic_reasoning_title(title) {
-        "Reasoning".to_string()
-    } else {
-        title.to_string()
-    };
-    let detail = preview.filter(|detail| detail != &label);
-    (label, detail)
-}
-
 pub fn render_reasoning_header_row(
     item_id: &str,
-    title: &str,
+    _title: &str,
     summary: &str,
-    _expanded: bool,
+    expanded: bool,
     status: &AgentStatus,
-    animate: bool,
+    _animate: bool,
     group_pos: Option<ActivityGroupPos>,
     on_toggle: impl Fn(&mut App) + 'static,
 ) -> impl IntoElement {
+    use crate::shared::components::collapsible_row::{activity_group_wrap, timeline_row};
+    use crate::tokens::{Tokens, element_key, icons};
+    use gpui::{div, prelude::*, px};
+    use gpui_component::Icon;
     let running = is_running(status);
-    let (label, detail) = reasoning_header_copy(title, summary, running);
-
-    activity_header_row_with_visual(
-        ActivityRowVisual {
-            row_key: "reasoning-row",
-            header_key: "reasoning-header",
-            item_id,
-            running,
-            show_loading: false,
-            animate,
-            group_pos,
-        },
-        label,
-        detail,
-        gpui::div().into_any_element(),
-        on_toggle,
+    let label = if running { "Thinking" } else { "Thought" };
+    let preview = reasoning_preview(summary).map(|s| s.replace("**", ""));
+    activity_group_wrap(
+        timeline_row(
+            element_key("reasoning-header", item_id),
+            div()
+                .w_full()
+                .min_w(px(0.0))
+                .flex()
+                .items_center()
+                .gap(Tokens::spacing_2())
+                .child(super::activity_icon("reasoning"))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(Tokens::text_sm())
+                        .font_family(Tokens::ui_font_family())
+                        .text_color(Tokens::text_secondary())
+                        .child(label),
+                )
+                .when_some(preview, |el, text| {
+                    el.child(
+                        div()
+                            .min_w(px(0.0))
+                            .whitespace_nowrap()
+                            .overflow_hidden()
+                            .text_size(Tokens::text_sm())
+                            .text_color(Tokens::text_secondary())
+                            .child(text),
+                    )
+                })
+                .into_any_element(),
+            Icon::new(if expanded {
+                icons::CHEVRON_DOWN
+            } else {
+                icons::CHEVRON_RIGHT
+            })
+            .size(Tokens::spacing_3())
+            .text_color(Tokens::text_tertiary())
+            .into_any_element(),
+            move |_, _, app| on_toggle(app),
+        ),
+        group_pos,
     )
 }
 

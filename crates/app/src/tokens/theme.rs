@@ -175,11 +175,8 @@ impl VortexPalette {
         let highlight = &theme.highlight_theme.style;
         let diff_bg = highlight.editor_background.unwrap_or(theme.background);
         let code_fg = highlight.editor_foreground.unwrap_or(theme.foreground);
-        let code_bg = highlight.editor_background.unwrap_or(if dark {
-            theme.background
-        } else {
-            theme.list_hover
-        });
+        // Code previews use the same quiet inset surface as the native reference.
+        let code_bg = theme.sidebar;
         let diff = diff_colors(dark);
         Self {
             app_bg: workspace,

@@ -197,6 +197,10 @@ impl AgentWindow {
     }
 
     fn composer_current_action_content(&self) -> Option<(String, Option<String>)> {
+        // Codex activity is already visible in the thread, with Stop in the composer.
+        if self.selected_provider == "Codex" {
+            return None;
+        }
         if self.pending_thread_approval.is_some() {
             return None;
         }

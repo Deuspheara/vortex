@@ -644,7 +644,7 @@ fn render_single_file_header(path: &str, added: usize, removed: usize) -> impl I
                 .child(
                     div()
                         .text_size(Tokens::text_code())
-                        .font_family("monospace")
+                        .font_family(Tokens::code_font_family())
                         .text_color(Tokens::text_secondary())
                         .overflow_hidden()
                         .text_ellipsis()
@@ -697,7 +697,7 @@ fn render_diff_row(row: &DiffRow, index: usize) -> impl IntoElement {
         .bg(bg)
         .flex()
         .items_center()
-        .font_family("monospace")
+        .font_family(Tokens::code_font_family())
         .overflow_x_scroll()
         .child(
             div()
@@ -762,7 +762,7 @@ fn render_hunk_row(label: &str) -> impl IntoElement {
         .flex()
         .items_center()
         .px(Tokens::spacing_3())
-        .font_family("monospace")
+        .font_family(Tokens::code_font_family())
         .text_size(Tokens::text_xs())
         .text_color(Tokens::text_faint())
         .child(label.to_string())

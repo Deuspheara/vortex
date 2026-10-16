@@ -134,12 +134,52 @@ transcript fade was also intercepting approval-card clicks; it no longer blocks
 mouse input. Cancelled/failed command rows display “Stopped” rather than “Ran”.
 Backend event changes and visual fixes are committed separately.
 
+## Thread typography and activity follow-up
+
+Inspected populated conversations and expanded work logs in the installed reference application,
+ including its code-block treatment, and compared its implementation reference.
+The previous shell pass left transcript components on inconsistent size scales.
+This follow-up uses the macOS system reading font for interface/prose, 14 px body
+and activity text, 12 px metadata, and 13 px Menlo for code/output/diffs. The terminal
+retains its bundled Nerd Font. Transcript headings use explicit 20/18/16 px roles.
+
+Reasoning and tool rows share a 24 px rhythm, a semantic 16 px line-icon column,
+regular-weight labels, and proper disclosure chevrons. Duplicate backend labels,
+parent-directory metadata, and the Codex composer activity strip were removed.
+Commands disclose output inline without opening an inspector tab. The thread menu
+can toggle activity details immediately, including on an idle conversation.
+Code previews share one inset surface, language/copy header, border, padding, font,
+and line height in both streaming and completed renderers. History remains virtual
+and streaming keeps the cached sealed-block/hot-tail path.
+
+Native checks at 1305×964 and 1100×800 (including a 400 px chat pane) verified:
+
+- Real Codex ran only the requested bounded `printf` command after Allow once;
+  its output contained `alpha` and `beta`, followed by a four-line Rust preview
+  and `THREAD-STYLE-END`. The local authentication and model discovery were reused.
+- Command rows collapse/expand inline; code, headings, prose, and the adjacent
+  observed-change panel remain readable at narrow widths.
+- Controlled `ui-thinking` updates appear immediately from a single reasoning
+  delta, expand into wrapped text, and settle on Stop. The extra reducer buffer
+  no longer holds a lone delta until another event.
+- Controlled `ui-stream` retains the first prose paragraph and every line of an
+  open code fence, including `STREAM-TAIL-LINE`, while still streaming. The first
+  sealed-prefix parse is scheduled immediately; a pending parse cannot hide prose.
+  A regression test covers the initial-prefix/cached-tail transition.
+- Activity details toggle on completed history without requiring another event.
+  Short user messages stay on one line. Pane changes do not crash the long header;
+  it clips safely around GPUI 0.2's mutable UTF-8 ellipsis-run bug.
+
+The controlled scenarios are part of the normal QA peer (`--fixture`), not live
+provider inferences; they execute no commands and edit no files. Screenshots and
+QA stores remain outside the repository.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.
 - `cargo clippy --workspace --all-targets` — passed with repository warnings.
 - `cargo check -p app` — passed with repository warnings.
-- `cargo test --workspace` — 236 passed, 2 opt-in live tests ignored.
+- `cargo test --workspace` — 237 passed, 2 opt-in live tests ignored.
 - `cargo test -p app --features demo_mode fixture_is_isolated_idempotent_and_replayable`
   — passed.
 - `VORTEX_TEST_CODEX_MODEL=gpt-6-astra cargo test -p agent_codex --test backend -- --ignored --nocapture --test-threads=1`

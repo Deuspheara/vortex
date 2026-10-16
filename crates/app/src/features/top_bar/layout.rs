@@ -26,6 +26,7 @@ pub struct TopBarProps {
     pub on_toggle_inspector: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_toggle_terminal: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_new_chat: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
+    pub on_toggle_activity: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_title_copy: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_workspace_status: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     pub on_open_settings: Option<Rc<dyn Fn(&mut gpui::App)>>,
@@ -61,6 +62,7 @@ pub fn render_top_bar(props: TopBarProps) -> impl IntoElement {
                     props.conversation_title,
                     props.on_new_chat,
                     props.on_title_copy,
+                    props.on_toggle_activity,
                     props.on_open_settings.clone(),
                 )),
         )
@@ -111,7 +113,9 @@ fn render_title_block(title: String, project: Option<String>) -> impl IntoElemen
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
-                .text_ellipsis()
+                // GPUI 0.2's truncation mutates font runs across width changes;
+                // clipping a single line avoids invalid UTF-8 runs during pane resize.
+                .whitespace_nowrap()
                 .text_size(Tokens::text_sm())
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(Tokens::topbar_title_active())
@@ -123,6 +127,7 @@ fn render_title_menu(
     title: String,
     on_new_chat: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     on_title_copy: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
+    on_toggle_activity: Option<Box<dyn Fn(&mut gpui::App) + 'static>>,
     on_open_settings: Option<Rc<dyn Fn(&mut gpui::App)>>,
 ) -> impl IntoElement {
     let mut items = vec![
@@ -139,6 +144,14 @@ fn render_title_menu(
             action: on_new_chat.map(Rc::from),
         },
     ];
+    if let Some(action) = on_toggle_activity {
+        items.push(TopBarMenuItem {
+            label: "Toggle activity details".into(),
+            icon: icons::CHECKLIST,
+            enabled: true,
+            action: Some(Rc::from(action)),
+        });
+    }
     if let Some(action) = on_open_settings {
         items.push(TopBarMenuItem {
             label: "Open settings".into(),

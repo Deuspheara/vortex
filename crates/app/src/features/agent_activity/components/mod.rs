@@ -66,7 +66,6 @@ pub fn activity_preview_line_row(line_id: &str, text: &str) -> impl IntoElement 
         .font_family(Tokens::ui_font_family())
         .text_size(Tokens::text_sm())
         .line_height(Tokens::text_sm_leading())
-        .opacity(0.76)
         .text_color(Tokens::activity_detail_text())
         .overflow_hidden()
         .whitespace_nowrap()
@@ -79,21 +78,20 @@ pub fn activity_output_line_row(line_id: &str, text: &str, mono: bool) -> impl I
         .id(element_key("activity-output-line", line_id))
         .w_full()
         .min_w(px(0.0))
-        .ml(Tokens::spacing_2())
-        .pl(Tokens::spacing_2())
+        .ml(Tokens::spacing_7())
+        .pl(Tokens::spacing_3())
         .border_l_1()
         .border_color(Tokens::activity_detail_border())
         .when(mono, |el| {
-            el.font_family("monospace")
+            el.font_family(Tokens::code_font_family())
                 .text_size(Tokens::text_code())
                 .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                .opacity(0.8)
+                .bg(Tokens::code_bg())
         })
         .when(!mono, |el| {
             el.font_family(Tokens::ui_font_family())
                 .text_size(Tokens::text_sm())
                 .line_height(Tokens::text_sm_leading())
-                .opacity(0.76)
         })
         .text_color(Tokens::activity_detail_text())
         .overflow_hidden()
@@ -108,8 +106,8 @@ pub fn activity_truncated_row(item_id: &str, message: String) -> impl IntoElemen
         .id(element_key("activity-truncated", item_id))
         .w_full()
         .min_w(px(0.0))
-        .ml(Tokens::spacing_2())
-        .pl(Tokens::spacing_2())
+        .ml(Tokens::spacing_7())
+        .pl(Tokens::spacing_3())
         .border_l_1()
         .border_color(Tokens::activity_detail_border())
         .font_family(Tokens::ui_font_family())
@@ -128,8 +126,8 @@ pub fn activity_truncated_row_with_trailing(
         .id(element_key("activity-truncated", item_id))
         .w_full()
         .min_w(px(0.0))
-        .ml(Tokens::spacing_2())
-        .pl(Tokens::spacing_2())
+        .ml(Tokens::spacing_7())
+        .pl(Tokens::spacing_3())
         .border_l_1()
         .border_color(Tokens::activity_detail_border())
         .flex()
@@ -147,4 +145,21 @@ pub fn activity_truncated_row_with_trailing(
                 .child(message),
         )
         .child(trailing)
+}
+
+/// One fixed icon column for every transcript activity row.
+pub fn activity_icon(name: &str) -> gpui_component::Icon {
+    use crate::tokens::icons;
+    use gpui_component::Icon;
+    let icon = match name {
+        "reasoning" => icons::brain(),
+        "codex_file_change" | "write_file" | "apply_patch" | "edit_file" => icons::file_edit(),
+        "run_real_command" | "codex_command" | "bash_virtual" => Icon::new(icons::TERMINAL),
+        "search_project" | "find_symbol" => Icon::new(icons::SEARCH),
+        "list_files" | "repo_map" | "related_files" => Icon::new(icons::FOLDER),
+        "web_search" | "web_fetch" | "codex_web_search" => Icon::new(icons::GLOBE),
+        _ => Icon::new(icons::FILE_TEXT),
+    };
+    icon.size(Tokens::spacing_4())
+        .text_color(Tokens::text_tertiary())
 }

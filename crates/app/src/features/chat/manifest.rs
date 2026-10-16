@@ -763,15 +763,6 @@ fn reasoning_refs(
         }
         return rows;
     }
-    if matches!(status, AgentStatus::Thinking) && !summary.trim().is_empty() {
-        let preview = reasoning_preview_lines(summary, REASONING_STREAMING_PREVIEW_LINES);
-        for (line_ix, _) in preview.iter().enumerate() {
-            rows.push(RowRef::ReasoningPreviewLine {
-                item_ix,
-                line_ix: line_ix as u16,
-            });
-        }
-    }
     rows
 }
 

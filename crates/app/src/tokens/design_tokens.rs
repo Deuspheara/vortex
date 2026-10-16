@@ -480,11 +480,23 @@ impl Tokens {
     pub fn ui_font_family() -> &'static str {
         #[cfg(target_os = "macos")]
         {
-            "SF Pro Text"
+            ".SystemUIFont"
         }
         #[cfg(not(target_os = "macos"))]
         {
             "sans-serif"
+        }
+    }
+
+    /// Native monospace reading face; terminal glyphs keep their separate Nerd Font.
+    pub fn code_font_family() -> &'static str {
+        #[cfg(target_os = "macos")]
+        {
+            "Menlo"
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            "monospace"
         }
     }
 
@@ -670,11 +682,15 @@ impl Tokens {
     pub const ROW_HEIGHT_XL: f32 = 44.0;
 
     pub const SEARCH_HEIGHT: f32 = 32.0;
-    pub const TOOL_ROW_HEIGHT: f32 = 28.0;
+    pub const TOOL_ROW_HEIGHT: f32 = 24.0;
     pub const DIFF_HEADER_HEIGHT: f32 = 44.0;
     pub const DIFF_TAB_HEIGHT: f32 = 32.0;
     pub const DIFF_PATH_HEIGHT: f32 = 32.0;
     pub const DIFF_LINE_HEIGHT: f32 = 20.0;
+    pub const CODE_HEADER_HEIGHT: f32 = 32.0;
+    pub const THREAD_HEADING_1: f32 = 20.0;
+    pub const THREAD_HEADING_2: f32 = 18.0;
+    pub const THREAD_HEADING_3: f32 = 16.0;
     pub const DIFF_GUTTER_WIDTH: f32 = 38.0;
     pub const DIFF_SIGN_WIDTH: f32 = 18.0;
 
@@ -731,43 +747,43 @@ impl Tokens {
 // ════════════════════════════════════════════════════════════
 
 impl Tokens {
-    /// 11 px — status bar, section labels
+    /// 12 px — metadata and section labels
     pub fn text_xs() -> gpui::Pixels {
-        px(11.0)
+        px(12.0)
     }
-    /// 11.5 px — status bar
+    /// 12 px — status bar
     pub fn text_status() -> gpui::Pixels {
-        px(11.5)
+        px(12.0)
     }
     /// 12 px — role labels, file paths in diff header
     pub fn text_label() -> gpui::Pixels {
         px(12.0)
     }
-    /// 12.5 px — diff code, file paths, tab labels
+    /// 13 px — diff code, file paths, tab labels
     pub fn text_code() -> gpui::Pixels {
-        px(12.5)
-    }
-    /// 13 px — sidebar, tool rows, top bar
-    pub fn text_sm() -> gpui::Pixels {
         px(13.0)
+    }
+    /// 14 px — sidebar, tool rows, top bar
+    pub fn text_sm() -> gpui::Pixels {
+        px(14.0)
     }
     /// 14 px — composer input
     pub fn text_base() -> gpui::Pixels {
         px(14.0)
     }
-    /// 16 px — comfortable thread body
+    /// 14 px — thread body, matching the interface reading scale
     pub fn text_md() -> gpui::Pixels {
-        px(16.0)
+        px(14.0)
     }
     /// Thread body line height, shared with the manifest.
     pub fn text_md_leading() -> gpui::Pixels {
         px(23.0)
     }
-    /// 13 px tool row line height
+    /// Activity row text line height
     pub fn text_sm_leading() -> gpui::Pixels {
         px(20.0)
     }
-    /// 13 px compact line height for secondary text inside fixed-height rows.
+    /// Compact line height for secondary text inside fixed-height rows.
     pub fn text_sm_leading_compact() -> gpui::Pixels {
         px(18.0)
     }

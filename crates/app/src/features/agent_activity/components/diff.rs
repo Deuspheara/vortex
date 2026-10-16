@@ -22,6 +22,7 @@ pub fn render_diff_header_row(
                 .flex()
                 .items_center()
                 .gap(Tokens::spacing_2())
+                .child(super::activity_icon("codex_file_change"))
                 .child(
                     div()
                         .text_size(Tokens::text_sm())
@@ -86,7 +87,7 @@ fn file_stat_line(path: &str, additions: usize, deletions: usize) -> impl IntoEl
         .child(
             div()
                 .text_size(Tokens::text_code())
-                .font_family("monospace")
+                .font_family(Tokens::code_font_family())
                 .text_color(Tokens::text_faint())
                 .child(path),
         )

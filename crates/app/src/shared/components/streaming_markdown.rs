@@ -141,39 +141,63 @@ pub fn render_live_tail(tail: &str) -> impl IntoElement {
             .into_any_element(),
         LiveRenderMode::OpenCodeFence { lang } => {
             let body = open_fence_body(tail);
-            let label = lang.as_deref().unwrap_or("code");
+            let label = lang.as_deref().unwrap_or("text");
             div()
                 .w_full()
-                .rounded(Tokens::radius_sm())
+                .min_w(px(0.0))
+                .rounded(Tokens::radius_md())
                 .border_1()
-                .border_color(Tokens::border_subtle())
+                .border_color(Tokens::border_strong())
+                .bg(Tokens::code_bg())
                 .overflow_hidden()
+                .flex()
+                .flex_col()
                 .child(
                     div()
-                        .px(Tokens::spacing_2())
-                        .py(Tokens::spacing_0p5())
-                        .bg(Tokens::surface_hover())
-                        .border_b_1()
-                        .border_color(Tokens::border_subtle())
-                        .text_size(Tokens::text_xs())
+                        .h(px(Tokens::CODE_HEADER_HEIGHT))
+                        .flex_shrink_0()
+                        .px(Tokens::spacing_3())
+                        .flex()
+                        .items_center()
+                        .font_family(Tokens::ui_font_family())
+                        .text_size(Tokens::text_label())
                         .text_color(Tokens::text_tertiary())
                         .child(label.to_string()),
                 )
                 .child(
                     div()
+                        .id("streaming-code-body")
                         .w_full()
-                        .px(Tokens::spacing_2())
-                        .py(Tokens::spacing_1())
-                        .bg(Tokens::code_bg())
-                        .font_family(Tokens::terminal_font_family())
+                        .min_w(px(0.0))
+                        .overflow_x_scroll()
+                        .px(Tokens::spacing_3())
+                        .pb(Tokens::spacing_3())
+                        .font_family(Tokens::code_font_family())
                         .text_size(Tokens::text_code())
                         .text_color(Tokens::code_fg())
                         .line_height(px(Tokens::DIFF_LINE_HEIGHT))
-                        .children(body.lines().map(|line| div().child(line.to_string()))),
+                        .children(body.lines().map(|line| {
+                            div()
+                                .h(px(Tokens::DIFF_LINE_HEIGHT))
+                                .flex_shrink_0()
+                                .whitespace_nowrap()
+                                .child(line.to_string())
+                        })),
                 )
                 .into_any_element()
         }
     }
+}
+
+/// Retain the prefix while its first background parse is pending. Rendering only
+/// the open-fence tail would otherwise drop prose from a single-chunk update.
+pub(crate) fn streaming_text_parts(source: &str, sealed_end: usize) -> (&str, &str) {
+    if sealed_end > 0 {
+        if let Some(tail) = source.get(sealed_end..) {
+            return ("", tail);
+        }
+    }
+    split_at_seal_boundary(source)
 }
 
 /// Streaming assistant body: sealed markdown blocks + live tail + cursor.
@@ -183,9 +207,7 @@ pub fn streaming_assistant_body(
     sealed: &SealedBlockCache,
     show_cursor: bool,
 ) -> impl IntoElement {
-    let tail = source
-        .get(sealed.sealed_end..)
-        .map_or_else(|| split_at_seal_boundary(source).1, |tail| tail);
+    let (pending_prefix, tail) = streaming_text_parts(source, sealed.sealed_end);
     let has_sealed = sealed.sealed_end > 0;
 
     div()
@@ -201,6 +223,9 @@ pub fn streaming_assistant_body(
                 false,
             ))
         })
+        .when(!pending_prefix.is_empty(), |el| {
+            el.child(render_live_tail(pending_prefix))
+        })
         .when(!tail.is_empty(), |el| el.child(render_live_tail(tail)))
         .when(show_cursor, |el| el.child(static_streaming_cursor()))
 }
@@ -208,6 +233,15 @@ pub fn streaming_assistant_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_update_keeps_prose_before_open_code_until_parse_finishes() {
+        let source = "Introduction.\n\n```rust\nfn main() {}";
+        let (prefix, tail) = streaming_text_parts(source, 0);
+        assert_eq!(prefix, "Introduction.\n\n");
+        assert_eq!(tail, "```rust\nfn main() {}");
+        assert_eq!(streaming_text_parts(source, prefix.len()), ("", tail));
+    }
 
     #[test]
     fn seal_at_paragraph_boundary() {

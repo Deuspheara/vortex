@@ -326,7 +326,6 @@ impl ThreadView {
                 });
                 let toggle_id = id.clone();
                 let agent_toggle = agent.clone();
-                let agent_select = agent.clone();
                 let agent_open = agent.clone();
                 let on_open_file: OpenToolFileCallback =
                     Arc::new(move |path, line_range, app: &mut gpui::App| {
@@ -346,9 +345,6 @@ impl ThreadView {
                     change_counts,
                     Some(on_open_file),
                     move |app: &mut gpui::App| {
-                        agent_select.update(app, |view, cx| {
-                            view.select_tool_artifact(&toggle_id, cx);
-                        });
                         agent_toggle.update(app, |view, cx| {
                             view.toggle_thread_item(&toggle_id, cx);
                         });
@@ -685,6 +681,8 @@ impl ThreadView {
         };
         if *streaming {
             let id = id.clone();
+            let markdown = markdown.clone();
+            self.flush_sealed_blocks_sanitized(&id, &markdown);
             let jump_to_latest = self.user_scrolled_up.then(|| {
                 let entity = cx.entity();
                 let button_id = id.clone();
@@ -728,7 +726,7 @@ impl ThreadView {
                 .gap(Tokens::spacing_0p5())
                 .child(streaming_assistant_body(
                     &id,
-                    markdown,
+                    &markdown,
                     &sealed,
                     show_cursor,
                 ))

@@ -308,7 +308,15 @@ impl ThreadView {
     }
 
     pub fn set_transcript_mode(&mut self, mode: TranscriptMode) {
-        self.transcript_mode = mode;
+        if self.transcript_mode != mode {
+            self.transcript_mode = mode;
+            // A mode change changes row visibility even when the event snapshot
+            // is identical. The following sync still owns notification/scrolling.
+            let _ = self.rebuild_all(self.items.clone());
+            if self.stick_to_bottom && !self.user_scrolled_up {
+                self.pending_scroll_bottom = true;
+            }
+        }
     }
 
     pub fn set_assistant_actions(

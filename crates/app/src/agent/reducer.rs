@@ -719,26 +719,10 @@ impl AgentWindow {
                         },
                         cx,
                     );
-                } else {
-                    let (chunk, should_flush, item_id) = {
-                        let state = self
-                            .reducer_state
-                            .stream_state_mut(&run_id, Some(conv_id.clone()));
-                        state.reasoning_buffer.push(&text);
-                        let should_flush = state.reasoning_buffer.should_flush();
-                        let chunk = if should_flush {
-                            Some(state.reasoning_buffer.take())
-                        } else {
-                            None
-                        };
-                        (chunk, should_flush, state.reasoning_item_id.clone())
-                    };
-                    if !should_flush {
-                        return;
-                    }
-                    if let (Some(item_id), Some(chunk)) = (item_id, chunk) {
-                        self.append_reasoning_delta(conv_id.clone(), &item_id, &chunk, cx);
-                    }
+                } else if let Some(item_id) = existing_item_id {
+                    // ThreadView already batches row updates. A second buffer here
+                    // leaves a single reasoning delta invisible until another event.
+                    self.append_reasoning_delta(conv_id.clone(), &item_id, &text, cx);
                 }
             }
             AgentEvent::ToolCallStarted {

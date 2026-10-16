@@ -317,6 +317,22 @@ fn top_bar(vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
         on_toggle_inspector: Some(to_boxed(cbs.toggle_inspector.clone())),
         on_toggle_terminal: Some(to_boxed(cbs.toggle_terminal.clone())),
         on_new_chat: Some(to_boxed(cbs.new_chat.clone())),
+        on_toggle_activity: Some(Box::new({
+            let entity = vs.entity.clone();
+            move |app| {
+                entity.update(app, |view, cx| {
+                    let mode = if matches!(
+                        view.transcript_mode,
+                        crate::shared::state::TranscriptMode::Focus
+                    ) {
+                        crate::shared::state::TranscriptMode::Activity
+                    } else {
+                        crate::shared::state::TranscriptMode::Focus
+                    };
+                    view.set_transcript_mode(mode, cx);
+                })
+            }
+        })),
         on_title_copy: Some(Box::new({
             let title = title_copy;
             move |app: &mut gpui::App| {

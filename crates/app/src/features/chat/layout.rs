@@ -10,22 +10,22 @@ fn px(v: gpui::Pixels) -> f32 {
 
 /// Space before a new conversational turn — compact but readable.
 pub fn turn_gap() -> f32 {
-    px(Tokens::spacing_1p5())
+    px(Tokens::spacing_6())
 }
 
 /// Space before the first row in an agent activity band.
 pub fn activity_band_gap() -> f32 {
-    px(Tokens::spacing_1())
+    px(Tokens::spacing_4())
 }
 
-/// Tight stack between consecutive activity headers — `Tokens::spacing_0p5()`.
+/// Consecutive activity headers form one uninterrupted 24 px rhythm.
 pub fn activity_inner_gap() -> f32 {
-    px(Tokens::spacing_0p5())
+    0.0
 }
 
 /// Space between assistant prose and the following tool/reasoning band.
 pub fn post_assistant_activity_gap() -> f32 {
-    px(Tokens::spacing_1())
+    px(Tokens::spacing_3())
 }
 
 /// Vertical padding inside user message bubble (both sides) — `Tokens::spacing_4()`.
