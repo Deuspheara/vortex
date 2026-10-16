@@ -390,8 +390,7 @@ fn body(agent: &AgentWindow, vs: &ViewState, cbs: &Cbs) -> impl IntoElement {
                                 .flex_1()
                                 .min_h(px(0.0))
                                 .child(sidebar::render_sidebar(vs.sidebar_view.clone())),
-                        )
-                        .with_animation("sidebar-fade", Motion::fade_in(), |el, d| el.opacity(d)),
+                        ),
                 ),
         )
         // ── Main workspace ──

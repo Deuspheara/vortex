@@ -231,6 +231,28 @@ conversation selection, and widening the sidebar through the remaining resize
 handle. The revised sidebar was inspected at 1305×964 and 1100×800. The screenshot
 and isolated QA data remain outside the repository.
 
+## Delete confirmation and sidebar scrolling
+
+Conversation/project deletion previously used blocking `rfd::MessageDialog::show`
+inside a deferred AgentWindow update. On macOS the alert enters a nested Cocoa
+loop while GPUI's AppCell is still borrowed; frame tasks can then repeatedly fail
+with `RefCell already borrowed` and abort. Both confirmations now use GPUI's
+non-blocking native prompt receiver. The async task awaits the user's decision
+before reacquiring the view; Cancel and dismissed prompts perform no deletion.
+
+Removed sidebar row entrance, expansion, title, metadata, container fade, and
+drag-divider animations. Virtualized rows now render directly, so recycling rows
+while scrolling does not restart a cascade or temporarily shift/fade the text.
+
+Native verification used disposable QA data: cancelled and confirmed chat deletion,
+verified automatic selection of the remaining chat, cancelled and confirmed project
+removal, and verified recovery into a usable new workspace conversation. A 25-chat
+project exercised Show more and scrolling in both directions. Deleting a background
+chat preserved the selected chat; reopening retained the resulting 24-chat count.
+Escape cancelled a new confirmation on the rebuilt app after reopening. No panic,
+borrow error, or error-level entry appeared in either QA log. Real user data was
+untouched.
+
 ## Verification commands
 
 - `cargo fmt --all --check` — passed.

@@ -1,6 +1,6 @@
 //! Conversation orchestration — select/move/new/delete/reposition conversation.
 
-use gpui::{Context, Window};
+use gpui::{Context, PromptButton, PromptLevel, Window};
 
 use super::super::AgentWindow;
 use crate::agent::{proto_session_id, ui_conversation_id};
@@ -213,21 +213,24 @@ impl AgentWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let conv_id = conversation_id.clone();
-        cx.defer_in(window, move |view, window, cx| {
-            let confirmed = rfd::MessageDialog::new()
-                .set_title("Delete conversation")
-                .set_description(format!(
-                    "Delete conversation \"{title}\"? This cannot be undone."
-                ))
-                .set_level(rfd::MessageLevel::Warning)
-                .set_buttons(rfd::MessageButtons::OkCancel)
-                .set_parent(window)
-                .show();
-            if confirmed == rfd::MessageDialogResult::Ok {
-                view.delete_conversation(conv_id, cx);
+        let detail = format!("Delete conversation \"{title}\"? This cannot be undone.");
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            "Delete conversation",
+            Some(&detail),
+            &[PromptButton::cancel("Cancel"), PromptButton::new("Delete")],
+            cx,
+        );
+        // Await the sheet outside the AppCell/AgentWindow update borrow. A
+        // blocking native alert enters a nested Cocoa loop and re-enters GPUI.
+        cx.spawn(async move |view, cx| {
+            if answer.await == Ok(1) {
+                let _ = view.update(cx, |view, cx| {
+                    view.delete_conversation(conversation_id, cx);
+                });
             }
-        });
+        })
+        .detach();
     }
 
     pub fn delete_conversation(&mut self, conversation_id: ConversationId, cx: &mut Context<Self>) {

@@ -15,7 +15,6 @@ use crate::features::shell::state::{
 use crate::shared::components::buttons::btn_icon_sm;
 use crate::shared::components::flat_list_row::flat_list_row;
 use crate::tokens::icons;
-use crate::tokens::motion::{Motion, sidebar_text_cascade_in, sidebar_text_fade_in};
 use crate::tokens::{Tokens, element_key};
 
 const SESSION_META_WIDTH: f32 = 36.0;
@@ -23,8 +22,8 @@ const PROJECT_META_WIDTH: f32 = 64.0;
 use crate::ui::agent_window::AgentWindow;
 
 use gpui::{
-    AnimationExt, AppContext, Context, ElementId, Entity, FontWeight, IntoElement, MouseButton,
-    Render, SharedString, TextAlign, Window, div, prelude::*, px,
+    AppContext, Context, ElementId, Entity, FontWeight, IntoElement, MouseButton, Render,
+    SharedString, TextAlign, Window, div, prelude::*, px,
 };
 
 macro_rules! sidebar_tree_row_base {
@@ -84,7 +83,6 @@ pub struct SessionRowViewModel {
     pub updated_at: String,
     pub selected: bool,
     pub indent_level: u32,
-    pub cascade_index: usize,
     pub row_id: ElementId,
     pub wrap_id: ElementId,
     pub title_id: ElementId,
@@ -94,12 +92,7 @@ pub struct SessionRowViewModel {
 }
 
 impl SessionRowViewModel {
-    pub fn new(
-        session: &SidebarSession,
-        selected: bool,
-        indent_level: u32,
-        cascade_index: usize,
-    ) -> Self {
+    pub fn new(session: &SidebarSession, selected: bool, indent_level: u32) -> Self {
         let id = &session.id.0;
         Self {
             conv_id: session.id.clone(),
@@ -107,7 +100,6 @@ impl SessionRowViewModel {
             updated_at: session.updated_at.clone(),
             selected,
             indent_level,
-            cascade_index,
             row_id: ElementId::from(SharedString::from(format!("session-{id}"))),
             wrap_id: ElementId::from(SharedString::from(format!("session-wrap-{id}"))),
             title_id: element_key("session-title", id),
@@ -124,7 +116,6 @@ pub struct ProjectRowViewModel {
     pub name: String,
     pub count: usize,
     pub expanded: bool,
-    pub cascade_index: usize,
     pub row_id: ElementId,
     pub toggle_id: ElementId,
     pub name_id: ElementId,
@@ -135,14 +126,13 @@ pub struct ProjectRowViewModel {
 }
 
 impl ProjectRowViewModel {
-    pub fn new(project: &Project, expanded: bool, cascade_index: usize) -> Self {
+    pub fn new(project: &Project, expanded: bool) -> Self {
         let id = &project.id.0;
         Self {
             project_id: project.id.clone(),
             name: project.name.clone(),
             count: project.conversations.len(),
             expanded,
-            cascade_index,
             row_id: ElementId::from(SharedString::from(format!("project-{id}"))),
             toggle_id: element_key("project-toggle", id),
             name_id: element_key("project-name", id),
@@ -179,7 +169,7 @@ impl Render for DragSession {
     }
 }
 
-/// Animated accent line shown between rows during drag.
+/// Static accent line shown between rows during drag.
 fn sidebar_drop_divider(active: bool, key: &str) -> impl IntoElement {
     div()
         .id(element_key("sidebar-drop-slot", key))
@@ -192,11 +182,7 @@ fn sidebar_drop_divider(active: bool, key: &str) -> impl IntoElement {
                     .w_full()
                     .h(px(2.0))
                     .rounded(Tokens::radius_full())
-                    .with_animation(
-                        element_key("sidebar-drop-anim", key),
-                        Motion::sidebar_expand(),
-                        |line, delta| line.opacity(delta).bg(Tokens::accent()),
-                    ),
+                    .bg(Tokens::accent()),
             )
         })
         .when(!active, |el| el.h(px(0.0)))
@@ -380,7 +366,6 @@ pub fn session_row(
     let hover_group = group_name.clone();
     let title_opacity = session_title_opacity(row.indent_level, selected);
     let meta_opacity = session_meta_opacity(row.indent_level, is_menu_open);
-    let cascade_index = row.cascade_index;
 
     let row_body = sidebar_tree_row_base!(
         row.row_id.clone(),
@@ -451,7 +436,7 @@ pub fn session_row(
             .overflow_hidden()
             .flex()
             .items_center()
-            .child(sidebar_text_cascade_in(
+            .child(
                 div()
                     .id(row.title_id.clone())
                     .flex_1()
@@ -472,9 +457,7 @@ pub fn session_row(
                         el.group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                     })
                     .child(title),
-                element_key("session-title-cascade", &row.conv_id.0),
-                cascade_index,
-            )),
+            ),
     )
     .child(
         div()
@@ -492,7 +475,7 @@ pub fn session_row(
                     .flex()
                     .items_center()
                     .justify_end()
-                    .child(sidebar_text_cascade_in(
+                    .child(
                         div()
                             .w_full()
                             .min_w(px(0.0))
@@ -507,9 +490,7 @@ pub fn session_row(
                                 el.group_hover(group_name.clone(), |s| s.opacity(0.0))
                             })
                             .child(updated_at),
-                        element_key("session-meta-cascade", &row.conv_id.0),
-                        cascade_index.saturating_add(1),
-                    )),
+                    ),
             )
             .child(
                 div()
@@ -571,7 +552,6 @@ pub fn project_row(
     let sidebar_for_right = sidebar.clone();
     let group_name = row.group_name.clone();
     let hover_group = group_name.clone();
-    let cascade_index = row.cascade_index;
 
     sidebar_tree_row_base!(
         row.row_id.clone(),
@@ -646,7 +626,7 @@ pub fn project_row(
                     })
                     .opacity(0.72),
             )
-            .child(sidebar_text_fade_in(
+            .child(
                 div()
                     .id(row.name_id.clone())
                     .flex_1()
@@ -663,9 +643,7 @@ pub fn project_row(
                     })
                     .group_hover(hover_group, |s| s.text_color(Tokens::sidebar_text_hover()))
                     .child(name),
-                element_key("project-name-cascade", &row.project_id.0),
-                cascade_index,
-            )),
+            ),
     )
     .child(
         div()
@@ -683,7 +661,7 @@ pub fn project_row(
                     .flex()
                     .items_center()
                     .justify_end()
-                    .child(sidebar_text_fade_in(
+                    .child(
                         div()
                             .w_full()
                             .min_w(px(0.0))
@@ -699,9 +677,7 @@ pub fn project_row(
                                 el.group_hover(group_name.clone(), |s| s.opacity(0.0))
                             })
                             .child(count.to_string()),
-                        element_key("project-meta-cascade", &row.project_id.0),
-                        cascade_index.saturating_add(1),
-                    )),
+                    ),
             )
             .child(
                 div()

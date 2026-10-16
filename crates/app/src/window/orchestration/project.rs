@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use gpui::{Context, Window};
+use gpui::{Context, PromptButton, PromptLevel, Window};
 
 use super::super::AgentWindow;
 use crate::agent::paths::git_local_branches;
@@ -199,28 +199,26 @@ impl AgentWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let pid = project_id.clone();
-        cx.defer_in(window, move |view, window, cx| {
-            let description = if session_count == 1 {
-                format!(
-                    "Delete project \"{name}\" and its conversation? This cannot be undone."
-                )
-            } else {
-                format!(
-                    "Delete project \"{name}\" and {session_count} conversations? This cannot be undone."
-                )
-            };
-            let confirmed = rfd::MessageDialog::new()
-                .set_title("Delete project")
-                .set_description(description)
-                .set_level(rfd::MessageLevel::Warning)
-                .set_buttons(rfd::MessageButtons::OkCancel)
-                .set_parent(window)
-                .show();
-            if confirmed == rfd::MessageDialogResult::Ok {
-                view.delete_project(pid, cx);
+        let detail = if session_count == 1 {
+            format!("Delete project \"{name}\" and its conversation? This cannot be undone.")
+        } else {
+            format!(
+                "Delete project \"{name}\" and {session_count} conversations? This cannot be undone."
+            )
+        };
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            "Delete project",
+            Some(&detail),
+            &[PromptButton::cancel("Cancel"), PromptButton::new("Delete")],
+            cx,
+        );
+        cx.spawn(async move |view, cx| {
+            if answer.await == Ok(1) {
+                let _ = view.update(cx, |view, cx| view.delete_project(project_id, cx));
             }
-        });
+        })
+        .detach();
     }
 
     pub fn delete_project(&mut self, project_id: ProjectId, cx: &mut Context<Self>) {

@@ -21,9 +21,7 @@ use crate::features::shell::state::{
     SidebarSession,
 };
 use crate::tokens::Tokens;
-use crate::tokens::motion::{
-    sidebar_expand_stagger_in, sidebar_row_fade_stagger_in, sidebar_row_stagger_in,
-};
+
 use crate::ui::agent_window::AgentWindow;
 use crate::window::AppScreen;
 
@@ -333,33 +331,21 @@ impl SidebarView {
         if !unassigned.is_empty() {
             rows.push(SidebarRow::RecentHeader);
             let selected = self.selected_conversation_id.as_ref();
-            rows.extend(
-                unassigned
-                    .into_iter()
-                    .enumerate()
-                    .map(|(session_ix, session)| SidebarRow::Session {
-                        row: SessionRowViewModel::new(
-                            session,
-                            selected == Some(&session.id),
-                            0,
-                            session_ix,
-                        ),
-                    }),
-            );
+            rows.extend(unassigned.into_iter().map(|session| SidebarRow::Session {
+                row: SessionRowViewModel::new(session, selected == Some(&session.id), 0),
+            }));
         }
 
         rows.push(SidebarRow::ProjectsHeader {
             first: rows.is_empty(),
         });
 
-        let mut project_ix = 0usize;
         for project in projects {
             let key = project_expand_key(&project.id);
             let expanded = expanded_items.contains(&key);
             rows.push(SidebarRow::Project {
-                row: ProjectRowViewModel::new(&project, expanded, project_ix),
+                row: ProjectRowViewModel::new(&project, expanded),
             });
-            project_ix += 1;
 
             if expanded {
                 let selected = self.selected_conversation_id.as_ref();
@@ -394,16 +380,17 @@ impl SidebarView {
                 }
 
                 let visible_count = project_sessions.len();
-                rows.extend(project_sessions.into_iter().enumerate().map(
-                    |(session_ix, session)| SidebarRow::Session {
-                        row: SessionRowViewModel::new(
-                            session,
-                            selected == Some(&session.id),
-                            1,
-                            session_ix,
-                        ),
-                    },
-                ));
+                rows.extend(
+                    project_sessions
+                        .into_iter()
+                        .map(|session| SidebarRow::Session {
+                            row: SessionRowViewModel::new(
+                                session,
+                                selected == Some(&session.id),
+                                1,
+                            ),
+                        }),
+                );
 
                 let remaining = project.conversations.len().saturating_sub(visible_count);
                 if expanded && !search_active && remaining > 0 {
@@ -533,7 +520,7 @@ impl SidebarView {
         let row_count = range.len() as u64;
         let rows = range
             .map(|row_ix| match self.visible_rows.get(row_ix).cloned() {
-                Some(row) => self.render_row(row, row_ix, cx),
+                Some(row) => self.render_row(row, cx),
                 None => div()
                     .w_full()
                     .h(px(Tokens::ROW_HEIGHT_MD))
@@ -548,12 +535,7 @@ impl SidebarView {
         rows
     }
 
-    fn render_row(
-        &mut self,
-        row: SidebarRow,
-        row_ix: usize,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
+    fn render_row(&mut self, row: SidebarRow, cx: &mut Context<Self>) -> gpui::AnyElement {
         let _profile = crate::shared::render_profile::span("SidebarView::render_row");
         let sidebar = cx.entity().clone();
         let entity = self.agent.clone();
@@ -580,23 +562,11 @@ impl SidebarView {
                 )
                 .into_any_element(),
             SidebarRow::Session { row } => {
-                let animation_id = row.row_id.clone();
-                let indent_level = row.indent_level;
-                let content = session_row(row, &drop_target, &open_action_menu, entity, sidebar);
-                if indent_level > 0 {
-                    sidebar_expand_stagger_in(content, animation_id, row_ix).into_any_element()
-                } else {
-                    sidebar_row_stagger_in(content, animation_id, row_ix).into_any_element()
-                }
+                session_row(row, &drop_target, &open_action_menu, entity, sidebar)
+                    .into_any_element()
             }
             SidebarRow::Project { row } => {
-                let animation_id = row.row_id.clone();
-                sidebar_row_fade_stagger_in(
-                    project_row(row, &open_action_menu, entity, sidebar),
-                    animation_id,
-                    row_ix,
-                )
-                .into_any_element()
+                project_row(row, &open_action_menu, entity, sidebar).into_any_element()
             }
             SidebarRow::ProjectShowMore {
                 project_id,
